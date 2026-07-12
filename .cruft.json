@@ -1,0 +1,19 @@
+{
+  "template": "https://github.com/scverse/cookiecutter-scverse",
+  "commit": "735e70d44b79b79d12b88049d5f2e59593a40e77",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "annplyr",
+      "package_name": "annplyr",
+      "project_description": "Tidy, dataframe-style wrangling for AnnData.",
+      "author_full_name": "annplyr developers",
+      "author_email": "",
+      "github_user": "mdmanurung",
+      "github_repo": "annplyr",
+      "ide_integration": false,
+      "_template": "https://github.com/scverse/cookiecutter-scverse"
+    }
+  },
+  "directory": null
+}

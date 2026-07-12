@@ -1,0 +1,28 @@
+# Temp files
+.DS_Store
+*~
+buck-out/
+
+# IDEs
+/.idea/
+/.vscode/
+
+# Compiled files
+.venv/
+__pycache__/
+.*cache/
+
+# Distribution / packaging
+/build/
+/dist/
+/*.egg-info/
+
+# Tests and coverage
+/data/
+/node_modules/
+/.coverage*
+/coverage.xml
+
+# Docs
+/docs/generated/
+/docs/_build/

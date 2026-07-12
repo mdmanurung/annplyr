@@ -88,8 +88,10 @@ source_suffix = {
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
     "anndata": ("https://anndata.scverse.org/en/stable/", None),
+    "narwhals": ("https://narwhals-dev.github.io/narwhals/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
 }
 
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints"]
@@ -107,4 +109,7 @@ html_theme_options = {
 
 pygments_style = "default"
 katex_prerender = shutil.which(katex.NODEJS_BINARY) is not None
-nitpick_ignore = []
+nitpick_ignore = [
+    ("py:class", "annplyr._expr.AnnplyrSelector"),
+    ("py:class", "annplyr._expr.Desc"),
+]

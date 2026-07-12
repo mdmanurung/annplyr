@@ -1,25 +1,29 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import narwhals as nw
 import numpy as np
 import pandas as pd
 from anndata import AnnData
+from narwhals.exceptions import ColumnNotFoundError
 from scipy import sparse
 
+from annplyr._errors import SelectionError, UnknownColumnError, UnknownSourceError
+
 ROW_NUMBER = "__annplyr_row_number__"
+VIRTUAL_COLUMNS = {"obs_names", "var_names", ROW_NUMBER}
 
 
 def obs_frame(adata: AnnData) -> pd.DataFrame:
-    frame = adata.obs.copy()
+    frame = cast(pd.DataFrame, adata.obs).copy()
     frame["obs_names"] = adata.obs_names.to_numpy()
     return frame
 
 
 def var_frame(adata: AnnData) -> pd.DataFrame:
-    frame = adata.var.copy()
+    frame = cast(pd.DataFrame, adata.var).copy()
     frame["var_names"] = adata.var_names.to_numpy()
     return frame
 
@@ -29,11 +33,21 @@ def x_frame(adata: AnnData, layer: str | None = None) -> pd.DataFrame:
 
 
 def obsm_frame(adata: AnnData, key: str) -> pd.DataFrame:
-    return matrix_frame(adata.obsm[key], adata.obs_names)
+    try:
+        matrix = adata.obsm[key]
+    except KeyError as exc:
+        msg = f"Unknown obsm key: {key!r}"
+        raise UnknownSourceError(msg) from exc
+    return matrix_frame(matrix, adata.obs_names)
 
 
 def varm_frame(adata: AnnData, key: str) -> pd.DataFrame:
-    return matrix_frame(adata.varm[key], adata.var_names)
+    try:
+        matrix = adata.varm[key]
+    except KeyError as exc:
+        msg = f"Unknown varm key: {key!r}"
+        raise UnknownSourceError(msg) from exc
+    return matrix_frame(matrix, adata.var_names)
 
 
 def matrix_frame(matrix: Any, index: pd.Index) -> pd.DataFrame:
@@ -88,11 +102,32 @@ def expr_for(value: Any) -> Any:
 
 
 def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
+    if selectors is None:
+        return drop_internal_columns(frame.copy())
     exprs = selector_list(selectors)
     if not exprs:
-        return drop_internal_columns(frame.copy())
+        return pd.DataFrame(index=frame.index)
     work = with_row_number(frame)
-    selected = nw.from_native(work).select(*exprs).to_native()
+    columns = [str(column) for column in frame.columns]
+    public_columns = [column for column in columns if column not in VIRTUAL_COLUMNS]
+    resolved_exprs: list[Any] = []
+    for expr in exprs:
+        if hasattr(expr, "resolve"):
+            names = expr.resolve(frame, columns, public_columns)
+            if names:
+                resolved_exprs.append(nw.col(*names))
+        else:
+            resolved_exprs.append(expr)
+    if not resolved_exprs:
+        return pd.DataFrame(index=frame.index)
+    try:
+        selected = nw.from_native(work).select(*resolved_exprs).to_native()
+    except ColumnNotFoundError as exc:
+        msg = f"Unknown column in selector: {exc}"
+        raise UnknownColumnError(msg) from exc
+    except Exception as exc:
+        msg = f"Selection failed: {exc}"
+        raise SelectionError(msg) from exc
     selected = drop_internal_columns(selected)
     if len(selected) == len(frame):
         selected.index = frame.index
@@ -104,7 +139,14 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
     if not exprs:
         return frame.index
     work = with_row_number(frame)
-    filtered = nw.from_native(work).filter(*exprs).to_native()
+    try:
+        filtered = nw.from_native(work).filter(*exprs).to_native()
+    except ColumnNotFoundError as exc:
+        msg = f"Unknown column in filter predicate: {exc}"
+        raise UnknownColumnError(msg) from exc
+    except Exception as exc:
+        msg = f"Filter failed: {exc}"
+        raise SelectionError(msg) from exc
     return filtered.index
 
 
@@ -112,7 +154,14 @@ def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | N
     if not assignments:
         return pd.DataFrame(index=frame.index)
     exprs = [expr_for(expr).alias(name) for name, expr in assignments.items()]
-    assigned = nw.from_native(with_row_number(frame)).select(*exprs).to_native()
+    try:
+        assigned = nw.from_native(with_row_number(frame)).select(*exprs).to_native()
+    except ColumnNotFoundError as exc:
+        msg = f"Unknown column in assignment: {exc}"
+        raise UnknownColumnError(msg) from exc
+    except Exception as exc:
+        msg = f"Assignment failed: {exc}"
+        raise SelectionError(msg) from exc
     if len(assigned) == len(frame):
         assigned.index = frame.index
     return assigned
@@ -137,12 +186,12 @@ def source_frame(adata: AnnData, source: str, key: str | None = None, layer: str
     if source == "obsm":
         if key is None:
             msg = "obsm source requires a key"
-            raise ValueError(msg)
+            raise UnknownSourceError(msg)
         return obsm_frame(adata, key)
     if source == "varm":
         if key is None:
             msg = "varm source requires a key"
-            raise ValueError(msg)
+            raise UnknownSourceError(msg)
         return varm_frame(adata, key)
     msg = f"Unknown AnnData source: {source!r}"
-    raise ValueError(msg)
+    raise UnknownSourceError(msg)

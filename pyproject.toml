@@ -50,6 +50,10 @@ test = [
   "pytest-cov",
   "pytest-xdist>=3.6.1",
 ]
+type = [
+  "mypy>=1.13",
+  "pandas-stubs",
+]
 doc = [
   "ipykernel",
   "ipython",
@@ -82,7 +86,7 @@ dependency-groups = ["dev", "test"]
 
 [[tool.hatch.envs.hatch-test.matrix]]
 deps = ["stable"]
-python = ["3.12", "3.14"]
+python = ["3.12", "3.13", "3.14"]
 
 [[tool.hatch.envs.hatch-test.matrix]]
 deps = ["pre"]
@@ -98,6 +102,12 @@ cov-combine = "coverage combine"
 cov-report = "coverage report"
 run = "pytest {args}"
 run-cov = "coverage run -m pytest {args}"
+
+[tool.hatch.envs.type]
+dependency-groups = ["type"]
+
+[tool.hatch.envs.type.scripts]
+check = "mypy src/annplyr {args}"
 
 [tool.ruff]
 line-length = 120
@@ -143,11 +153,21 @@ pythonpath = ["src"]
 xfail_strict = true
 
 [tool.coverage.run]
+branch = true
 omit = ["**/test_*.py"]
+patch = ["subprocess"]
 source = ["annplyr"]
 
 [tool.coverage.report]
 exclude_also = ["@(abc\\.)?abstractmethod", "raise NotImplementedError"]
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [tool.cruft]
 skip = [

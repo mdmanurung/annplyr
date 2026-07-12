@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a new annplyr feature or API change.
+labels: enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Use case
+      description: What workflow should this feature make possible or easier?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: Sketch the desired annplyr call, including expected output.
+      render: python
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or packages have you tried?

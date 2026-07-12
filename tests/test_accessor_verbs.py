@@ -10,6 +10,8 @@ import annplyr as ap
 def test_import_registers_ap_accessor(dense_adata: AnnData) -> None:
     assert hasattr(dense_adata, "ap")
     assert dense_adata.ap._obj is dense_adata
+    assert not hasattr(dense_adata, "_cache")
+    assert dense_adata.ap is dense_adata.ap
     assert ap.obs_names is not None
     assert ap.var_names is not None
 

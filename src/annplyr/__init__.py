@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 from annplyr import _accessor as _accessor
+from annplyr._errors import (
+    AnnplyrError,
+    DuplicateNameError,
+    IncompatibleAxisError,
+    JoinRelationshipError,
+    NameRepairError,
+    SelectionError,
+    SizeMismatchError,
+    UnknownColumnError,
+    UnknownSourceError,
+)
 from annplyr._expr import (
+    all_of,
+    any_of,
     between,
     case_when,
     col,
@@ -10,6 +23,7 @@ from annplyr._expr import (
     ends_with,
     everything,
     if_else,
+    last_col,
     lit,
     matches,
     max,
@@ -17,17 +31,30 @@ from annplyr._expr import (
     median,
     min,
     n,
+    num_range,
     obs_names,
     row_number,
     sd,
     starts_with,
     sum,
     var_names,
+    where,
 )
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "AnnplyrError",
+    "DuplicateNameError",
+    "IncompatibleAxisError",
+    "JoinRelationshipError",
+    "NameRepairError",
+    "SelectionError",
+    "SizeMismatchError",
+    "UnknownColumnError",
+    "UnknownSourceError",
+    "all_of",
+    "any_of",
     "between",
     "case_when",
     "col",
@@ -36,6 +63,7 @@ __all__ = [
     "ends_with",
     "everything",
     "if_else",
+    "last_col",
     "lit",
     "matches",
     "max",
@@ -43,10 +71,12 @@ __all__ = [
     "median",
     "min",
     "n",
+    "num_range",
     "obs_names",
     "row_number",
     "sd",
     "starts_with",
     "sum",
     "var_names",
+    "where",
 ]

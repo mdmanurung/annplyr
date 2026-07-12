@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, cast
 
 import narwhals as nw
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 
+from annplyr._errors import (
+    DuplicateNameError,
+    IncompatibleAxisError,
+    SelectionError,
+    UnknownColumnError,
+    UnknownSourceError,
+)
 from annplyr._expr import Desc
 from annplyr._frames import (
     evaluate_assignments,
@@ -28,13 +35,21 @@ def _subset(adata: AnnData, obs_idx: Any, var_idx: Any, *, copy: bool = False) -
     return out.copy() if copy else out
 
 
-def _axis(axis: str) -> str:
-    if axis in {"obs", "observation", "observations", "0", 0}:  # type: ignore[comparison-overlap]
+def _obs_table(adata: AnnData) -> pd.DataFrame:
+    return cast(pd.DataFrame, adata.obs)
+
+
+def _var_table(adata: AnnData) -> pd.DataFrame:
+    return cast(pd.DataFrame, adata.var)
+
+
+def _axis(axis: str | int) -> str:
+    if axis in {"obs", "observation", "observations", "0", 0}:
         return "obs"
-    if axis in {"var", "variable", "variables", "1", 1}:  # type: ignore[comparison-overlap]
+    if axis in {"var", "variable", "variables", "1", 1}:
         return "var"
     msg = "axis must be 'obs' or 'var'"
-    raise ValueError(msg)
+    raise IncompatibleAxisError(msg)
 
 
 def filter_adata(
@@ -79,27 +94,247 @@ def filter_adata(
 
 def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None, copy: bool = False) -> AnnData:
     obs_columns = (
-        _real_columns(evaluate_select(obs_frame(adata), obs).columns, adata.obs.columns)
+        _real_columns(evaluate_select(obs_frame(adata), obs).columns, _obs_table(adata).columns)
         if obs is not None
-        else adata.obs.columns
+        else _obs_table(adata).columns
     )
     var_columns = (
-        _real_columns(evaluate_select(var_frame(adata), var).columns, adata.var.columns)
+        _real_columns(evaluate_select(var_frame(adata), var).columns, _var_table(adata).columns)
         if var is not None
-        else adata.var.columns
+        else _var_table(adata).columns
     )
     var_names = (
         _real_columns(evaluate_select(x_frame(adata), x).columns, adata.var_names) if x is not None else adata.var_names
     )
 
     out = adata[:, var_names].copy() if copy else adata[:, var_names]
-    out.obs = out.obs.loc[:, list(obs_columns)].copy()
-    out.var = out.var.loc[:, list(var_columns)].copy()
+    out.obs = _obs_table(out).loc[:, list(obs_columns)].copy()
+    out.var = _var_table(out).loc[:, list(var_columns)].copy()
     return out
 
 
 def _real_columns(selected: pd.Index, available: pd.Index) -> list[str]:
     return [column for column in selected if column in available]
+
+
+def rename_adata(
+    adata: AnnData,
+    *,
+    obs: Mapping[str, str] | None = None,
+    var: Mapping[str, str] | None = None,
+    x: Mapping[str, str] | None = None,
+    copy: bool = True,
+) -> AnnData:
+    out = adata.copy() if copy else adata
+    if obs:
+        out.obs = _obs_table(out).rename(columns=_rename_mapping(_obs_table(out).columns, obs, source="obs")).copy()
+    if var:
+        out.var = _var_table(out).rename(columns=_rename_mapping(_var_table(out).columns, var, source="var")).copy()
+    if x:
+        out.var_names = _renamed_names(out.var_names, x, source="x")
+    return out
+
+
+def rename_with_adata(
+    adata: AnnData,
+    func: Callable[[str], str],
+    *,
+    obs: Any = None,
+    var: Any = None,
+    x: Any = None,
+    copy: bool = True,
+) -> AnnData:
+    obs_mapping = (
+        _rename_with_mapping(obs_frame(adata), obs, func, _obs_table(adata).columns, source="obs")
+        if obs is not None
+        else None
+    )
+    var_mapping = (
+        _rename_with_mapping(var_frame(adata), var, func, _var_table(adata).columns, source="var")
+        if var is not None
+        else None
+    )
+    x_mapping = _rename_with_mapping(x_frame(adata), x, func, adata.var_names, source="x") if x is not None else None
+    return rename_adata(adata, obs=obs_mapping, var=var_mapping, x=x_mapping, copy=copy)
+
+
+def _rename_with_mapping(
+    frame: pd.DataFrame,
+    selector: Any,
+    func: Callable[[str], str],
+    available: pd.Index,
+    *,
+    source: str,
+) -> dict[str, str]:
+    selected = _real_columns(evaluate_select(frame, selector).columns, available)
+    names = [func(old) for old in selected]
+    _ensure_unique(names, source=source)
+    return dict(zip(names, selected, strict=True))
+
+
+def _rename_mapping(available: pd.Index, mapping: Mapping[str, str], *, source: str) -> dict[str, str]:
+    duplicated_sources = (
+        pd.Index(list(mapping.values()))[pd.Index(list(mapping.values())).duplicated()].unique().tolist()
+    )
+    if duplicated_sources:
+        msg = f"Duplicate {source} source name(s): {', '.join(duplicated_sources)}"
+        raise DuplicateNameError(msg)
+    missing = [old for old in mapping.values() if old not in available]
+    if missing:
+        msg = f"Unknown {source} column(s): {', '.join(missing)}"
+        raise UnknownColumnError(msg)
+    proposed = [mapping.get(column, column) for column in available]
+    _ensure_unique(proposed, source=source)
+    return {old: new for new, old in mapping.items()}
+
+
+def _renamed_names(available: pd.Index, mapping: Mapping[str, str], *, source: str) -> list[str]:
+    missing = [old for old in mapping.values() if old not in available]
+    if missing:
+        msg = f"Unknown {source} name(s): {', '.join(missing)}"
+        raise UnknownColumnError(msg)
+    old_to_new = {old: new for new, old in mapping.items()}
+    renamed = [old_to_new.get(name, name) for name in available]
+    _ensure_unique(renamed, source=source)
+    return renamed
+
+
+def _ensure_unique(names: Sequence[str], *, source: str) -> None:
+    duplicated = pd.Index(names)[pd.Index(names).duplicated()].unique().tolist()
+    if duplicated:
+        msg = f"Duplicate {source} name(s) after operation: {', '.join(duplicated)}"
+        raise DuplicateNameError(msg)
+
+
+def relocate_adata(
+    adata: AnnData,
+    *,
+    obs: Any = None,
+    var: Any = None,
+    x: Any = None,
+    before: str | None = None,
+    after: str | None = None,
+    copy: bool = True,
+) -> AnnData:
+    out = adata.copy() if copy else adata
+    if obs is not None:
+        out.obs = (
+            _obs_table(out)
+            .loc[
+                :,
+                _relocated_order(
+                    _obs_table(out).columns,
+                    _selected_columns(obs_frame(out), obs, _obs_table(out).columns),
+                    before,
+                    after,
+                ),
+            ]
+            .copy()
+        )
+    if var is not None:
+        out.var = (
+            _var_table(out)
+            .loc[
+                :,
+                _relocated_order(
+                    _var_table(out).columns,
+                    _selected_columns(var_frame(out), var, _var_table(out).columns),
+                    before,
+                    after,
+                ),
+            ]
+            .copy()
+        )
+    if x is not None:
+        out = out[
+            :, _relocated_order(out.var_names, _selected_columns(x_frame(out), x, out.var_names), before, after)
+        ].copy()
+    return out
+
+
+def _selected_columns(frame: pd.DataFrame, selector: Any, available: pd.Index) -> list[str]:
+    return _real_columns(evaluate_select(frame, selector).columns, available)
+
+
+def _relocated_order(
+    columns: pd.Index,
+    selected: Sequence[str],
+    before: str | None,
+    after: str | None,
+) -> list[str]:
+    selected = [column for column in selected if column in columns]
+    remaining = [column for column in columns if column not in selected]
+    before_valid = before in remaining if before is not None else False
+    after_valid = after in remaining if after is not None else False
+    if before_valid and after_valid:
+        msg = "relocate received both before and after anchors for the same source"
+        raise SelectionError(msg)
+    if before_valid:
+        index = remaining.index(cast(str, before))
+    elif after_valid:
+        index = remaining.index(cast(str, after)) + 1
+    elif before is None and after is None:
+        index = 0
+    elif before is not None:
+        msg = f"Unknown relocate anchor: {before!r}"
+        raise UnknownColumnError(msg)
+    elif after is not None:
+        msg = f"Unknown relocate anchor: {after!r}"
+        raise UnknownColumnError(msg)
+    else:
+        index = 0
+    return [*remaining[:index], *selected, *remaining[index:]]
+
+
+def distinct_adata(
+    adata: AnnData,
+    *,
+    obs: Any = None,
+    var: Any = None,
+    x: Any = None,
+    axis: str = "obs",
+    keep_all: bool = False,
+    copy: bool = True,
+) -> AnnData:
+    axis = _axis(axis)
+    if axis == "obs":
+        frame, selector, available = _distinct_source(adata, obs=obs, x=x, axis=axis)
+        selected = evaluate_select(frame, selector)
+        obs_idx = selected.drop_duplicates(keep="first").index
+        out = _subset(adata, obs_idx, slice(None), copy=copy)
+        if not keep_all and obs is not None:
+            out.obs = _obs_table(out).loc[:, _real_columns(selected.columns, available)].copy()
+        return out
+
+    frame, selector, available = _distinct_source(adata, var=var, axis=axis)
+    selected = evaluate_select(frame, selector)
+    var_idx = selected.drop_duplicates(keep="first").index
+    out = _subset(adata, slice(None), var_idx, copy=copy)
+    if not keep_all and var is not None:
+        out.var = _var_table(out).loc[:, _real_columns(selected.columns, available)].copy()
+    return out
+
+
+def _distinct_source(
+    adata: AnnData,
+    *,
+    obs: Any = None,
+    var: Any = None,
+    x: Any = None,
+    axis: str,
+) -> tuple[pd.DataFrame, Any, pd.Index]:
+    provided = [value is not None for value in (obs, var, x)]
+    if sum(provided) > 1:
+        msg = "distinct accepts one source at a time"
+        raise UnknownSourceError(msg)
+    if x is not None:
+        if axis != "obs":
+            msg = "x distinct is only defined on the obs axis"
+            raise IncompatibleAxisError(msg)
+        return x_frame(adata), x, adata.var_names
+    if axis == "obs":
+        return obs_frame(adata), obs, _obs_table(adata).columns
+    return var_frame(adata), var, _var_table(adata).columns
 
 
 def _sort_values_for_frame(frame: pd.DataFrame, by: Any) -> pd.Index:
@@ -218,12 +453,14 @@ def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: boo
 
 
 def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
-    arranged = arrange_adata(adata, **{_axis(axis): by})
+    axis = _axis(axis)
+    arranged = arrange_adata(adata, obs=by) if axis == "obs" else arrange_adata(adata, var=by)
     return slice_head_adata(arranged, n=n, axis=axis, copy=copy)
 
 
 def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
-    arranged = arrange_adata(adata, **{_axis(axis): Desc(by)})
+    axis = _axis(axis)
+    arranged = arrange_adata(adata, obs=Desc(by)) if axis == "obs" else arrange_adata(adata, var=Desc(by))
     return slice_head_adata(arranged, n=n, axis=axis, copy=copy)
 
 
@@ -261,12 +498,45 @@ def mutate_adata(
     for frame, assignments in _obs_assignment_frames(out, obs=obs, x=x, obsm=obsm, layer=layer):
         values = evaluate_assignments(frame, assignments)
         for column in values.columns:
-            out.obs[column] = values[column].to_numpy()
+            _obs_table(out)[column] = values[column].to_numpy()
     for frame, assignments in _var_assignment_frames(out, var=var, varm=varm):
         values = evaluate_assignments(frame, assignments)
         for column in values.columns:
-            out.var[column] = values[column].to_numpy()
+            _var_table(out)[column] = values[column].to_numpy()
     return out
+
+
+def transmute_adata(
+    adata: AnnData,
+    *,
+    obs: Mapping[str, Any] | None = None,
+    var: Mapping[str, Any] | None = None,
+    x: Mapping[str, Any] | None = None,
+    obsm: Mapping[str, Mapping[str, Any]] | None = None,
+    varm: Mapping[str, Mapping[str, Any]] | None = None,
+    layer: str | None = None,
+) -> AnnData:
+    out = mutate_adata(adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=False)
+    obs_columns = _assignment_names(obs, x, obsm)
+    var_columns = _assignment_names(var, None, varm)
+    if obs_columns:
+        out.obs = _obs_table(out).loc[:, obs_columns].copy()
+    if var_columns:
+        out.var = _var_table(out).loc[:, var_columns].copy()
+    return out
+
+
+def _assignment_names(
+    direct: Mapping[str, Any] | None,
+    matrix: Mapping[str, Any] | None,
+    keyed: Mapping[str, Mapping[str, Any]] | None,
+) -> list[str]:
+    names: list[str] = []
+    names.extend((direct or {}).keys())
+    names.extend((matrix or {}).keys())
+    for assignments in (keyed or {}).values():
+        names.extend(assignments.keys())
+    return names
 
 
 def _obs_assignment_frames(
@@ -312,7 +582,7 @@ def summarize_adata(
     var_axis_requested = any(source is not None for source in (var, varm))
     if obs_axis_requested and var_axis_requested:
         msg = "summarize accepts obs-axis or var-axis sources, not both at once"
-        raise ValueError(msg)
+        raise IncompatibleAxisError(msg)
 
     if var_axis_requested:
         sources = _var_summary_sources(adata, var=var, varm=varm)
@@ -415,6 +685,39 @@ def count_adata(adata: AnnData, by: Any = None, *, axis: str = "obs", name: str 
     return count_frame(frame, by=by, name=name)
 
 
+def tally_adata(adata: AnnData, by: Any = None, *, axis: str = "obs", name: str = "n") -> pd.DataFrame:
+    return count_adata(adata, by=by, axis=axis, name=name)
+
+
+def add_count_adata(
+    adata: AnnData,
+    by: Any = None,
+    *,
+    axis: str = "obs",
+    name: str = "n",
+    inplace: bool = False,
+) -> AnnData:
+    axis = _axis(axis)
+    out = adata if inplace else adata.copy()
+    frame = obs_frame(out) if axis == "obs" else var_frame(out)
+    values = _count_values(frame, by=by)
+    if axis == "obs":
+        _obs_table(out)[name] = values.to_numpy()
+    else:
+        _var_table(out)[name] = values.to_numpy()
+    return out
+
+
+def _count_values(frame: pd.DataFrame, by: Any = None) -> pd.Series:
+    by_frame = evaluate_select(frame, by) if by is not None else pd.DataFrame(index=frame.index)
+    by_columns = list(by_frame.columns)
+    if not by_columns:
+        return pd.Series(len(frame), index=frame.index)
+    work = by_frame.copy()
+    work["__annplyr_count_row__"] = np.arange(len(work))
+    return work.groupby(by_columns, sort=False, dropna=False)["__annplyr_count_row__"].transform("size")
+
+
 def count_frame(frame: pd.DataFrame, by: Any = None, *, name: str = "n") -> pd.DataFrame:
     work, by_columns = prepare_by_frame(frame, by)
     if not by_columns:
@@ -435,7 +738,7 @@ def pull_adata(
     provided = [value is not None for value in [obs, var, x, obsm, varm]]
     if sum(provided) != 1:
         msg = "pull requires exactly one source"
-        raise ValueError(msg)
+        raise UnknownSourceError(msg)
     if obs is not None:
         return _first_series(evaluate_select(obs_frame(adata), obs))
     if var is not None:
@@ -452,7 +755,7 @@ def pull_adata(
 def _first_series(frame: pd.DataFrame) -> pd.Series:
     if len(frame.columns) != 1:
         msg = "pull selectors must resolve to exactly one column"
-        raise ValueError(msg)
+        raise SelectionError(msg)
     return frame.iloc[:, 0]
 
 

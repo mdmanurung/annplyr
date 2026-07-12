@@ -1,13 +1,18 @@
-# annplyr
+```{include} ../README.md
 
-`annplyr` adds tidy, dataframe-style wrangling verbs to AnnData objects through
-the `adata.ap` accessor.
+```
 
 ```{toctree}
-:maxdepth: 2
-:caption: Contents
+:hidden: true
+:maxdepth: 1
 
 api
+roadmap
 changelog
+template_usage
+contributing
 references
+notebooks/getting_started
+notebooks/all_of_annplyr
+notebooks/plot_ready_tables
 ```

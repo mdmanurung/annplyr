@@ -1,0 +1,36 @@
+name: Bug report
+description: Report something broken or incorrect in annplyr.
+labels: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please include a minimal AnnData example
+        or data-generation snippet whenever possible.
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Paste the smallest Python example that reproduces the issue.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: |
+        Please install `session-info2` and paste the output from:
+
+        ```python
+        import session_info2
+        session_info2.session_info(dependencies=True)
+        ```
+      render: python

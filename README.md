@@ -33,15 +33,27 @@ filtered = adata.ap.filter(obs=ap.col("batch") == "A", x=ap.col("GeneA") > 0)
 plot_data = filtered.ap.to_df(obs=["batch"], x=["GeneA"])
 ```
 
-The current V1 API includes:
+The current API includes:
 
-- row/feature verbs: `filter`, `select`, `arrange`, `slice`, `slice_head`,
-  `slice_tail`, `slice_min`, `slice_max`, and `slice_sample`;
-- mutation and summaries: `mutate`, `group_by`, `summarize`, `summarise`, and
-  `count`;
-- extraction helpers: `pull`, `to_df`, `to_tidy`, and `pipe`;
+- row/feature verbs: `filter`, `select`, `rename`, `rename_with`, `relocate`,
+  `arrange`, `distinct`, `slice`, `slice_head`, `slice_tail`, `slice_min`,
+  `slice_max`, and `slice_sample`;
+- mutation and summaries: `mutate`, `transmute`, `group_by`, `summarize`,
+  `summarise`, `count`, `tally`, and `add_count`;
+- AnnData-safe metadata joins: `left_join`, `inner_join`, `right_join`,
+  `full_join`, `semi_join`, and `anti_join`;
+- extraction helpers: `pull`, `to_df`, `to_tidy`, `pivot_longer`,
+  `pivot_wider`, `nest_by`, `unnest`, and `pipe`;
 - expression helpers such as `col`, `lit`, `desc`, `between`, `if_else`,
-  `case_when`, `row_number`, and compact aggregation helpers.
+  `case_when`, `row_number`, `lead`, `lag`, rank helpers, cumulative helpers,
+  and compact aggregation helpers.
+
+AnnData-returning verbs preserve AnnData axis alignment. Joins can enrich or
+subset `obs`/`var` metadata, but they raise `JoinRelationshipError` instead of
+silently adding or duplicating cells or features. Matrix-long exports require an
+explicit feature selection by default; pass `allow_all_features=True` when a
+whole-matrix materialization is intentional. Mutating verbs raise an
+`AnnplyrError` for backed AnnData objects unless you first load them into memory.
 
 See `docs/roadmap.md` for the tidyverse/scverse-grade development plan.
 

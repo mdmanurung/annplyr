@@ -10,16 +10,24 @@ from annplyr._extensions import register_anndata_accessor
 from annplyr._grouped import GroupedAnnData
 from annplyr._verbs import (
     add_count_adata,
+    anti_join_adata,
     arrange_adata,
     count_adata,
     distinct_adata,
     filter_adata,
+    full_join_adata,
+    inner_join_adata,
+    left_join_adata,
     mutate_adata,
+    nest_by_adata,
+    pivot_longer_adata,
     pull_adata,
     relocate_adata,
     rename_adata,
     rename_with_adata,
+    right_join_adata,
     select_adata,
+    semi_join_adata,
     slice_adata,
     slice_head_adata,
     slice_max_adata,
@@ -104,6 +112,132 @@ class AnnplyrAccessor:
         copy: bool = True,
     ) -> AnnData:
         return distinct_adata(self._obj, obs=obs, var=var, x=x, axis=axis, keep_all=keep_all, copy=copy)
+
+    def left_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "drop",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> AnnData:
+        return left_join_adata(
+            self._obj,
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
+
+    def inner_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "drop",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> AnnData:
+        return inner_join_adata(
+            self._obj,
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
+
+    def right_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "error",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> AnnData:
+        return right_join_adata(
+            self._obj,
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
+
+    def full_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "error",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> AnnData:
+        return full_join_adata(
+            self._obj,
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
+
+    def semi_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        na_matches: str = "na",
+        copy: bool = False,
+    ) -> AnnData:
+        return semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+
+    def anti_join(
+        self,
+        other,
+        *,
+        by: str | list[str] | None = None,
+        axis: str = "obs",
+        na_matches: str = "na",
+        copy: bool = False,
+    ) -> AnnData:
+        return anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
     def arrange(
         self,
@@ -235,6 +369,7 @@ class AnnplyrAccessor:
         obs_name: str = "obs_name",
         feature: str = "feature",
         value: str = "value",
+        allow_all_features: bool = False,
     ):
         return to_tidy_adata(
             self._obj,
@@ -244,7 +379,41 @@ class AnnplyrAccessor:
             obs_name=obs_name,
             feature=feature,
             value=value,
+            allow_all_features=allow_all_features,
         )
+
+    def pivot_longer(
+        self,
+        obs: Any = None,
+        x: Any = None,
+        *,
+        layer: str | None = None,
+        obs_name: str = "obs_name",
+        names_to: str = "name",
+        values_to: str = "value",
+        allow_all_features: bool = False,
+    ):
+        return pivot_longer_adata(
+            self._obj,
+            obs=obs,
+            x=x,
+            layer=layer,
+            obs_name=obs_name,
+            names_to=names_to,
+            values_to=values_to,
+            allow_all_features=allow_all_features,
+        )
+
+    def nest_by(
+        self,
+        *,
+        by: Any,
+        obs: Any = None,
+        var: Any = None,
+        axis: str = "obs",
+        name: str = "data",
+    ):
+        return nest_by_adata(self._obj, by=by, obs=obs, var=var, axis=axis, name=name)
 
     def pipe(self, func: Callable[..., T] | tuple[Callable[..., T], str], *args: Any, **kwargs: Any) -> T:
         if isinstance(func, tuple):

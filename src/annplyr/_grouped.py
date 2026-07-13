@@ -6,9 +6,9 @@ from typing import Any, cast
 import pandas as pd
 from anndata import AnnData
 
-from annplyr._errors import IncompatibleAxisError
-from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
-from annplyr._verbs import count_frame, filter_adata, mutate_adata, prepare_by_frame, summarize_frame
+from annplyr._errors import AnnplyrError, IncompatibleAxisError
+from annplyr._frames import evaluate_assignments, evaluate_filter, evaluate_select, obs_frame, var_frame
+from annplyr._verbs import add_count_adata, count_frame, filter_adata, mutate_adata, summarize_adata
 
 
 class GroupedAnnData:
@@ -76,7 +76,20 @@ class GroupedAnnData:
         layer: str | None = None,
         copy: bool = False,
     ) -> AnnData:
-        return filter_adata(self._adata, obs, var, x, obs_names, var_names, obsm, varm, layer, copy)
+        adata = self._adata
+        if self._axis == "obs" and obs is not None:
+            labels: list[str] = []
+            for _, group in self._iter_groups(adata):
+                labels.extend(evaluate_filter(obs_frame(group), obs).tolist())
+            adata = adata[labels, :]
+            obs = None
+        elif self._axis == "var" and var is not None:
+            labels = []
+            for _, group in self._iter_groups(adata):
+                labels.extend(evaluate_filter(var_frame(group), var).tolist())
+            adata = adata[:, labels]
+            var = None
+        return filter_adata(adata, obs, var, x, obs_names, var_names, obsm, varm, layer, copy)
 
     def mutate(
         self,
@@ -88,19 +101,22 @@ class GroupedAnnData:
         layer: str | None = None,
         inplace: bool = False,
     ) -> AnnData:
+        if self._adata.isbacked:
+            msg = "grouped mutate cannot modify an AnnData object in backed mode; call .to_memory() first"
+            raise AnnplyrError(msg)
         if self._axis == "obs" and obs:
             out = self._adata if inplace else self._adata.copy()
             for _, group in self._iter_groups(out):
                 values = evaluate_assignments(obs_frame(group), obs)
                 for column in values.columns:
-                    cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column].to_numpy()
+                    cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column]
             return mutate_adata(out, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=True)
         if self._axis == "var" and var:
             out = self._adata if inplace else self._adata.copy()
             for _, group in self._iter_groups(out):
                 values = evaluate_assignments(var_frame(group), var)
                 for column in values.columns:
-                    cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column].to_numpy()
+                    cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column]
             return mutate_adata(out, obs=obs, x=x, obsm=obsm, varm=varm, layer=layer, inplace=True)
         return mutate_adata(self._adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=inplace)
 
@@ -108,17 +124,48 @@ class GroupedAnnData:
         self,
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
+        x: Mapping[str, Any] | None = None,
+        obsm: Mapping[str, Mapping[str, Any]] | None = None,
+        varm: Mapping[str, Mapping[str, Any]] | None = None,
+        layer: str | None = None,
     ) -> pd.DataFrame:
-        frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
-        assignments = obs if self._axis == "obs" else var
-        work, by_columns = prepare_by_frame(frame, self._by)
-        return summarize_frame(work, assignments=assignments, by=by_columns)
+        return summarize_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            obsm=obsm,
+            varm=varm,
+            by=self._by,
+            layer=layer,
+        )
 
     summarise = summarize
 
     def count(self, *, name: str = "n") -> pd.DataFrame:
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
         return count_frame(frame, by=self._by, name=name)
+
+    def add_count(self, *, name: str = "n", inplace: bool = False) -> AnnData:
+        return add_count_adata(self._adata, by=self._by, axis=self._axis, name=name, inplace=inplace)
+
+    def slice_head(self, n: int = 5, *, copy: bool = False) -> AnnData:
+        return self._slice_group_positions(n=n, tail=False, copy=copy)
+
+    def slice_tail(self, n: int = 5, *, copy: bool = False) -> AnnData:
+        return self._slice_group_positions(n=n, tail=True, copy=copy)
+
+    def _slice_group_positions(self, *, n: int, tail: bool, copy: bool) -> AnnData:
+        labels: list[str] = []
+        for _, group in self._iter_groups(self._adata):
+            axis_names = group.obs_names if self._axis == "obs" else group.var_names
+            selected = axis_names[-n:] if tail else axis_names[:n]
+            labels.extend(selected.tolist())
+        if self._axis == "obs":
+            out = self._adata[labels, :]
+        else:
+            out = self._adata[:, labels]
+        return out.copy() if copy else out
 
 
 def _key_mask(by_frame: pd.DataFrame, key_row: pd.Series) -> pd.Series:

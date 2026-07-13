@@ -187,8 +187,8 @@ def lit(value: Any) -> nw.Expr:
     return nw.lit(value)
 
 
-obs_names: nw.Expr = col("obs_names")
-var_names: nw.Expr = col("var_names")
+obs_names: nw.Expr = col("__annplyr_obs_names__").alias("obs_names")
+var_names: nw.Expr = col("__annplyr_var_names__").alias("var_names")
 
 
 def desc(expr: str | nw.Expr) -> Desc:
@@ -248,6 +248,10 @@ def n() -> nw.Expr:
     return nw.len()
 
 
+def n_distinct(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).n_unique()
+
+
 def mean(expr: str | nw.Expr) -> nw.Expr:
     return _expr(expr).mean()
 
@@ -270,6 +274,99 @@ def min(expr: str | nw.Expr) -> nw.Expr:
 
 def max(expr: str | nw.Expr) -> nw.Expr:
     return _expr(expr).max()
+
+
+def first(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).first()
+
+
+def last(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).last()
+
+
+def nth(expr: str | nw.Expr, n: int, *, default: Any = None) -> nw.Expr:
+    def _take_nth(series: Any) -> Any:
+        index = n if n >= 0 else series.len() + n
+        if index < 0 or index >= series.len():
+            return default
+        return series.item(index)
+
+    return _expr(expr).map_batches(_take_nth, returns_scalar=True)
+
+
+def lead(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
+    if n < 0:
+        return lag(expr, -n, default=default)
+    if n == 0:
+        return _expr(expr)
+    shifted = _expr(expr).shift(-n)
+    if default is None:
+        return shifted
+    return nw.when(col("__annplyr_row_number__") > (nw.len() - n)).then(_literal_expr(default)).otherwise(shifted)
+
+
+def lag(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
+    if n < 0:
+        return lead(expr, -n, default=default)
+    if n == 0:
+        return _expr(expr)
+    shifted = _expr(expr).shift(n)
+    if default is None:
+        return shifted
+    return nw.when(col("__annplyr_row_number__") <= n).then(_literal_expr(default)).otherwise(shifted)
+
+
+def coalesce(*exprs: str | nw.Expr | Any) -> nw.Expr:
+    values = [col(expr) if isinstance(expr, str) else _literal_expr(expr) for expr in exprs]
+    return nw.coalesce(*values)
+
+
+def na_if(expr: str | nw.Expr, value: Any) -> nw.Expr:
+    base = _expr(expr)
+    return nw.when(base == value).then(None).otherwise(base)
+
+
+def replace_na(expr: str | nw.Expr, value: Any) -> nw.Expr:
+    return _expr(expr).fill_null(value)
+
+
+def is_na(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).is_null()
+
+
+def min_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    return _expr(expr).rank("min", descending=descending)
+
+
+def dense_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    return _expr(expr).rank("dense", descending=descending)
+
+
+def percent_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    rank = min_rank(expr, descending=descending) - 1
+    denominator = n() - 1
+    return nw.when(denominator == 0).then(0).otherwise(rank / denominator)
+
+
+def cume_dist(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    rank = _expr(expr).rank("max", descending=descending)
+    return rank / n()
+
+
+def cum_sum(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cum_sum()
+
+
+def cum_min(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cum_min()
+
+
+def cum_max(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cum_max()
+
+
+def cum_prod(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cum_prod()
 
 
 def between(

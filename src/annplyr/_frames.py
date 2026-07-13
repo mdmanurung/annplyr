@@ -10,26 +10,41 @@ from anndata import AnnData
 from narwhals.exceptions import ColumnNotFoundError
 from scipy import sparse
 
-from annplyr._errors import SelectionError, UnknownColumnError, UnknownSourceError
+from annplyr._errors import (
+    SelectionError,
+    SizeMismatchError,
+    UnknownColumnError,
+    UnknownSourceError,
+)
 
 ROW_NUMBER = "__annplyr_row_number__"
-VIRTUAL_COLUMNS = {"obs_names", "var_names", ROW_NUMBER}
+OBS_NAMES = "__annplyr_obs_names__"
+VAR_NAMES = "__annplyr_var_names__"
+VIRTUAL_COLUMNS = {OBS_NAMES, VAR_NAMES, ROW_NUMBER}
+VIRTUAL_ATTR = "annplyr_virtual_columns"
 
 
 def obs_frame(adata: AnnData) -> pd.DataFrame:
     frame = cast(pd.DataFrame, adata.obs).copy()
-    frame["obs_names"] = adata.obs_names.to_numpy()
+    frame[OBS_NAMES] = adata.obs_names.to_numpy()
+    frame.attrs[VIRTUAL_ATTR] = {OBS_NAMES}
     return frame
 
 
 def var_frame(adata: AnnData) -> pd.DataFrame:
     frame = cast(pd.DataFrame, adata.var).copy()
-    frame["var_names"] = adata.var_names.to_numpy()
+    frame[VAR_NAMES] = adata.var_names.to_numpy()
+    frame.attrs[VIRTUAL_ATTR] = {VAR_NAMES}
     return frame
 
 
 def x_frame(adata: AnnData, layer: str | None = None) -> pd.DataFrame:
-    return adata.to_df(layer=layer)
+    try:
+        matrix = adata.layers[layer] if layer is not None else adata.X
+    except KeyError as exc:
+        msg = f"Unknown layer: {layer!r}"
+        raise UnknownSourceError(msg) from exc
+    return matrix_frame(matrix, adata.obs_names, columns=adata.var_names)
 
 
 def obsm_frame(adata: AnnData, key: str) -> pd.DataFrame:
@@ -50,27 +65,80 @@ def varm_frame(adata: AnnData, key: str) -> pd.DataFrame:
     return matrix_frame(matrix, adata.var_names)
 
 
-def matrix_frame(matrix: Any, index: pd.Index) -> pd.DataFrame:
+def obsp_frame(adata: AnnData, key: str) -> pd.DataFrame:
+    try:
+        matrix = adata.obsp[key]
+    except KeyError as exc:
+        msg = f"Unknown obsp key: {key!r}"
+        raise UnknownSourceError(msg) from exc
+    return matrix_frame(matrix, adata.obs_names, columns=adata.obs_names)
+
+
+def varp_frame(adata: AnnData, key: str) -> pd.DataFrame:
+    try:
+        matrix = adata.varp[key]
+    except KeyError as exc:
+        msg = f"Unknown varp key: {key!r}"
+        raise UnknownSourceError(msg) from exc
+    return matrix_frame(matrix, adata.var_names, columns=adata.var_names)
+
+
+def uns_frame(adata: AnnData, key: str) -> pd.DataFrame:
+    try:
+        value = adata.uns[key]
+    except KeyError as exc:
+        msg = f"Unknown uns key: {key!r}"
+        raise UnknownSourceError(msg) from exc
+    if isinstance(value, pd.DataFrame):
+        return value.copy()
+    if isinstance(value, pd.Series):
+        return value.to_frame().copy()
+    if isinstance(value, Mapping):
+        try:
+            return pd.DataFrame(value)
+        except Exception as exc:
+            msg = f"uns key {key!r} cannot be represented as a pandas DataFrame"
+            raise UnknownSourceError(msg) from exc
+    msg = f"uns key {key!r} cannot be represented as a pandas DataFrame"
+    raise UnknownSourceError(msg)
+
+
+def matrix_frame(matrix: Any, index: pd.Index, *, columns: pd.Index | Sequence[str] | None = None) -> pd.DataFrame:
     if isinstance(matrix, pd.DataFrame):
         frame = matrix.copy()
         frame.index = index
         frame.columns = [str(column) for column in frame.columns]
         return frame
 
-    values = matrix.toarray() if sparse.issparse(matrix) else np.asarray(matrix)
+    if sparse.issparse(matrix):
+        pandas_sparse = cast(Any, pd.DataFrame.sparse)
+        frame = pandas_sparse.from_spmatrix(matrix, index=index)
+        if columns is not None:
+            frame.columns = [str(column) for column in columns]
+        else:
+            frame.columns = [str(column) for column in frame.columns]
+        return frame
+
+    values = np.asarray(matrix)
     if values.ndim == 1:
         values = values.reshape(-1, 1)
-    return pd.DataFrame(values, index=index, columns=[str(i) for i in range(values.shape[1])])
+    if columns is None:
+        columns = [str(i) for i in range(values.shape[1])]
+    return pd.DataFrame(values, index=index, columns=[str(column) for column in columns])
 
 
 def with_row_number(frame: pd.DataFrame) -> pd.DataFrame:
     work = frame.copy()
     work[ROW_NUMBER] = np.arange(1, len(work) + 1)
+    virtual = set(work.attrs.get(VIRTUAL_ATTR, set()))
+    virtual.add(ROW_NUMBER)
+    work.attrs[VIRTUAL_ATTR] = virtual
     return work
 
 
 def drop_internal_columns(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame.drop(columns=[ROW_NUMBER], errors="ignore")
+    virtual = set(frame.attrs.get(VIRTUAL_ATTR, set())) | {ROW_NUMBER}
+    return frame.drop(columns=[column for column in virtual if column in frame.columns], errors="ignore")
 
 
 def as_list(value: Any) -> list[Any]:
@@ -109,15 +177,22 @@ def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
         return pd.DataFrame(index=frame.index)
     work = with_row_number(frame)
     columns = [str(column) for column in frame.columns]
-    public_columns = [column for column in columns if column not in VIRTUAL_COLUMNS]
+    virtual_columns = set(frame.attrs.get(VIRTUAL_ATTR, set())) | VIRTUAL_COLUMNS
+    public_columns = [column for column in columns if column not in virtual_columns]
     resolved_exprs: list[Any] = []
     for expr in exprs:
-        if hasattr(expr, "resolve"):
-            names = expr.resolve(frame, columns, public_columns)
-            if names:
-                resolved_exprs.append(nw.col(*names))
-        else:
-            resolved_exprs.append(expr)
+        try:
+            if hasattr(expr, "resolve"):
+                names = expr.resolve(frame, columns, public_columns)
+                if names:
+                    resolved_exprs.append(nw.col(*names))
+            else:
+                resolved_exprs.append(expr)
+        except UnknownColumnError:
+            raise
+        except Exception as exc:
+            msg = f"Selection failed while resolving selector: {exc}"
+            raise SelectionError(msg) from exc
     if not resolved_exprs:
         return pd.DataFrame(index=frame.index)
     try:
@@ -153,18 +228,32 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
 def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | None) -> pd.DataFrame:
     if not assignments:
         return pd.DataFrame(index=frame.index)
-    exprs = [expr_for(expr).alias(name) for name, expr in assignments.items()]
-    try:
-        assigned = nw.from_native(with_row_number(frame)).select(*exprs).to_native()
-    except ColumnNotFoundError as exc:
-        msg = f"Unknown column in assignment: {exc}"
-        raise UnknownColumnError(msg) from exc
-    except Exception as exc:
-        msg = f"Assignment failed: {exc}"
-        raise SelectionError(msg) from exc
-    if len(assigned) == len(frame):
-        assigned.index = frame.index
+    work = with_row_number(frame)
+    assigned = pd.DataFrame(index=frame.index)
+    for name, expr in assignments.items():
+        try:
+            result = nw.from_native(work).select(expr_for(expr).alias(name)).to_native()
+        except ColumnNotFoundError as exc:
+            msg = f"Unknown column in assignment: {exc}"
+            raise UnknownColumnError(msg) from exc
+        except Exception as exc:
+            msg = f"Assignment failed: {exc}"
+            raise SelectionError(msg) from exc
+        series = _aligned_assignment_series(result[name], frame.index, name=name)
+        assigned[name] = series
+        work[name] = series
     return assigned
+
+
+def _aligned_assignment_series(series: pd.Series, index: pd.Index, *, name: str) -> pd.Series:
+    if len(series) == len(index):
+        out = series.copy()
+        out.index = index
+        return out
+    if len(series) == 1:
+        return pd.Series([series.iloc[0]] * len(index), index=index, name=name)
+    msg = f"Assignment {name!r} returned {len(series)} rows for an axis of length {len(index)}"
+    raise SizeMismatchError(msg)
 
 
 def intersect_ordered(base: pd.Index, *indices: pd.Index) -> pd.Index:
@@ -193,5 +282,20 @@ def source_frame(adata: AnnData, source: str, key: str | None = None, layer: str
             msg = "varm source requires a key"
             raise UnknownSourceError(msg)
         return varm_frame(adata, key)
+    if source == "obsp":
+        if key is None:
+            msg = "obsp source requires a key"
+            raise UnknownSourceError(msg)
+        return obsp_frame(adata, key)
+    if source == "varp":
+        if key is None:
+            msg = "varp source requires a key"
+            raise UnknownSourceError(msg)
+        return varp_frame(adata, key)
+    if source == "uns":
+        if key is None:
+            msg = "uns source requires a key"
+            raise UnknownSourceError(msg)
+        return uns_frame(adata, key)
     msg = f"Unknown AnnData source: {source!r}"
     raise UnknownSourceError(msg)

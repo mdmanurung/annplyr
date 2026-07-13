@@ -115,3 +115,124 @@ def test_relocate_rejects_missing_anchor_for_target_source(dense_adata: AnnData)
 def test_last_col_rejects_out_of_bounds_offset(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="last_col"):
         dense_adata.ap.select(obs=ap.last_col(offset=-1))
+
+
+def test_real_virtual_name_columns_are_not_overwritten(dense_adata: AnnData) -> None:
+    adata = dense_adata.copy()
+    adata.obs["obs_names"] = ["real"] * adata.n_obs
+    adata.var["var_names"] = ["real_var"] * adata.n_vars
+
+    wide = adata.ap.to_df(obs=["obs_names"])
+    assert wide["obs_names"].tolist() == ["real"] * adata.n_obs
+    assert adata.ap.filter(obs=ap.obs_names == "c0").obs_names.tolist() == ["c0"]
+    assert adata.ap.filter(obs_names=ap.obs_names == "c1").obs_names.tolist() == ["c1"]
+
+
+def test_select_rejects_computed_columns_for_anndata_alignment(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.SelectionError, match="computed"):
+        dense_adata.ap.select(obs=(ap.col("score") * 2).alias("score2"))
+
+    with pytest.raises(ap.SelectionError, match="computed"):
+        dense_adata.ap.select(x=(ap.col("g0") + ap.col("g1")).alias("sum"))
+
+
+def test_mutate_assignments_are_sequential_and_recycle_scalars(dense_adata: AnnData) -> None:
+    mutated = dense_adata.ap.mutate(
+        obs={
+            "score2": ap.col("score") * 2,
+            "score4": ap.col("score2") * 2,
+            "cells": ap.n(),
+            "mean_score": ap.mean("score"),
+        }
+    )
+
+    assert mutated.obs["score4"].tolist() == [4.0, 8.0, 2.0, 12.0, 10.0]
+    assert mutated.obs["cells"].tolist() == [5] * dense_adata.n_obs
+    assert mutated.obs["mean_score"].tolist() == [1.8] * dense_adata.n_obs
+
+
+def test_arrange_uses_obs_keys_before_matrix_keys(dense_adata: AnnData) -> None:
+    arranged = dense_adata.ap.arrange(obs="batch", x="g0", layer="counts")
+
+    assert arranged.obs_names.tolist() == ["c0", "c1", "c4", "c2", "c3"]
+
+
+def test_advanced_expression_helpers_work_in_summarize_and_mutate(dense_adata: AnnData) -> None:
+    adata = dense_adata.copy()
+    adata.obs["maybe_score"] = [1.0, None, 0.5, None, 2.5]
+
+    summary = adata.ap.summarize(
+        obs={
+            "cell_types": ap.n_distinct("cell_type"),
+            "first_score": ap.first("score"),
+            "last_score": ap.last("score"),
+        },
+        by="batch",
+    )
+    pd.testing.assert_frame_equal(
+        summary.reset_index(drop=True),
+        pd.DataFrame(
+            {
+                "batch": ["A", "B"],
+                "cell_types": [2, 2],
+                "first_score": [1.0, 0.5],
+                "last_score": [2.5, 3.0],
+            }
+        ),
+    )
+
+    mutated = adata.ap.mutate(
+        obs={
+            "next_score": ap.lead("score"),
+            "previous_score": ap.lag("score", default=-1),
+            "score_or_zero": ap.replace_na("maybe_score", 0),
+            "score_is_missing": ap.is_na("maybe_score"),
+            "batch_as_missing": ap.na_if("batch", "A"),
+        }
+    )
+
+    assert mutated.obs["next_score"].tolist()[:4] == [2.0, 0.5, 3.0, 2.5]
+    assert mutated.obs["previous_score"].tolist() == [-1.0, 1.0, 2.0, 0.5, 3.0]
+    assert mutated.obs["score_or_zero"].tolist() == [1.0, 0.0, 0.5, 0.0, 2.5]
+    assert mutated.obs["score_is_missing"].tolist() == [False, True, False, True, False]
+    assert mutated.obs["batch_as_missing"].iloc[2:4].tolist() == ["B", "B"]
+    assert mutated.obs["batch_as_missing"].isna().tolist() == [True, True, False, False, True]
+
+
+def test_lag_default_only_fills_shift_boundaries(dense_adata: AnnData) -> None:
+    adata = dense_adata.copy()
+    adata.obs["maybe_score"] = [1.0, None, 0.5, 3.0, 2.5]
+
+    mutated = adata.ap.mutate(obs={"previous": ap.lag("maybe_score", default=0)})
+
+    assert mutated.obs["previous"].iloc[0] == 0
+    assert mutated.obs["previous"].iloc[1] == 1.0
+    assert pd.isna(mutated.obs["previous"].iloc[2])
+
+
+def test_summarize_matrix_source_keeps_feature_when_group_name_collides(dense_adata: AnnData) -> None:
+    adata = dense_adata.copy()
+    adata.obs["g0"] = [1, 1, 2, 2, 1]
+
+    summary = adata.ap.summarize(x={"mean_g0": ap.mean("g0")}, by="g0")
+
+    pd.testing.assert_frame_equal(
+        summary.reset_index(drop=True),
+        pd.DataFrame({"g0": [1, 2], "mean_g0": [2.0, 2.5]}),
+    )
+
+
+def test_rank_and_cumulative_helpers_are_axis_ordered(dense_adata: AnnData) -> None:
+    mutated = dense_adata.ap.mutate(
+        obs={
+            "score_rank": ap.min_rank("score"),
+            "score_dense_rank": ap.dense_rank("score"),
+            "cum_score": ap.cum_sum("score"),
+            "cum_max_score": ap.cum_max("score"),
+        }
+    )
+
+    assert mutated.obs["score_rank"].tolist() == [2, 3, 1, 5, 4]
+    assert mutated.obs["score_dense_rank"].tolist() == [2, 3, 1, 5, 4]
+    assert mutated.obs["cum_score"].tolist() == [1.0, 3.0, 3.5, 6.5, 9.0]
+    assert mutated.obs["cum_max_score"].tolist() == [1.0, 2.0, 2.0, 3.0, 3.0]

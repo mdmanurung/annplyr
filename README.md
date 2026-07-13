@@ -24,28 +24,43 @@ cd annplyr
 uv sync --all-extras
 ```
 
-## Claude Code And Codex Skill
+## Claude Code Skill
 
-`annplyr` ships an Agent Skill for Claude Code and Codex that teaches coding
-agents the package's AnnData-aware tidyverse semantics, common API patterns, and
-alignment footguns. The skill is bundled inside the Python package, but agent
-tools do not scan installed Python packages directly, so install it once into
-your personal skill roots:
-
-```bash
-annplyr-install-skills
-```
-
-This copies the bundled skill to `~/.claude/skills/annplyr/` and
-`${CODEX_HOME:-~/.codex}/skills/annplyr/`. Re-run with `--force` after upgrading
-`annplyr` to refresh the installed copy. To install for only one agent, use
-`--agent claude` or `--agent codex`.
-
-If you would rather point an agent at the bundled copy in place, print its path:
+`annplyr` ships an Agent Skill for Claude Code that teaches the agent how to use
+the library correctly: the `adata.ap` accessor, AnnData axis alignment rules,
+tidyverse-style verbs, plot-ready extraction, and sparse/backed-data footguns.
+It is bundled with the Python package, but Claude Code does not scan installed
+Python packages automatically, so install it once into your personal skills
+directory:
 
 ```bash
-annplyr-install-skills --print-path
+annplyr-install-skills --agent claude
 ```
+
+This copies the skill to `~/.claude/skills/annplyr/`, where it is available to
+Claude Code in every project. Re-run with `--force` after upgrading `annplyr` to
+refresh the installed copy. Once installed, ask Claude Code for annplyr tasks
+such as "filter this AnnData with `adata.ap`", "make plotnine-ready data from
+these genes", or "summarize expression by cluster", and the skill can be
+consulted automatically.
+
+The skill is a router (`SKILL.md`) that points to detailed reference files
+loaded on demand, so it adds little context cost until it is used. If you would
+rather not copy files into your home directory, point Claude Code at the bundled
+copy in place instead:
+
+```bash
+export CLAUDE_SKILLS_PATH="$(annplyr-install-skills --print-path)"
+```
+
+For Codex, install the same bundled skill with:
+
+```bash
+annplyr-install-skills --agent codex
+```
+
+Running `annplyr-install-skills` with no `--agent` installs both Claude Code and
+Codex copies.
 
 ## Quickstart
 

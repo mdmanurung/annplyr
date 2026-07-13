@@ -1,6 +1,7 @@
 ---
 name: annplyr
-description: Use when working with AnnData wrangling in Python using annplyr, especially tidyverse-style filter/select/mutate/summarize/join/pivot workflows over obs, var, X/layers, obsm, and varm.
+description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, obsm, and varm; plot-ready to_df/to_tidy extraction for plotnine or seaborn; and alignment, sparse/backed, or matrix-materialization safety."
+license: BSD-3-Clause
 ---
 
 # annplyr
@@ -43,4 +44,3 @@ For docs or skill changes, also check the Sphinx build when practical:
 ```bash
 uvx hatch run docs:build
 ```
-

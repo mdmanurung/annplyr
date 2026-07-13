@@ -10,11 +10,27 @@ from annplyr._skills import install
 
 def test_bundled_skill_directory_contains_router_and_references() -> None:
     skill_dir = install.bundled_skill_dir()
+    skill_text = (skill_dir / "SKILL.md").read_text()
 
     assert (skill_dir / "SKILL.md").is_file()
     assert (skill_dir / "agents" / "openai.yaml").is_file()
     assert (skill_dir / "references" / "quickstart.md").is_file()
-    assert "name: annplyr" in (skill_dir / "SKILL.md").read_text()
+    assert "name: annplyr" in skill_text
+    assert "license: BSD-3-Clause" in skill_text
+
+
+def test_skill_trigger_description_covers_core_user_phrases() -> None:
+    skill_text = (install.bundled_skill_dir() / "SKILL.md").read_text()
+    description = next(line for line in skill_text.splitlines() if line.startswith("description: "))
+
+    for phrase in ["adata.ap", "to_df", "to_tidy", "plotnine", "single-cell"]:
+        assert phrase in description
+
+
+def test_skill_examples_only_use_supported_annplyr_expression_methods() -> None:
+    quickstart = (install.bundled_skill_dir() / "references" / "quickstart.md").read_text()
+
+    assert ".log1p()" not in quickstart
 
 
 def test_install_skill_copies_bundle_and_refuses_existing_destination(tmp_path: Path) -> None:

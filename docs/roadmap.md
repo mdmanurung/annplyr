@@ -157,7 +157,7 @@ project.
 
 Issue-sized tasks:
 
-- Add `.readthedocs.yaml`, `.codecov.yaml`, docs workflow, release workflow,
+- Add `.codecov.yaml`, GitHub Pages docs workflow, release workflow,
   and issue templates.
 - Add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`,
   `MAINTAINERS.md`, and `CITATION.cff`.

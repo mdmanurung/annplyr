@@ -4,7 +4,7 @@ title: "annplyr: tidy AnnData wrangling in Python"
 authors:
   - name: "annplyr developers"
 repository-code: "https://github.com/mdmanurung/annplyr"
-url: "https://annplyr.readthedocs.io/"
+url: "https://mdmanurung.github.io/annplyr/"
 license: "BSD-3-Clause"
 version: "0.1.0"
 date-released: "2026-07-12"

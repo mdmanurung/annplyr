@@ -3,7 +3,7 @@
 [![Test](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml)
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
-[![Documentation](https://readthedocs.org/projects/annplyr/badge/?version=latest)](https://annplyr.readthedocs.io/)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://mdmanurung.github.io/annplyr/)
 
 `annplyr` provides tidy, dataframe-style wrangling for AnnData objects through
 an `adata.ap` accessor. It is designed for single-cell workflows where metadata,
@@ -74,6 +74,9 @@ uv build
 
 The package metadata is managed through `pyproject.toml`, with Hatch
 environments for tests and documentation.
+
+The Sphinx documentation site is published to GitHub Pages by the `Docs`
+workflow after pushes to `main`.
 
 ## Citation
 

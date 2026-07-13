@@ -31,7 +31,7 @@ dependencies = [
   "scipy",
   "session-info2",
 ]
-urls.Documentation = "https://annplyr.readthedocs.io/"
+urls.Documentation = "https://mdmanurung.github.io/annplyr/"
 urls.Homepage = "https://github.com/mdmanurung/annplyr"
 urls.Source = "https://github.com/mdmanurung/annplyr"
 

@@ -10,7 +10,8 @@ package.
 Enable these services for full infrastructure support:
 
 - GitHub Actions for tests, docs, package build, and release workflows.
-- Read the Docs for hosted documentation and pull request docs builds.
+- GitHub Pages for hosted documentation, with pull request docs builds in
+  GitHub Actions.
 - Codecov for project and patch coverage reporting.
 - pre-commit.ci for automatic hook checks on pull requests.
 - PyPI trusted publishing for release uploads from GitHub Actions.

@@ -2,7 +2,7 @@
 
 This project follows the scverse cookiecutter development style: Hatch
 environments, uv-based installs, pytest, Ruff, prek/pre-commit, GitHub Actions,
-Read the Docs, and Codecov.
+GitHub Pages, and Codecov.
 
 ## Development Environment
 
@@ -64,6 +64,9 @@ uvx hatch run docs:build
 Notebook tutorials live in `docs/notebooks`. The default documentation build
 does not execute notebooks; keep notebooks lightweight and source-only unless a
 release explicitly needs rendered outputs.
+
+On pushes to `main`, the `Docs` workflow uploads `docs/_build/html` and deploys
+the Sphinx site to GitHub Pages.
 
 ## Releasing
 

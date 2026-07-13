@@ -35,6 +35,9 @@ urls.Documentation = "https://mdmanurung.github.io/annplyr/"
 urls.Homepage = "https://github.com/mdmanurung/annplyr"
 urls.Source = "https://github.com/mdmanurung/annplyr"
 
+[project.scripts]
+annplyr-install-skills = "annplyr._skills.install:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/annplyr"]
 

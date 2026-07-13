@@ -1,0 +1,8 @@
+interface:
+  display_name: "annplyr"
+  short_description: "Tidy AnnData wrangling with annplyr"
+  default_prompt: "Use $annplyr to write an AnnData wrangling workflow with the annplyr API."
+
+policy:
+  allow_implicit_invocation: true
+

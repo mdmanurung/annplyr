@@ -24,6 +24,29 @@ cd annplyr
 uv sync --all-extras
 ```
 
+## Claude Code And Codex Skill
+
+`annplyr` ships an Agent Skill for Claude Code and Codex that teaches coding
+agents the package's AnnData-aware tidyverse semantics, common API patterns, and
+alignment footguns. The skill is bundled inside the Python package, but agent
+tools do not scan installed Python packages directly, so install it once into
+your personal skill roots:
+
+```bash
+annplyr-install-skills
+```
+
+This copies the bundled skill to `~/.claude/skills/annplyr/` and
+`${CODEX_HOME:-~/.codex}/skills/annplyr/`. Re-run with `--force` after upgrading
+`annplyr` to refresh the installed copy. To install for only one agent, use
+`--agent claude` or `--agent codex`.
+
+If you would rather point an agent at the bundled copy in place, print its path:
+
+```bash
+annplyr-install-skills --print-path
+```
+
 ## Quickstart
 
 ```python

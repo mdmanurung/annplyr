@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
 
@@ -25,6 +26,7 @@ from annplyr._frames import (
     evaluate_assignments,
     evaluate_filter,
     evaluate_select,
+    expand_assignments,
     intersect_ordered,
     obs_frame,
     obsm_frame,
@@ -494,11 +496,21 @@ def _slice_selector(indices: tuple[Any, ...]) -> Any:
 
 
 def slice_head_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    _validate_slice_n(n)
     return slice_adata(adata, slice(0, n), axis=axis, copy=copy)
 
 
 def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    _validate_slice_n(n)
+    if n == 0:
+        return slice_adata(adata, slice(0, 0), axis=axis, copy=copy)
     return slice_adata(adata, slice(-n, None), axis=axis, copy=copy)
+
+
+def _validate_slice_n(n: int) -> None:
+    if n < 0:
+        msg = "slice n must be non-negative"
+        raise SelectionError(msg)
 
 
 def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
@@ -509,8 +521,15 @@ def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", c
 
 def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
     axis = _axis(axis)
-    arranged = arrange_adata(adata, obs=Desc(by)) if axis == "obs" else arrange_adata(adata, var=Desc(by))
+    by_desc = _desc_order_by(by)
+    arranged = arrange_adata(adata, obs=by_desc) if axis == "obs" else arrange_adata(adata, var=by_desc)
     return slice_head_adata(arranged, n=n, axis=axis, copy=copy)
+
+
+def _desc_order_by(by: Any) -> Any:
+    if isinstance(by, Sequence) and not isinstance(by, (str, bytes)):
+        return [item if isinstance(item, Desc) else Desc(item) for item in by]
+    return by if isinstance(by, Desc) else Desc(by)
 
 
 def slice_sample_adata(
@@ -525,8 +544,20 @@ def slice_sample_adata(
 ) -> AnnData:
     axis = _axis(axis)
     size = adata.n_obs if axis == "obs" else adata.n_vars
+    if n is not None and prop is not None:
+        msg = "slice_sample accepts n and prop as mutually exclusive arguments"
+        raise SelectionError(msg)
+    if n is not None and n < 0:
+        msg = "slice_sample n must be non-negative"
+        raise SelectionError(msg)
+    if prop is not None and prop < 0:
+        msg = "slice_sample prop must be non-negative"
+        raise SelectionError(msg)
     if n is None:
         n = int(round(size * prop)) if prop is not None else min(size, 1)
+    if not replace and n > size:
+        msg = "slice_sample n cannot be larger than the axis size unless replace=True"
+        raise SelectionError(msg)
     rng = np.random.default_rng(random_state)
     selected = rng.choice(size, size=n, replace=replace)
     return slice_adata(adata, selected.tolist(), axis=axis, copy=copy)
@@ -566,9 +597,9 @@ def transmute_adata(
     varm: Mapping[str, Mapping[str, Any]] | None = None,
     layer: str | None = None,
 ) -> AnnData:
+    obs_columns = _assignment_names_for_frames(_obs_assignment_frames(adata, obs=obs, x=x, obsm=obsm, layer=layer))
+    var_columns = _assignment_names_for_frames(_var_assignment_frames(adata, var=var, varm=varm))
     out = mutate_adata(adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=False)
-    obs_columns = _assignment_names(obs, x, obsm)
-    var_columns = _assignment_names(var, None, varm)
     if obs_columns:
         out.obs = _obs_table(out).loc[:, obs_columns].copy()
     if var_columns:
@@ -576,16 +607,10 @@ def transmute_adata(
     return out
 
 
-def _assignment_names(
-    direct: Mapping[str, Any] | None,
-    matrix: Mapping[str, Any] | None,
-    keyed: Mapping[str, Mapping[str, Any]] | None,
-) -> list[str]:
+def _assignment_names_for_frames(frame_assignments: Any) -> list[str]:
     names: list[str] = []
-    names.extend((direct or {}).keys())
-    names.extend((matrix or {}).keys())
-    for assignments in (keyed or {}).values():
-        names.extend(assignments.keys())
+    for frame, assignments in frame_assignments:
+        names.extend(expand_assignments(frame, assignments).keys())
     return names
 
 
@@ -709,8 +734,8 @@ def _merge_summary_pieces(pieces: list[pd.DataFrame], by_columns: list[str]) -> 
 
 
 def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, by: Any = None) -> pd.DataFrame:
-    assignments = assignments or {}
     work, by_columns = prepare_by_frame(frame, by)
+    assignments = expand_assignments(work, assignments)
     exprs = [
         expr.alias(name) if hasattr(expr, "alias") else nw.col(expr).alias(name) for name, expr in assignments.items()
     ]
@@ -737,19 +762,37 @@ def prepare_by_frame(frame: pd.DataFrame, by: Any) -> tuple[pd.DataFrame, list[s
     return work, by_columns
 
 
-def count_adata(adata: AnnData, by: Any = None, *, axis: str = "obs", name: str = "n") -> pd.DataFrame:
+def count_adata(
+    adata: AnnData,
+    by: Any = None,
+    *,
+    wt: Any = None,
+    sort: bool = False,
+    axis: str = "obs",
+    name: str = "n",
+) -> pd.DataFrame:
     frame = obs_frame(adata) if _axis(axis) == "obs" else var_frame(adata)
-    return count_frame(frame, by=by, name=name)
+    return count_frame(frame, by=by, wt=wt, sort=sort, name=name)
 
 
-def tally_adata(adata: AnnData, by: Any = None, *, axis: str = "obs", name: str = "n") -> pd.DataFrame:
-    return count_adata(adata, by=by, axis=axis, name=name)
+def tally_adata(
+    adata: AnnData,
+    by: Any = None,
+    *,
+    wt: Any = None,
+    sort: bool = False,
+    axis: str = "obs",
+    name: str = "n",
+) -> pd.DataFrame:
+    return count_adata(adata, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
 
 def add_count_adata(
     adata: AnnData,
     by: Any = None,
     *,
+    wt: Any = None,
+    sort: bool = False,
     axis: str = "obs",
     name: str = "n",
     inplace: bool = False,
@@ -758,29 +801,73 @@ def add_count_adata(
     axis = _axis(axis)
     out = adata if inplace else adata.copy()
     frame = obs_frame(out) if axis == "obs" else var_frame(out)
-    values = _count_values(frame, by=by)
+    values = _count_values(frame, by=by, wt=wt)
     if axis == "obs":
         _obs_table(out)[name] = values.to_numpy()
     else:
         _var_table(out)[name] = values.to_numpy()
+    if sort:
+        by_expr = Desc(name)
+        out = (
+            arrange_adata(out, obs=by_expr, copy=False)
+            if axis == "obs"
+            else arrange_adata(out, var=by_expr, copy=False)
+        )
     return out
 
 
-def _count_values(frame: pd.DataFrame, by: Any = None) -> pd.Series:
+def add_tally_adata(
+    adata: AnnData,
+    *,
+    wt: Any = None,
+    sort: bool = False,
+    axis: str = "obs",
+    name: str = "n",
+    inplace: bool = False,
+) -> AnnData:
+    return add_count_adata(adata, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+
+
+def _count_values(frame: pd.DataFrame, by: Any = None, wt: Any = None) -> pd.Series:
     by_frame = evaluate_select(frame, by) if by is not None else pd.DataFrame(index=frame.index)
     by_columns = list(by_frame.columns)
+    if wt is not None:
+        weights = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"]
+    else:
+        weights = pd.Series(1, index=frame.index)
     if not by_columns:
-        return pd.Series(len(frame), index=frame.index)
+        return pd.Series(weights.sum(), index=frame.index)
     work = by_frame.copy()
     work["__annplyr_count_row__"] = np.arange(len(work))
-    return work.groupby(by_columns, sort=False, dropna=False)["__annplyr_count_row__"].transform("size")
+    work["__annplyr_wt__"] = weights.to_numpy()
+    if wt is None:
+        return work.groupby(by_columns, sort=False, dropna=False)["__annplyr_count_row__"].transform("size")
+    return work.groupby(by_columns, sort=False, dropna=False)["__annplyr_wt__"].transform("sum")
 
 
-def count_frame(frame: pd.DataFrame, by: Any = None, *, name: str = "n") -> pd.DataFrame:
+def count_frame(
+    frame: pd.DataFrame,
+    by: Any = None,
+    *,
+    wt: Any = None,
+    sort: bool = False,
+    name: str = "n",
+) -> pd.DataFrame:
     work, by_columns = prepare_by_frame(frame, by)
+    if wt is not None:
+        work["__annplyr_wt__"] = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"].to_numpy()
     if not by_columns:
-        return pd.DataFrame({name: [len(frame)]})
-    return work.groupby(by_columns, sort=False, dropna=False).size().reset_index(name=name)
+        value = work["__annplyr_wt__"].sum() if wt is not None else len(frame)
+        return pd.DataFrame({name: [value]})
+    grouped = work.groupby(by_columns, sort=False, dropna=False)
+    result = (
+        grouped["__annplyr_wt__"].sum().reset_index(name=name)
+        if wt is not None
+        else grouped.size().reset_index(name=name)
+    )
+    if sort:
+        result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
+    return result
 
 
 def left_join_adata(
@@ -1319,3 +1406,305 @@ def unnest(data: pd.DataFrame, column: str) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=[*outer_columns])
     return pd.concat(rows, ignore_index=True)
+
+
+def nest(
+    data: pd.DataFrame,
+    *,
+    by: str | Sequence[str],
+    columns: Sequence[str] | None = None,
+    name: str = "data",
+) -> pd.DataFrame:
+    by_columns = [by] if isinstance(by, str) else list(by)
+    _check_dataframe_columns(data, by_columns, context="nest")
+    value_columns = (
+        [column for column in data.columns if column not in by_columns] if columns is None else list(columns)
+    )
+    _check_dataframe_columns(data, value_columns, context="nest")
+    if name in by_columns:
+        msg = f"nest output column {name!r} collides with a grouping column"
+        raise DuplicateNameError(msg)
+    rows: list[dict[str, Any]] = []
+    for key, group in data.groupby(by_columns, sort=False, dropna=False):
+        key_values = _group_key_values(key, len(by_columns))
+        row = dict(zip(by_columns, key_values, strict=True))
+        row[name] = group.loc[:, value_columns].reset_index(drop=True)
+        rows.append(row)
+    return pd.DataFrame(rows, columns=[*by_columns, name])
+
+
+def chop(
+    data: pd.DataFrame,
+    columns: str | Sequence[str],
+    *,
+    by: str | Sequence[str] | None = None,
+) -> pd.DataFrame:
+    selected = [columns] if isinstance(columns, str) else list(columns)
+    _check_dataframe_columns(data, selected, context="chop")
+    by_columns = (
+        [column for column in data.columns if column not in selected]
+        if by is None
+        else ([by] if isinstance(by, str) else list(by))
+    )
+    _check_dataframe_columns(data, by_columns, context="chop")
+    rows: list[dict[str, Any]] = []
+    for key, group in data.groupby(by_columns, sort=False, dropna=False):
+        key_values = _group_key_values(key, len(by_columns))
+        row = dict(zip(by_columns, key_values, strict=True))
+        for column in selected:
+            row[column] = group[column].tolist()
+        rows.append(row)
+    return pd.DataFrame(rows, columns=[*by_columns, *selected])
+
+
+def unchop(data: pd.DataFrame, columns: str | Sequence[str], *, keep_empty: bool = False) -> pd.DataFrame:
+    selected = [columns] if isinstance(columns, str) else list(columns)
+    _check_dataframe_columns(data, selected, context="unchop")
+    rows: list[dict[str, Any]] = []
+    for _, row in data.iterrows():
+        size = max((_list_like_len(row[column]) for column in selected), default=1)
+        if size == 0 and not keep_empty:
+            continue
+        size = max(size, 1)
+        for i in range(size):
+            out = row.drop(labels=selected).to_dict()
+            for column in selected:
+                values = _as_list_like(row[column])
+                out[column] = values[i] if i < len(values) else pd.NA
+            rows.append(out)
+    return pd.DataFrame(rows, columns=list(data.columns))
+
+
+def unnest_longer(
+    data: pd.DataFrame,
+    column: str,
+    *,
+    values_to: str | None = None,
+    indices_to: str | None = None,
+    keep_empty: bool = False,
+) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="unnest_longer")
+    value_name = values_to or column
+    rows: list[dict[str, Any]] = []
+    for _, row in data.iterrows():
+        values = _as_list_like(row[column])
+        if not values and keep_empty:
+            values = [pd.NA]
+        for index, value in enumerate(values):
+            out = row.drop(labels=[column]).to_dict()
+            out[value_name] = value
+            if indices_to is not None:
+                out[indices_to] = index
+            rows.append(out)
+    base_columns = [name for name in data.columns if name != column]
+    return pd.DataFrame(rows, columns=[*base_columns, value_name, *([] if indices_to is None else [indices_to])])
+
+
+def unnest_wider(data: pd.DataFrame, column: str, *, names_sep: str | None = None) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="unnest_wider")
+    pieces: list[pd.DataFrame] = []
+    for value in data[column]:
+        if isinstance(value, pd.DataFrame):
+            piece = value.reset_index(drop=True).iloc[:1]
+        elif isinstance(value, pd.Series):
+            piece = value.to_frame().T.reset_index(drop=True)
+        elif isinstance(value, Mapping):
+            piece = pd.DataFrame([value])
+        else:
+            piece = pd.DataFrame([dict(enumerate(_as_list_like(value)))])
+        pieces.append(piece.reset_index(drop=True))
+    wider = pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame(index=data.index)
+    wider.columns = [f"{column}{names_sep}{name}" if names_sep is not None else str(name) for name in wider.columns]
+    out = data.drop(columns=[column]).reset_index(drop=True)
+    return pd.concat([out, wider], axis=1)
+
+
+def pack(data: pd.DataFrame, column: str, columns: str | Sequence[str]) -> pd.DataFrame:
+    selected = [columns] if isinstance(columns, str) else list(columns)
+    _check_dataframe_columns(data, selected, context="pack")
+    out = data.drop(columns=selected).copy()
+    packed = data.loc[:, selected].apply(lambda row: row.to_dict(), axis=1)
+    insert_at = _first_column_position(data, selected, fallback=len(out.columns))
+    out.insert(min(insert_at, len(out.columns)), column, packed)
+    return out
+
+
+def unpack(
+    data: pd.DataFrame,
+    column: str,
+    *,
+    names_sep: str | None = None,
+    remove: bool = True,
+) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="unpack")
+    wider = unnest_wider(data.loc[:, [column]], column, names_sep=names_sep)
+    out = data.drop(columns=[column]).copy() if remove else data.copy()
+    insert_at = _first_column_position(data, [column], fallback=len(out.columns))
+    for offset, wider_column in enumerate(wider.columns):
+        out.insert(min(insert_at + offset, len(out.columns)), str(wider_column), wider[wider_column].to_numpy())
+    return out
+
+
+def hoist(data: pd.DataFrame, column: str, **paths: str | int) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="hoist")
+    out = data.copy()
+    for name, path in paths.items():
+        out[name] = out[column].map(lambda value, path=path: _pluck(value, path))
+    return out
+
+
+def drop_na(data: pd.DataFrame, columns: str | Sequence[str] | None = None) -> pd.DataFrame:
+    subset = None if columns is None else ([columns] if isinstance(columns, str) else list(columns))
+    _check_dataframe_columns(data, subset or list(data.columns), context="drop_na")
+    return data.dropna(subset=subset).reset_index(drop=True)
+
+
+def fill(
+    data: pd.DataFrame,
+    columns: str | Sequence[str],
+    *,
+    direction: str = "down",
+) -> pd.DataFrame:
+    selected = [columns] if isinstance(columns, str) else list(columns)
+    _check_dataframe_columns(data, selected, context="fill")
+    out = data.copy()
+    if direction == "down":
+        out[selected] = out[selected].ffill()
+    elif direction == "up":
+        out[selected] = out[selected].bfill()
+    elif direction == "downup":
+        out[selected] = out[selected].ffill().bfill()
+    elif direction == "updown":
+        out[selected] = out[selected].bfill().ffill()
+    else:
+        msg = "direction must be 'down', 'up', 'downup', or 'updown'"
+        raise SelectionError(msg)
+    return out
+
+
+def separate(
+    data: pd.DataFrame,
+    column: str,
+    *,
+    into: Sequence[str],
+    sep: str = "_",
+    remove: bool = True,
+) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="separate")
+    out = data.copy()
+    split = out[column].astype("string").str.split(sep, n=len(into) - 1, expand=True)
+    for index, name in enumerate(into):
+        out[str(name)] = split[index] if index in split.columns else pd.NA
+    if remove:
+        out = out.drop(columns=[column])
+    return out
+
+
+def separate_rows(data: pd.DataFrame, columns: str | Sequence[str], *, sep: str = ",") -> pd.DataFrame:
+    selected = [columns] if isinstance(columns, str) else list(columns)
+    _check_dataframe_columns(data, selected, context="separate_rows")
+    out = data.copy()
+    for column in selected:
+        out[column] = out[column].map(lambda value: [] if pd.isna(value) else re.split(sep, str(value)))
+    return out.explode(selected, ignore_index=True)
+
+
+def extract(
+    data: pd.DataFrame,
+    column: str,
+    *,
+    into: Sequence[str],
+    regex: str,
+    remove: bool = True,
+) -> pd.DataFrame:
+    _check_dataframe_columns(data, [column], context="extract")
+    extracted = data[column].astype("string").str.extract(regex, expand=True)
+    out = data.copy()
+    for index, name in enumerate(into):
+        out[str(name)] = extracted[index] if index in extracted.columns else pd.NA
+    if remove:
+        out = out.drop(columns=[column])
+    return out
+
+
+def unite(
+    data: pd.DataFrame,
+    column: str,
+    columns: Sequence[str],
+    *,
+    sep: str = "_",
+    remove: bool = True,
+    na_rm: bool = False,
+) -> pd.DataFrame:
+    selected = list(columns)
+    _check_dataframe_columns(data, selected, context="unite")
+    out = data.copy()
+
+    def _join(row: pd.Series) -> str:
+        values = [row[name] for name in selected]
+        if na_rm:
+            values = [value for value in values if not pd.isna(value)]
+        return sep.join("" if pd.isna(value) else str(value) for value in values)
+
+    out[column] = out.apply(_join, axis=1)
+    if remove:
+        out = out.drop(columns=selected)
+    insert_at = _first_column_position(data, selected, fallback=len(out.columns))
+    series = out.pop(column)
+    out.insert(min(insert_at, len(out.columns)), column, series)
+    return out
+
+
+def _first_column_position(data: pd.DataFrame, columns: Sequence[str], *, fallback: int) -> int:
+    positions: list[int] = []
+    for name in columns:
+        loc = data.columns.get_loc(name)
+        if not isinstance(loc, int | np.integer):
+            msg = f"Column {name!r} is duplicated; position-sensitive operation requires unique columns"
+            raise DuplicateNameError(msg)
+        positions.append(int(loc))
+    return min(positions, default=fallback)
+
+
+def _as_list_like(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, pd.Series):
+        return value.tolist()
+    if pd.isna(value):
+        return []
+    return [value]
+
+
+def _list_like_len(value: Any) -> int:
+    return len(_as_list_like(value))
+
+
+def _pluck(value: Any, path: str | int) -> Any:
+    try:
+        if isinstance(value, Mapping):
+            return value.get(path, pd.NA)
+        if isinstance(value, pd.Series):
+            return value.get(path, pd.NA)
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            return value[int(path)]
+    except (IndexError, KeyError, TypeError, ValueError):
+        return pd.NA
+    return pd.NA
+
+
+def _group_key_values(key: Any, n_columns: int) -> tuple[Any, ...]:
+    if n_columns == 1:
+        return (key[0],) if isinstance(key, tuple) else (key,)
+    return tuple(key)
+
+
+def _check_dataframe_columns(data: pd.DataFrame, columns: Sequence[str], *, context: str) -> None:
+    missing = [column for column in columns if column not in data.columns]
+    if missing:
+        msg = f"Unknown {context} column(s): {', '.join(missing)}"
+        raise UnknownColumnError(msg)

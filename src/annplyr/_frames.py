@@ -11,6 +11,7 @@ from narwhals.exceptions import ColumnNotFoundError
 from scipy import sparse
 
 from annplyr._errors import (
+    DuplicateNameError,
     SelectionError,
     SizeMismatchError,
     UnknownColumnError,
@@ -210,7 +211,7 @@ def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
 
 
 def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
-    exprs = [expr_for(predicate) for predicate in as_list(predicates)]
+    exprs = [_predicate_expr(frame, predicate) for predicate in as_list(predicates)]
     if not exprs:
         return frame.index
     work = with_row_number(frame)
@@ -225,7 +226,36 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
     return filtered.index
 
 
-def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | None) -> pd.DataFrame:
+def _predicate_expr(frame: pd.DataFrame, predicate: Any) -> Any:
+    if hasattr(predicate, "to_expr"):
+        return predicate.to_expr(frame)
+    return expr_for(predicate)
+
+
+def expand_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | Any | None) -> dict[str, Any]:
+    if not assignments:
+        return {}
+    if hasattr(assignments, "expand"):
+        return dict(assignments.expand(frame))
+    expanded: dict[str, Any] = {}
+    for name, expr in assignments.items():
+        if hasattr(expr, "expand"):
+            for expanded_name, expanded_expr in expr.expand(frame).items():
+                _add_expanded_assignment(expanded, expanded_name, expanded_expr)
+        else:
+            _add_expanded_assignment(expanded, str(name), expr)
+    return expanded
+
+
+def _add_expanded_assignment(expanded: dict[str, Any], name: str, expr: Any) -> None:
+    if name in expanded:
+        msg = f"Duplicate assignment output name: {name!r}"
+        raise DuplicateNameError(msg)
+    expanded[name] = expr
+
+
+def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | Any | None) -> pd.DataFrame:
+    assignments = expand_assignments(frame, assignments)
     if not assignments:
         return pd.DataFrame(index=frame.index)
     work = with_row_number(frame)

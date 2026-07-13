@@ -3,12 +3,26 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from typing import Any, cast
 
+import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from annplyr._errors import AnnplyrError, IncompatibleAxisError
-from annplyr._frames import evaluate_assignments, evaluate_filter, evaluate_select, obs_frame, var_frame
-from annplyr._verbs import add_count_adata, count_frame, filter_adata, mutate_adata, summarize_adata
+from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
+from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
+from annplyr._verbs import (
+    _obs_assignment_frames,
+    _validate_slice_n,
+    _var_assignment_frames,
+    add_count_adata,
+    arrange_adata,
+    count_frame,
+    distinct_adata,
+    filter_adata,
+    mutate_adata,
+    slice_max_adata,
+    slice_min_adata,
+    summarize_adata,
+)
 
 
 class GroupedAnnData:
@@ -77,18 +91,28 @@ class GroupedAnnData:
         copy: bool = False,
     ) -> AnnData:
         adata = self._adata
-        if self._axis == "obs" and obs is not None:
+        if self._axis == "obs" and any(value is not None for value in (obs, x, obs_names, obsm)):
             labels: list[str] = []
             for _, group in self._iter_groups(adata):
-                labels.extend(evaluate_filter(obs_frame(group), obs).tolist())
+                filtered = filter_adata(
+                    group,
+                    obs=obs,
+                    x=x,
+                    obs_names=obs_names,
+                    obsm=obsm,
+                    layer=layer,
+                    copy=False,
+                )
+                labels.extend(filtered.obs_names.tolist())
             adata = adata[labels, :]
-            obs = None
-        elif self._axis == "var" and var is not None:
+            obs = x = obs_names = obsm = None
+        elif self._axis == "var" and any(value is not None for value in (var, var_names, varm)):
             labels = []
             for _, group in self._iter_groups(adata):
-                labels.extend(evaluate_filter(var_frame(group), var).tolist())
+                filtered = filter_adata(group, var=var, var_names=var_names, varm=varm, copy=False)
+                labels.extend(filtered.var_names.tolist())
             adata = adata[:, labels]
-            var = None
+            var = var_names = varm = None
         return filter_adata(adata, obs, var, x, obs_names, var_names, obsm, varm, layer, copy)
 
     def mutate(
@@ -104,20 +128,22 @@ class GroupedAnnData:
         if self._adata.isbacked:
             msg = "grouped mutate cannot modify an AnnData object in backed mode; call .to_memory() first"
             raise AnnplyrError(msg)
-        if self._axis == "obs" and obs:
+        if self._axis == "obs" and any(value is not None for value in (obs, x, obsm)):
             out = self._adata if inplace else self._adata.copy()
             for _, group in self._iter_groups(out):
-                values = evaluate_assignments(obs_frame(group), obs)
-                for column in values.columns:
-                    cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column]
-            return mutate_adata(out, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=True)
-        if self._axis == "var" and var:
+                for frame, assignments in _obs_assignment_frames(group, obs=obs, x=x, obsm=obsm, layer=layer):
+                    values = evaluate_assignments(frame, assignments)
+                    for column in values.columns:
+                        cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column]
+            return mutate_adata(out, var=var, varm=varm, layer=layer, inplace=True)
+        if self._axis == "var" and any(value is not None for value in (var, varm)):
             out = self._adata if inplace else self._adata.copy()
             for _, group in self._iter_groups(out):
-                values = evaluate_assignments(var_frame(group), var)
-                for column in values.columns:
-                    cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column]
-            return mutate_adata(out, obs=obs, x=x, obsm=obsm, varm=varm, layer=layer, inplace=True)
+                for frame, assignments in _var_assignment_frames(group, var=var, varm=varm):
+                    values = evaluate_assignments(frame, assignments)
+                    for column in values.columns:
+                        cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column]
+            return mutate_adata(out, obs=obs, x=x, obsm=obsm, layer=layer, inplace=True)
         return mutate_adata(self._adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=inplace)
 
     def summarize(
@@ -142,12 +168,72 @@ class GroupedAnnData:
 
     summarise = summarize
 
-    def count(self, *, name: str = "n") -> pd.DataFrame:
+    def count(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
-        return count_frame(frame, by=self._by, name=name)
+        return count_frame(frame, by=self._by, wt=wt, sort=sort, name=name)
 
-    def add_count(self, *, name: str = "n", inplace: bool = False) -> AnnData:
-        return add_count_adata(self._adata, by=self._by, axis=self._axis, name=name, inplace=inplace)
+    def tally(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
+        return self.count(wt=wt, sort=sort, name=name)
+
+    def add_count(self, *, wt: Any = None, sort: bool = False, name: str = "n", inplace: bool = False) -> AnnData:
+        return add_count_adata(self._adata, by=self._by, wt=wt, sort=sort, axis=self._axis, name=name, inplace=inplace)
+
+    def add_tally(self, *, wt: Any = None, sort: bool = False, name: str = "n", inplace: bool = False) -> AnnData:
+        return add_count_adata(self._adata, by=self._by, wt=wt, sort=sort, axis=self._axis, name=name, inplace=inplace)
+
+    def arrange(
+        self,
+        obs: Any = None,
+        var: Any = None,
+        x: Any = None,
+        obsm: Mapping[str, Any] | None = None,
+        varm: Mapping[str, Any] | None = None,
+        layer: str | None = None,
+        copy: bool = False,
+    ) -> AnnData:
+        adata = self._adata
+        if self._axis == "obs" and any(value is not None for value in (obs, x, obsm)):
+            labels: list[str] = []
+            for _, group in self._iter_groups(adata):
+                arranged = arrange_adata(group, obs=obs, x=x, obsm=obsm, layer=layer, copy=False)
+                labels.extend(arranged.obs_names.tolist())
+            adata = adata[labels, :]
+            obs = x = obsm = None
+        elif self._axis == "var" and any(value is not None for value in (var, varm)):
+            labels = []
+            for _, group in self._iter_groups(adata):
+                arranged = arrange_adata(group, var=var, varm=varm, copy=False)
+                labels.extend(arranged.var_names.tolist())
+            adata = adata[:, labels]
+            var = varm = None
+        return arrange_adata(adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, copy=copy)
+
+    def distinct(
+        self,
+        obs: Any = None,
+        var: Any = None,
+        x: Any = None,
+        *,
+        keep_all: bool = False,
+        copy: bool = True,
+    ) -> AnnData:
+        if self._axis == "obs":
+            if var is not None:
+                msg = "obs-grouped distinct cannot use var selectors"
+                raise IncompatibleAxisError(msg)
+            labels: list[str] = []
+            for _, group in self._iter_groups(self._adata):
+                distinct = distinct_adata(group, obs=obs, x=x, axis="obs", keep_all=keep_all, copy=False)
+                labels.extend(distinct.obs_names.tolist())
+            return self._subset_labels(labels, copy=copy)
+        if obs is not None or x is not None:
+            msg = "var-grouped distinct cannot use obs or x selectors"
+            raise IncompatibleAxisError(msg)
+        labels = []
+        for _, group in self._iter_groups(self._adata):
+            distinct = distinct_adata(group, var=var, axis="var", keep_all=keep_all, copy=False)
+            labels.extend(distinct.var_names.tolist())
+        return self._subset_labels(labels, copy=copy)
 
     def slice_head(self, n: int = 5, *, copy: bool = False) -> AnnData:
         return self._slice_group_positions(n=n, tail=False, copy=copy)
@@ -155,12 +241,65 @@ class GroupedAnnData:
     def slice_tail(self, n: int = 5, *, copy: bool = False) -> AnnData:
         return self._slice_group_positions(n=n, tail=True, copy=copy)
 
+    def slice_min(self, by: Any, n: int = 5, *, copy: bool = False) -> AnnData:
+        labels: list[str] = []
+        for _, group in self._iter_groups(self._adata):
+            sliced = slice_min_adata(group, by=by, n=n, axis=self._axis)
+            labels.extend(_axis_names(sliced, self._axis))
+        return self._subset_labels(labels, copy=copy)
+
+    def slice_max(self, by: Any, n: int = 5, *, copy: bool = False) -> AnnData:
+        labels: list[str] = []
+        for _, group in self._iter_groups(self._adata):
+            sliced = slice_max_adata(group, by=by, n=n, axis=self._axis)
+            labels.extend(_axis_names(sliced, self._axis))
+        return self._subset_labels(labels, copy=copy)
+
+    def slice_sample(
+        self,
+        n: int | None = None,
+        *,
+        prop: float | None = None,
+        replace: bool = False,
+        random_state: int | None = None,
+        copy: bool = False,
+    ) -> AnnData:
+        if n is not None and prop is not None:
+            msg = "slice_sample accepts n and prop as mutually exclusive arguments"
+            raise SelectionError(msg)
+        if n is not None and n < 0:
+            msg = "slice_sample n must be non-negative"
+            raise SelectionError(msg)
+        if prop is not None and prop < 0:
+            msg = "slice_sample prop must be non-negative"
+            raise SelectionError(msg)
+        rng = np.random.default_rng(random_state)
+        labels: list[str] = []
+        for _, group in self._iter_groups(self._adata):
+            axis_names = _axis_names(group, self._axis)
+            size = len(axis_names)
+            take = int(round(size * prop)) if n is None and prop is not None else (n if n is not None else min(size, 1))
+            if not replace and take > size:
+                msg = "slice_sample n cannot be larger than a group size unless replace=True"
+                raise SelectionError(msg)
+            selected = rng.choice(axis_names, size=take, replace=replace)
+            labels.extend([str(label) for label in selected])
+        return self._subset_labels(labels, copy=copy)
+
     def _slice_group_positions(self, *, n: int, tail: bool, copy: bool) -> AnnData:
+        _validate_slice_n(n)
         labels: list[str] = []
         for _, group in self._iter_groups(self._adata):
             axis_names = group.obs_names if self._axis == "obs" else group.var_names
-            selected = axis_names[-n:] if tail else axis_names[:n]
+            selected = axis_names[0:0] if n == 0 else (axis_names[-n:] if tail else axis_names[:n])
             labels.extend(selected.tolist())
+        if self._axis == "obs":
+            out = self._adata[labels, :]
+        else:
+            out = self._adata[:, labels]
+        return out.copy() if copy else out
+
+    def _subset_labels(self, labels: list[str], *, copy: bool) -> AnnData:
         if self._axis == "obs":
             out = self._adata[labels, :]
         else:
@@ -180,3 +319,7 @@ def _key_mask(by_frame: pd.DataFrame, key_row: pd.Series) -> pd.Series:
 
 def _key_dict(key_row: pd.Series) -> dict[str, Any]:
     return {str(column): value for column, value in key_row.items()}
+
+
+def _axis_names(adata: AnnData, axis: str) -> list[str]:
+    return adata.obs_names.tolist() if axis == "obs" else adata.var_names.tolist()

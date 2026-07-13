@@ -39,14 +39,18 @@ The current API includes:
   `arrange`, `distinct`, `slice`, `slice_head`, `slice_tail`, `slice_min`,
   `slice_max`, and `slice_sample`;
 - mutation and summaries: `mutate`, `transmute`, `group_by`, `summarize`,
-  `summarise`, `count`, `tally`, and `add_count`;
+  `summarise`, weighted `count`/`tally`, `add_count`, and `add_tally`;
 - AnnData-safe metadata joins: `left_join`, `inner_join`, `right_join`,
   `full_join`, `semi_join`, and `anti_join`;
 - extraction helpers: `pull`, `to_df`, `to_tidy`, `pivot_longer`,
-  `pivot_wider`, `nest_by`, `unnest`, and `pipe`;
+  `pivot_wider`, `nest_by`, `nest`, `unnest`, `unnest_longer`,
+  `unnest_wider`, `chop`, `unchop`, `pack`, `unpack`, `hoist`,
+  `separate`, `separate_rows`, `extract`, `unite`, `drop_na`, `fill`,
+  and `pipe`;
 - expression helpers such as `col`, `lit`, `desc`, `between`, `if_else`,
-  `case_when`, `row_number`, `lead`, `lag`, rank helpers, cumulative helpers,
-  and compact aggregation helpers.
+  `case_when`, `case_match`, `recode`, `near`, `row_number`, `lead`, `lag`,
+  `across`, `pick`, `if_any`, `if_all`, rank helpers including `ntile`,
+  cumulative helpers, and compact aggregation helpers.
 
 AnnData-returning verbs preserve AnnData axis alignment. Joins can enrich or
 subset `obs`/`var` metadata, but they raise `JoinRelationshipError` instead of

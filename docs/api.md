@@ -29,8 +29,11 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
 
    annplyr.all_of
    annplyr.any_of
+   annplyr.across
+   annplyr.average_rank
    annplyr.between
    annplyr.case_when
+   annplyr.case_match
    annplyr.col
    annplyr.coalesce
    annplyr.contains
@@ -38,12 +41,17 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
    annplyr.cum_min
    annplyr.cum_prod
    annplyr.cum_sum
+   annplyr.cumall
+   annplyr.cumany
    annplyr.cume_dist
+   annplyr.cummean
    annplyr.dense_rank
    annplyr.desc
    annplyr.ends_with
    annplyr.everything
    annplyr.first
+   annplyr.if_all
+   annplyr.if_any
    annplyr.if_else
    annplyr.is_na
    annplyr.lag
@@ -52,13 +60,18 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
    annplyr.lead
    annplyr.lit
    annplyr.matches
+   annplyr.max_rank
    annplyr.min_rank
    annplyr.n_distinct
    annplyr.na_if
+   annplyr.near
    annplyr.nth
+   annplyr.ntile
    annplyr.num_range
    annplyr.obs_names
    annplyr.percent_rank
+   annplyr.pick
+   annplyr.recode
    annplyr.replace_na
    annplyr.row_number
    annplyr.starts_with
@@ -87,8 +100,22 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
 .. autosummary::
    :toctree: generated
 
+   annplyr.chop
+   annplyr.drop_na
+   annplyr.extract
+   annplyr.fill
+   annplyr.hoist
+   annplyr.nest
+   annplyr.pack
    annplyr.pivot_wider
+   annplyr.separate
+   annplyr.separate_rows
+   annplyr.unchop
+   annplyr.unite
+   annplyr.unpack
    annplyr.unnest
+   annplyr.unnest_longer
+   annplyr.unnest_wider
 ```
 
 ## Errors

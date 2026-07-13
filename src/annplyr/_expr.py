@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import narwhals as nw
 import pandas as pd
 
-from annplyr._errors import UnknownColumnError
+from annplyr._errors import DuplicateNameError, UnknownColumnError
+
+_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,35 @@ class AnnplyrSelector(Protocol):
 
     def resolve(self, frame: pd.DataFrame, columns: list[str], public_columns: list[str]) -> list[str]:
         """Resolve selected column names."""
+
+
+def _public_columns(frame: pd.DataFrame) -> list[str]:
+    virtual = set(frame.attrs.get("annplyr_virtual_columns", set())) | {
+        "__annplyr_obs_names__",
+        "__annplyr_var_names__",
+        "__annplyr_row_number__",
+    }
+    return [str(column) for column in frame.columns if str(column) not in virtual]
+
+
+def _all_columns(frame: pd.DataFrame) -> list[str]:
+    return [str(column) for column in frame.columns]
+
+
+def _resolve_columns(selector: Any, frame: pd.DataFrame) -> list[str]:
+    columns = _all_columns(frame)
+    public_columns = _public_columns(frame)
+    if selector is None:
+        return public_columns
+    if isinstance(selector, str):
+        selector = all_of(selector)
+    elif isinstance(selector, Sequence) and not isinstance(selector, (str, bytes)):
+        if all(isinstance(item, str) for item in selector):
+            selector = all_of(selector)
+    if hasattr(selector, "resolve"):
+        return selector.resolve(frame, columns, public_columns)
+    msg = "tidyselect helper requires a string, sequence of strings, or annplyr selector"
+    raise UnknownColumnError(msg)
 
 
 @dataclass(frozen=True)
@@ -179,6 +210,85 @@ class _ComplementSelector:
         return self.selector
 
 
+@dataclass(frozen=True)
+class Across:
+    selector: Any
+    fns: Any = None
+    names: str | None = None
+
+    def expand(self, frame: pd.DataFrame) -> dict[str, Any]:
+        selected = _resolve_columns(self.selector, frame)
+        functions = _normalize_across_functions(self.fns)
+        output: dict[str, Any] = {}
+        for column in selected:
+            for function_name, function in functions:
+                template = self.names or ("{col}" if len(functions) == 1 else "{col}_{fn}")
+                name = template.format(col=column, fn=function_name)
+                if name in output:
+                    msg = f"across generated duplicate output name: {name!r}"
+                    raise DuplicateNameError(msg)
+                output[name] = function(column)
+        return output
+
+
+@dataclass(frozen=True)
+class _PickSelector:
+    selector: Any
+
+    def resolve(self, frame: pd.DataFrame, columns: list[str], public_columns: list[str]) -> list[str]:
+        return _resolve_columns(self.selector, frame)
+
+    def __or__(self, other: AnnplyrSelector) -> _UnionSelector:
+        return _UnionSelector((self, other))
+
+    def __and__(self, other: AnnplyrSelector) -> _IntersectionSelector:
+        return _IntersectionSelector(self, other)
+
+    def __invert__(self) -> _ComplementSelector:
+        return _ComplementSelector(self)
+
+
+@dataclass(frozen=True)
+class _IfAnyAll:
+    selector: Any
+    predicate: Callable[[str], Any]
+    how: str
+
+    def to_expr(self, frame: pd.DataFrame) -> Any:
+        selected = _resolve_columns(self.selector, frame)
+        if not selected:
+            return lit(False if self.how == "any" else True)
+        expr = self.predicate(selected[0])
+        for column in selected[1:]:
+            next_expr = self.predicate(column)
+            expr = (expr | next_expr) if self.how == "any" else (expr & next_expr)
+        return expr
+
+
+def _normalize_across_functions(fns: Any) -> list[tuple[str, Callable[[str], Any]]]:
+    if fns is None:
+        return [("", col)]
+    if isinstance(fns, Mapping):
+        functions = [(str(name), fn) for name, fn in fns.items()]
+        if all(callable(function) for _, function in functions):
+            return functions
+    if callable(fns):
+        return [(_function_label(fns, 1), fns)]
+    if isinstance(fns, Sequence) and not isinstance(fns, (str, bytes)):
+        functions = [(_function_label(fn, i), fn) for i, fn in enumerate(fns, start=1)]
+        if all(callable(function) for _, function in functions):
+            return functions
+    msg = "across fns must be a callable, sequence of callables, mapping, or None"
+    raise UnknownColumnError(msg)
+
+
+def _function_label(function: Any, index: int) -> str:
+    name = getattr(function, "__name__", "")
+    if not name or name == "<lambda>":
+        return f"fn{index}"
+    return name
+
+
 def col(*names: str | Iterable[str]) -> nw.Expr:
     return nw.col(*names)
 
@@ -238,6 +348,22 @@ def last_col(offset: int = 0) -> AnnplyrSelector:
 def num_range(prefix: str, range: Iterable[int], *, width: int = 0) -> AnnplyrSelector:
     names = tuple(f"{prefix}{number:0{width}d}" if width else f"{prefix}{number}" for number in range)
     return _NameSelector(names, strict=True)
+
+
+def pick(selector: Any) -> AnnplyrSelector:
+    return _PickSelector(selector)
+
+
+def across(selector: Any, fns: Any = None, *, names: str | None = None) -> Any:
+    return Across(selector=selector, fns=fns, names=names)
+
+
+def if_any(selector: Any, predicate: Callable[[str], Any]) -> Any:
+    return _IfAnyAll(selector=selector, predicate=predicate, how="any")
+
+
+def if_all(selector: Any, predicate: Callable[[str], Any]) -> Any:
+    return _IfAnyAll(selector=selector, predicate=predicate, how="all")
 
 
 def _expr(expr: str | nw.Expr) -> nw.Expr:
@@ -338,6 +464,14 @@ def min_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
     return _expr(expr).rank("min", descending=descending)
 
 
+def max_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    return _expr(expr).rank("max", descending=descending)
+
+
+def average_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+    return _expr(expr).rank("average", descending=descending)
+
+
 def dense_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
     return _expr(expr).rank("dense", descending=descending)
 
@@ -351,6 +485,13 @@ def percent_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
 def cume_dist(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
     rank = _expr(expr).rank("max", descending=descending)
     return rank / n()
+
+
+def ntile(expr: str | nw.Expr, buckets: int) -> nw.Expr:
+    if buckets < 1:
+        msg = "ntile buckets must be a positive integer"
+        raise UnknownColumnError(msg)
+    return (((_expr(expr).rank("ordinal") - 1) * buckets) / n()).floor() + 1
 
 
 def cum_sum(expr: str | nw.Expr) -> nw.Expr:
@@ -369,6 +510,36 @@ def cum_prod(expr: str | nw.Expr) -> nw.Expr:
     return _expr(expr).cum_prod()
 
 
+def cummean(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cum_sum() / row_number()
+
+
+def cumany(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cast(nw.Int64).cum_sum() > 0
+
+
+def cumall(expr: str | nw.Expr) -> nw.Expr:
+    return _expr(expr).cast(nw.Int64).cum_sum() == row_number()
+
+
+def near(expr: str | nw.Expr, other: Any, *, tolerance: float = 1e-8) -> nw.Expr:
+    return (_expr(expr) - _expr_or_literal(other)).abs() <= tolerance
+
+
+def case_match(expr: str | nw.Expr, *cases: tuple[Any, Any], default: Any = None) -> nw.Expr:
+    base = _expr(expr)
+    out = _literal_expr(default)
+    for values, replacement in reversed(cases):
+        condition = base.is_in(list(values)) if isinstance(values, (list, tuple, set, frozenset)) else base == values
+        out = nw.when(condition).then(_literal_expr(replacement)).otherwise(out)
+    return out
+
+
+def recode(expr: str | nw.Expr, mapping: Mapping[Any, Any], *, default: Any = _MISSING) -> nw.Expr:
+    cases = tuple((value, replacement) for value, replacement in mapping.items())
+    return case_match(expr, *cases, default=_expr(expr) if default is _MISSING else default)
+
+
 def between(
     expr: str | nw.Expr,
     lower: Any,
@@ -381,6 +552,10 @@ def between(
 
 def _literal_expr(value: Any) -> Any:
     return value if isinstance(value, nw.Expr) else lit(value)
+
+
+def _expr_or_literal(value: Any) -> Any:
+    return _expr(value) if isinstance(value, (str, nw.Expr)) else lit(value)
 
 
 def if_else(condition: nw.Expr, true: Any, false: Any) -> nw.Expr:

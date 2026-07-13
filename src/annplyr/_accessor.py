@@ -10,6 +10,7 @@ from annplyr._extensions import register_anndata_accessor
 from annplyr._grouped import GroupedAnnData
 from annplyr._verbs import (
     add_count_adata,
+    add_tally_adata,
     anti_join_adata,
     arrange_adata,
     count_adata,
@@ -329,14 +330,34 @@ class AnnplyrAccessor:
 
     summarise = summarize
 
-    def count(self, by: Any = None, *, axis: str = "obs", name: str = "n"):
-        return count_adata(self._obj, by=by, axis=axis, name=name)
+    def count(self, by: Any = None, *, wt: Any = None, sort: bool = False, axis: str = "obs", name: str = "n"):
+        return count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
-    def tally(self, by: Any = None, *, axis: str = "obs", name: str = "n"):
-        return tally_adata(self._obj, by=by, axis=axis, name=name)
+    def tally(self, by: Any = None, *, wt: Any = None, sort: bool = False, axis: str = "obs", name: str = "n"):
+        return tally_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
-    def add_count(self, by: Any = None, *, axis: str = "obs", name: str = "n", inplace: bool = False) -> AnnData:
-        return add_count_adata(self._obj, by=by, axis=axis, name=name, inplace=inplace)
+    def add_count(
+        self,
+        by: Any = None,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        axis: str = "obs",
+        name: str = "n",
+        inplace: bool = False,
+    ) -> AnnData:
+        return add_count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+
+    def add_tally(
+        self,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        axis: str = "obs",
+        name: str = "n",
+        inplace: bool = False,
+    ) -> AnnData:
+        return add_tally_adata(self._obj, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
 
     def pull(
         self,

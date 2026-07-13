@@ -13,10 +13,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Scverse-style documentation, release, coverage, and community scaffolding.
 - Advanced expression helpers for distinct counts, first/last/nth, lead/lag,
   null handling, ranks, and cumulative calculations.
+- Tidyselect-aware helpers `across`, `pick`, `if_any`, and `if_all`, plus
+  additional ranking and logic helpers including `ntile`, `max_rank`,
+  `average_rank`, `cummean`, `cumany`, `cumall`, `near`, `case_match`, and
+  `recode`.
 - AnnData-safe metadata joins for `obs` and `var`, with relationship checks.
 - Tidyr-style pandas extraction helpers: `pivot_longer`, `pivot_wider`,
-  `nest_by`, and `unnest`.
-- Group-local filtering, slicing, summaries, and count helpers.
+  `nest_by`, `nest`, `unnest`, `unnest_longer`, `unnest_wider`, `chop`,
+  `unchop`, `pack`, `unpack`, `hoist`, `drop_na`, `fill`, `separate`,
+  `separate_rows`, `extract`, and `unite`.
+- Group-local filtering, arranging, distinct selection, slicing, summaries,
+  weighted counts, and add-count/tally helpers.
 - Sparse-preserving matrix frames, pairwise `obsp`/`varp` source frames, and
   controlled `uns` frame extraction.
 

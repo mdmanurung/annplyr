@@ -79,9 +79,10 @@ jobs:
           uvx hatch run ${{ matrix.env.name }}:cov-report
           uvx hatch run ${{ matrix.env.name }}:coverage xml
       - name: Upload coverage
+        continue-on-error: true
         uses: codecov/codecov-action@v6
         with:
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           use_oidc: true
 
   check:

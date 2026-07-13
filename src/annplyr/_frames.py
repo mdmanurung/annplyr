@@ -112,13 +112,16 @@ def matrix_frame(matrix: Any, index: pd.Index, *, columns: pd.Index | Sequence[s
         return frame
 
     if sparse.issparse(matrix):
-        pandas_sparse = cast(Any, pd.DataFrame.sparse)
-        frame = pandas_sparse.from_spmatrix(matrix, index=index)
-        if columns is not None:
-            frame.columns = [str(column) for column in columns]
-        else:
-            frame.columns = [str(column) for column in frame.columns]
-        return frame
+        spmatrix = matrix.tocsc()
+        sparse_array = cast(Any, pd.arrays.SparseArray)
+        names = (
+            [str(column) for column in columns] if columns is not None else [str(i) for i in range(spmatrix.shape[1])]
+        )
+        series = [
+            pd.Series(sparse_array.from_spmatrix(spmatrix[:, i]), index=index, name=names[i])
+            for i in range(spmatrix.shape[1])
+        ]
+        return pd.concat(series, axis=1) if series else pd.DataFrame(index=index, columns=names)
 
     values = np.asarray(matrix)
     if values.ndim == 1:

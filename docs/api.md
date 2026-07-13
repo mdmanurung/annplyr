@@ -4,12 +4,16 @@
 
 The `adata.ap` accessor is registered when `annplyr` is imported. AnnData-returning
 verbs preserve axis alignment for `X`, layers, `obsm`, `varm`, `obsp`, and
-`varp` through AnnData-native slicing.
+`varp` through AnnData-native slicing. Expression sources include metadata,
+selected `X`/layer features, `raw`, `obsm`, and `varm`; controlled extraction
+also exposes `obsp`, `varp`, and tabular `uns` values through `as_frame()`.
 
 Joins are metadata joins for `obs` or `var`. They may enrich or subset an axis,
 but they raise `JoinRelationshipError` when a requested join would add or
 duplicate cells/features. Long matrix exports materialize data into pandas and
-therefore require explicit feature selection unless `allow_all_features=True`.
+therefore require explicit feature selection unless `allow_all_features=True`;
+use `max_matrix_values=` on export helpers when a hard materialization budget is
+needed.
 Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
 `.to_memory()` first when mutation is intentional.
 
@@ -116,6 +120,30 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
    annplyr.unnest
    annplyr.unnest_longer
    annplyr.unnest_wider
+```
+
+## Single-Cell Utility Helpers
+
+These helpers cover narrow AnnData metadata ergonomics inspired by common
+single-cell workflows. They do not implement biological QC scoring, plotting
+wrappers, species gene registries, or object conversion workflows.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   annplyr.FeaturePresence
+   annplyr.add_name_prefix
+   annplyr.add_sample_meta
+   annplyr.feature_present
+   annplyr.get_palette
+   annplyr.name_duplicates
+   annplyr.rename_obs_names
+   annplyr.rename_var_names
+   annplyr.replace_name_suffix
+   annplyr.sample_meta
+   annplyr.sample_summary
+   annplyr.store_palette
 ```
 
 ## Errors

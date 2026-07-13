@@ -6,11 +6,15 @@ AnnData has coordinated containers. If observations or features are subset or re
 
 ## Matrix Materialization
 
-Sparse matrices and backed arrays can be large. Predicates over selected matrix columns are fine; whole-matrix pandas exports should be explicit. For long exports, pass selected features unless the user intentionally accepts all-feature materialization.
+Sparse matrices and backed arrays can be large. Predicates over selected matrix columns are fine; whole-matrix pandas exports should be explicit. For long exports, pass selected features unless the user intentionally accepts all-feature materialization. Use `max_matrix_values=` on `to_df()`, `to_tidy()`, `pivot_longer()`, or `as_frame()` when a workflow needs a hard materialization budget.
 
 ## Mutation
 
-`mutate()` and `transmute()` write metadata columns in `obs` or `var`. They may read from `x`, `layers`, `obsm`, and `varm`, but they should not modify those matrices.
+`mutate()` and `transmute()` write metadata columns in `obs` or `var`. They may read from `x`, layers, `raw`, `obsm`, and `varm`, but they should not modify those matrices.
+
+## Controlled Extraction
+
+Use `as_frame()` for inspection of non-core AnnData containers such as `raw`, `obsp`, `varp`, or tabular `uns`. Pairwise matrices are extraction-only; do not try to join or mutate AnnData axes from them.
 
 ## Backed Objects
 

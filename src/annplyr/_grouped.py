@@ -83,6 +83,7 @@ class GroupedAnnData:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
+        raw: Any = None,
         obs_names: Any = None,
         var_names: Any = None,
         obsm: Mapping[str, Any] | None = None,
@@ -91,13 +92,14 @@ class GroupedAnnData:
         copy: bool = False,
     ) -> AnnData:
         adata = self._adata
-        if self._axis == "obs" and any(value is not None for value in (obs, x, obs_names, obsm)):
+        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obs_names, obsm)):
             labels: list[str] = []
             for _, group in self._iter_groups(adata):
                 filtered = filter_adata(
                     group,
                     obs=obs,
                     x=x,
+                    raw=raw,
                     obs_names=obs_names,
                     obsm=obsm,
                     layer=layer,
@@ -105,7 +107,7 @@ class GroupedAnnData:
                 )
                 labels.extend(filtered.obs_names.tolist())
             adata = adata[labels, :]
-            obs = x = obs_names = obsm = None
+            obs = x = raw = obs_names = obsm = None
         elif self._axis == "var" and any(value is not None for value in (var, var_names, varm)):
             labels = []
             for _, group in self._iter_groups(adata):
@@ -113,13 +115,26 @@ class GroupedAnnData:
                 labels.extend(filtered.var_names.tolist())
             adata = adata[:, labels]
             var = var_names = varm = None
-        return filter_adata(adata, obs, var, x, obs_names, var_names, obsm, varm, layer, copy)
+        return filter_adata(
+            adata,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obs_names=obs_names,
+            var_names=var_names,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            copy=copy,
+        )
 
     def mutate(
         self,
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
         x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
@@ -128,10 +143,10 @@ class GroupedAnnData:
         if self._adata.isbacked:
             msg = "grouped mutate cannot modify an AnnData object in backed mode; call .to_memory() first"
             raise AnnplyrError(msg)
-        if self._axis == "obs" and any(value is not None for value in (obs, x, obsm)):
+        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obsm)):
             out = self._adata if inplace else self._adata.copy()
             for _, group in self._iter_groups(out):
-                for frame, assignments in _obs_assignment_frames(group, obs=obs, x=x, obsm=obsm, layer=layer):
+                for frame, assignments in _obs_assignment_frames(group, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer):
                     values = evaluate_assignments(frame, assignments)
                     for column in values.columns:
                         cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column]
@@ -143,14 +158,17 @@ class GroupedAnnData:
                     values = evaluate_assignments(frame, assignments)
                     for column in values.columns:
                         cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column]
-            return mutate_adata(out, obs=obs, x=x, obsm=obsm, layer=layer, inplace=True)
-        return mutate_adata(self._adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=inplace)
+            return mutate_adata(out, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer, inplace=True)
+        return mutate_adata(
+            self._adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=inplace
+        )
 
     def summarize(
         self,
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
         x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
@@ -160,6 +178,7 @@ class GroupedAnnData:
             obs=obs,
             var=var,
             x=x,
+            raw=raw,
             obsm=obsm,
             varm=varm,
             by=self._by,
@@ -186,19 +205,20 @@ class GroupedAnnData:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
+        raw: Any = None,
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
         copy: bool = False,
     ) -> AnnData:
         adata = self._adata
-        if self._axis == "obs" and any(value is not None for value in (obs, x, obsm)):
+        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obsm)):
             labels: list[str] = []
             for _, group in self._iter_groups(adata):
-                arranged = arrange_adata(group, obs=obs, x=x, obsm=obsm, layer=layer, copy=False)
+                arranged = arrange_adata(group, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer, copy=False)
                 labels.extend(arranged.obs_names.tolist())
             adata = adata[labels, :]
-            obs = x = obsm = None
+            obs = x = raw = obsm = None
         elif self._axis == "var" and any(value is not None for value in (var, varm)):
             labels = []
             for _, group in self._iter_groups(adata):
@@ -206,7 +226,7 @@ class GroupedAnnData:
                 labels.extend(arranged.var_names.tolist())
             adata = adata[:, labels]
             var = varm = None
-        return arrange_adata(adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, copy=copy)
+        return arrange_adata(adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, copy=copy)
 
     def distinct(
         self,

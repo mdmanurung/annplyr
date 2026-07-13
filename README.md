@@ -81,10 +81,12 @@ The current API includes:
 - AnnData-safe metadata joins: `left_join`, `inner_join`, `right_join`,
   `full_join`, `semi_join`, and `anti_join`;
 - extraction helpers: `pull`, `to_df`, `to_tidy`, `pivot_longer`,
-  `pivot_wider`, `nest_by`, `nest`, `unnest`, `unnest_longer`,
+  `pivot_wider`, `as_frame`, `nest_by`, `nest`, `unnest`, `unnest_longer`,
   `unnest_wider`, `chop`, `unchop`, `pack`, `unpack`, `hoist`,
   `separate`, `separate_rows`, `extract`, `unite`, `drop_na`, `fill`,
   and `pipe`;
+- scoped single-cell utilities for sample metadata, feature presence checks,
+  safe obs/var name edits, and Scanpy-compatible palette storage;
 - expression helpers such as `col`, `lit`, `desc`, `between`, `if_else`,
   `case_when`, `case_match`, `recode`, `near`, `row_number`, `lead`, `lag`,
   `across`, `pick`, `if_any`, `if_all`, rank helpers including `ntile`,
@@ -92,10 +94,14 @@ The current API includes:
 
 AnnData-returning verbs preserve AnnData axis alignment. Joins can enrich or
 subset `obs`/`var` metadata, but they raise `JoinRelationshipError` instead of
-silently adding or duplicating cells or features. Matrix-long exports require an
-explicit feature selection by default; pass `allow_all_features=True` when a
-whole-matrix materialization is intentional. Mutating verbs raise an
-`AnnplyrError` for backed AnnData objects unless you first load them into memory.
+silently adding or duplicating cells or features. Matrix exports support
+selected `X`/layer features, `raw`, `obsm`, obs-axis `obsp`, and controlled
+`as_frame()` access to `obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`,
+`varp`, and tabular `uns` entries. Matrix-long exports require an explicit
+feature selection by default; pass `allow_all_features=True` when a whole-matrix
+materialization is intentional, and use `max_matrix_values=` to enforce a public
+materialization budget. Mutating verbs raise an `AnnplyrError` for backed
+AnnData objects unless you first load them into memory.
 
 See `docs/roadmap.md` for the tidyverse/scverse-grade development plan.
 

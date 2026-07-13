@@ -13,6 +13,7 @@ from annplyr._verbs import (
     add_tally_adata,
     anti_join_adata,
     arrange_adata,
+    as_frame_adata,
     count_adata,
     distinct_adata,
     filter_adata,
@@ -57,6 +58,7 @@ class AnnplyrAccessor:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
+        raw: Any = None,
         obs_names: Any = None,
         var_names: Any = None,
         obsm: Mapping[str, Any] | None = None,
@@ -64,7 +66,19 @@ class AnnplyrAccessor:
         layer: str | None = None,
         copy: bool = False,
     ) -> AnnData:
-        return filter_adata(self._obj, obs, var, x, obs_names, var_names, obsm, varm, layer, copy)
+        return filter_adata(
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obs_names=obs_names,
+            var_names=var_names,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            copy=copy,
+        )
 
     def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = False) -> AnnData:
         return select_adata(self._obj, obs=obs, var=var, x=x, copy=copy)
@@ -245,12 +259,13 @@ class AnnplyrAccessor:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
+        raw: Any = None,
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
         copy: bool = False,
     ) -> AnnData:
-        return arrange_adata(self._obj, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, copy=copy)
+        return arrange_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, copy=copy)
 
     def slice(self, *indices: Any, axis: str = "obs", copy: bool = False) -> AnnData:
         return slice_adata(self._obj, *indices, axis=axis, copy=copy)
@@ -292,23 +307,27 @@ class AnnplyrAccessor:
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
         x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
         inplace: bool = False,
     ) -> AnnData:
-        return mutate_adata(self._obj, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=inplace)
+        return mutate_adata(
+            self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=inplace
+        )
 
     def transmute(
         self,
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
         x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
     ) -> AnnData:
-        return transmute_adata(self._obj, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer)
+        return transmute_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer)
 
     def group_by(self, obs: Any = None, var: Any = None) -> AnnData | GroupedAnnData:
         if obs is None and var is None:
@@ -320,13 +339,14 @@ class AnnplyrAccessor:
         obs: Mapping[str, Any] | None = None,
         var: Mapping[str, Any] | None = None,
         x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         *,
         by: Any = None,
         layer: str | None = None,
     ):
-        return summarize_adata(self._obj, obs=obs, var=var, x=x, obsm=obsm, varm=varm, by=by, layer=layer)
+        return summarize_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, by=by, layer=layer)
 
     summarise = summarize
 
@@ -364,65 +384,104 @@ class AnnplyrAccessor:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
+        raw: Any = None,
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
+        obsp: Mapping[str, Any] | None = None,
+        varp: Mapping[str, Any] | None = None,
+        uns: Mapping[str, Any] | None = None,
         *,
         layer: str | None = None,
     ):
-        return pull_adata(self._obj, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer)
+        return pull_adata(
+            self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, obsp=obsp, varp=varp, uns=uns, layer=layer
+        )
 
     def to_df(
         self,
         obs: Any = None,
         x: Any = None,
+        raw: Any = None,
         obsm: Mapping[str, Any] | None = None,
+        obsp: Mapping[str, Any] | None = None,
         *,
         layer: str | None = None,
+        max_matrix_values: int | None = None,
     ):
-        return to_df_adata(self._obj, obs=obs, x=x, obsm=obsm, layer=layer)
+        return to_df_adata(
+            self._obj,
+            obs=obs,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            obsp=obsp,
+            layer=layer,
+            max_matrix_values=max_matrix_values,
+        )
 
     def to_tidy(
         self,
         obs: Any = None,
         x: Any = None,
+        raw: Any = None,
         *,
         layer: str | None = None,
         obs_name: str = "obs_name",
         feature: str = "feature",
         value: str = "value",
         allow_all_features: bool = False,
+        max_matrix_values: int | None = None,
     ):
         return to_tidy_adata(
             self._obj,
             obs=obs,
             x=x,
+            raw=raw,
             layer=layer,
             obs_name=obs_name,
             feature=feature,
             value=value,
             allow_all_features=allow_all_features,
+            max_matrix_values=max_matrix_values,
         )
 
     def pivot_longer(
         self,
         obs: Any = None,
         x: Any = None,
+        raw: Any = None,
         *,
         layer: str | None = None,
         obs_name: str = "obs_name",
         names_to: str = "name",
         values_to: str = "value",
         allow_all_features: bool = False,
+        max_matrix_values: int | None = None,
     ):
         return pivot_longer_adata(
             self._obj,
             obs=obs,
             x=x,
+            raw=raw,
             layer=layer,
             obs_name=obs_name,
             names_to=names_to,
             values_to=values_to,
             allow_all_features=allow_all_features,
+            max_matrix_values=max_matrix_values,
+        )
+
+    def as_frame(
+        self,
+        source: str,
+        *,
+        key: str | None = None,
+        select: Any = None,
+        layer: str | None = None,
+        max_matrix_values: int | None = None,
+    ):
+        return as_frame_adata(
+            self._obj, source=source, key=key, select=select, layer=layer, max_matrix_values=max_matrix_values
         )
 
     def nest_by(

@@ -18,6 +18,27 @@ package into a tidyverse- and scverse-grade AnnData wrangling library.
 - Make the public contract testable. Every new verb or helper needs behavior
   tests, invalid-input tests, and docs before release.
 
+## Current Hardening Status
+
+The package now has the main scverse-grade safety surface in place:
+
+- `adata.ap` is registered through the AnnData namespace mechanism.
+- AnnData-preserving verbs rely on AnnData-native subsetting so `X`, layers,
+  `obsm`, `varm`, `obsp`, and `varp` stay aligned.
+- Expression sources cover `obs`, `var`, selected `X`/layers, `raw`, `obsm`,
+  and `varm`.
+- `as_frame()` provides controlled pandas extraction from `obs`, `var`, `x`,
+  `raw`, `obsm`, `varm`, `obsp`, `varp`, and tabular `uns` entries.
+- Matrix-materializing exports support `max_matrix_values=` budgets, and long
+  matrix exports still require explicit feature selection unless
+  `allow_all_features=True`.
+- Backed AnnData objects support read-only operations in tests, while mutating
+  verbs raise typed package errors.
+
+Remaining hardening work before a public 1.0 should focus on larger backed and
+sparse fixtures, chunked reductions for very large matrices, and more explicit
+benchmarks around column projection.
+
 ## Milestone 1: Public Contract And Errors
 
 Define the current API precisely before broadening it.
@@ -176,10 +197,24 @@ Acceptance gates:
 - `uv build` and `twine check --strict dist/*` pass.
 - The first public release has changelog, tag, artifact, and citation metadata.
 
+## Scoped Single-Cell Utilities
+
+`annplyr` can include small AnnData utility helpers when they make tidy metadata
+workflows safer without turning the package into a biological analysis toolkit.
+In scope: sample metadata extraction and joins, feature presence diagnostics,
+safe obs/var name edits, duplicate-name reports, and Scanpy-compatible palette
+storage in `uns`.
+
+Out of scope for core `annplyr`: biological QC metric wrappers, species-specific
+gene registries, mitochondrial/ribosomal/hemoglobin/pathway scoring, MALAT1 or
+cell-cycle scoring, QC plotting wrappers, read/write convenience wrappers,
+Seurat/LIGER conversion helpers, marker discovery, and cluster annotation.
+
 ## Non-Goals Before 1.0
 
 - Direct ggplot wrappers.
 - Full lazy execution across arbitrary backends.
 - Lossy joins that duplicate cells or genes without explicit user opt-in.
 - Whole-matrix long exports by default on large sparse or backed objects.
+- Biological QC doctrine or curated species/pathway gene-set maintenance.
 - Reimplementing AnnData storage semantics outside AnnData-native subsetting.

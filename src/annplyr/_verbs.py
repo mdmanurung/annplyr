@@ -30,6 +30,8 @@ from annplyr._frames import (
     intersect_ordered,
     obs_frame,
     obsm_frame,
+    raw_frame,
+    source_frame,
     var_frame,
     varm_frame,
     with_row_number,
@@ -70,6 +72,7 @@ def filter_adata(
     obs: Any = None,
     var: Any = None,
     x: Any = None,
+    raw: Any = None,
     obs_names: Any = None,
     var_names: Any = None,
     obsm: Mapping[str, Any] | None = None,
@@ -91,6 +94,8 @@ def filter_adata(
         )
     if x is not None:
         obs_indices.append(evaluate_filter(x_frame(adata, layer=layer), x))
+    if raw is not None:
+        obs_indices.append(evaluate_filter(raw_frame(adata), raw))
     for key, predicates in (obsm or {}).items():
         obs_indices.append(evaluate_filter(obsm_frame(adata, key), predicates))
 
@@ -421,6 +426,7 @@ def arrange_adata(
     obs: Any = None,
     var: Any = None,
     x: Any = None,
+    raw: Any = None,
     obsm: Mapping[str, Any] | None = None,
     varm: Mapping[str, Any] | None = None,
     layer: str | None = None,
@@ -428,7 +434,7 @@ def arrange_adata(
 ) -> AnnData:
     obs_idx = _sort_values_for_frames(
         adata.obs_names,
-        _obs_sort_frames(adata, obs=obs, x=x, obsm=obsm, layer=layer),
+        _obs_sort_frames(adata, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer),
     )
     var_idx = _sort_values_for_frames(adata.var_names, _var_sort_frames(adata, var=var, varm=varm))
 
@@ -457,6 +463,7 @@ def _obs_sort_frames(
     *,
     obs: Any = None,
     x: Any = None,
+    raw: Any = None,
     obsm: Mapping[str, Any] | None = None,
     layer: str | None = None,
 ):
@@ -464,6 +471,8 @@ def _obs_sort_frames(
         yield obs_frame(adata), obs
     if x is not None:
         yield x_frame(adata, layer=layer), x
+    if raw is not None:
+        yield raw_frame(adata), raw
     for key, by in (obsm or {}).items():
         yield obsm_frame(adata, key), by
 
@@ -569,6 +578,7 @@ def mutate_adata(
     obs: Mapping[str, Any] | None = None,
     var: Mapping[str, Any] | None = None,
     x: Mapping[str, Any] | None = None,
+    raw: Mapping[str, Any] | None = None,
     obsm: Mapping[str, Mapping[str, Any]] | None = None,
     varm: Mapping[str, Mapping[str, Any]] | None = None,
     layer: str | None = None,
@@ -576,7 +586,7 @@ def mutate_adata(
 ) -> AnnData:
     _ensure_not_backed(adata, "mutate")
     out = adata if inplace else adata.copy()
-    for frame, assignments in _obs_assignment_frames(out, obs=obs, x=x, obsm=obsm, layer=layer):
+    for frame, assignments in _obs_assignment_frames(out, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer):
         values = evaluate_assignments(frame, assignments)
         for column in values.columns:
             _obs_table(out)[column] = values[column]
@@ -593,13 +603,16 @@ def transmute_adata(
     obs: Mapping[str, Any] | None = None,
     var: Mapping[str, Any] | None = None,
     x: Mapping[str, Any] | None = None,
+    raw: Mapping[str, Any] | None = None,
     obsm: Mapping[str, Mapping[str, Any]] | None = None,
     varm: Mapping[str, Mapping[str, Any]] | None = None,
     layer: str | None = None,
 ) -> AnnData:
-    obs_columns = _assignment_names_for_frames(_obs_assignment_frames(adata, obs=obs, x=x, obsm=obsm, layer=layer))
+    obs_columns = _assignment_names_for_frames(
+        _obs_assignment_frames(adata, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer)
+    )
     var_columns = _assignment_names_for_frames(_var_assignment_frames(adata, var=var, varm=varm))
-    out = mutate_adata(adata, obs=obs, var=var, x=x, obsm=obsm, varm=varm, layer=layer, inplace=False)
+    out = mutate_adata(adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=False)
     if obs_columns:
         out.obs = _obs_table(out).loc[:, obs_columns].copy()
     if var_columns:
@@ -619,6 +632,7 @@ def _obs_assignment_frames(
     *,
     obs: Mapping[str, Any] | None = None,
     x: Mapping[str, Any] | None = None,
+    raw: Mapping[str, Any] | None = None,
     obsm: Mapping[str, Mapping[str, Any]] | None = None,
     layer: str | None = None,
 ):
@@ -626,6 +640,8 @@ def _obs_assignment_frames(
         yield obs_frame(adata), obs
     if x:
         yield x_frame(adata, layer=layer), x
+    if raw:
+        yield raw_frame(adata), raw
     for key, assignments in (obsm or {}).items():
         yield obsm_frame(adata, key), assignments
 
@@ -648,12 +664,13 @@ def summarize_adata(
     obs: Mapping[str, Any] | None = None,
     var: Mapping[str, Any] | None = None,
     x: Mapping[str, Any] | None = None,
+    raw: Mapping[str, Any] | None = None,
     obsm: Mapping[str, Mapping[str, Any]] | None = None,
     varm: Mapping[str, Mapping[str, Any]] | None = None,
     by: Any = None,
     layer: str | None = None,
 ) -> pd.DataFrame:
-    obs_axis_requested = any(source is not None for source in (obs, x, obsm))
+    obs_axis_requested = any(source is not None for source in (obs, x, raw, obsm))
     var_axis_requested = any(source is not None for source in (var, varm))
     if obs_axis_requested and var_axis_requested:
         msg = "summarize accepts obs-axis or var-axis sources, not both at once"
@@ -663,7 +680,7 @@ def summarize_adata(
         sources = _var_summary_sources(adata, var=var, varm=varm)
         return summarize_sources(var_frame(adata), sources, by=by)
 
-    sources = _obs_summary_sources(adata, obs=obs, x=x, obsm=obsm, layer=layer)
+    sources = _obs_summary_sources(adata, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer)
     return summarize_sources(obs_frame(adata), sources, by=by)
 
 
@@ -672,6 +689,7 @@ def _obs_summary_sources(
     *,
     obs: Mapping[str, Any] | None = None,
     x: Mapping[str, Any] | None = None,
+    raw: Mapping[str, Any] | None = None,
     obsm: Mapping[str, Mapping[str, Any]] | None = None,
     layer: str | None = None,
 ) -> list[tuple[pd.DataFrame, Mapping[str, Any]]]:
@@ -680,6 +698,8 @@ def _obs_summary_sources(
         sources.append((obs_frame(adata), obs))
     if x:
         sources.append((x_frame(adata, layer=layer), x))
+    if raw:
+        sources.append((raw_frame(adata), raw))
     for key, assignments in (obsm or {}).items():
         sources.append((obsm_frame(adata, key), assignments))
     return sources
@@ -1213,11 +1233,15 @@ def pull_adata(
     obs: Any = None,
     var: Any = None,
     x: Any = None,
+    raw: Any = None,
     obsm: Mapping[str, Any] | None = None,
     varm: Mapping[str, Any] | None = None,
+    obsp: Mapping[str, Any] | None = None,
+    varp: Mapping[str, Any] | None = None,
+    uns: Mapping[str, Any] | None = None,
     layer: str | None = None,
 ) -> pd.Series:
-    provided = [value is not None for value in [obs, var, x, obsm, varm]]
+    provided = [value is not None for value in [obs, var, x, raw, obsm, varm, obsp, varp, uns]]
     if sum(provided) != 1:
         msg = "pull requires exactly one source"
         raise UnknownSourceError(msg)
@@ -1227,11 +1251,22 @@ def pull_adata(
         return _first_series(evaluate_select(var_frame(adata), var))
     if x is not None:
         return _first_series(evaluate_select(x_frame(adata, layer=layer), x))
+    if raw is not None:
+        return _first_series(evaluate_select(raw_frame(adata), raw))
     if obsm is not None:
         key, selector = next(iter(obsm.items()))
         return _first_series(evaluate_select(obsm_frame(adata, key), selector))
-    key, selector = next(iter((varm or {}).items()))
-    return _first_series(evaluate_select(varm_frame(adata, key), selector))
+    if varm is not None:
+        key, selector = next(iter(varm.items()))
+        return _first_series(evaluate_select(varm_frame(adata, key), selector))
+    if obsp is not None:
+        key, selector = next(iter(obsp.items()))
+        return _first_series(evaluate_select(source_frame(adata, "obsp", key=key), selector))
+    if varp is not None:
+        key, selector = next(iter(varp.items()))
+        return _first_series(evaluate_select(source_frame(adata, "varp", key=key), selector))
+    key, selector = next(iter((uns or {}).items()))
+    return _first_series(evaluate_select(source_frame(adata, "uns", key=key), selector))
 
 
 def _first_series(frame: pd.DataFrame) -> pd.Series:
@@ -1246,16 +1281,30 @@ def to_df_adata(
     *,
     obs: Any = None,
     x: Any = None,
+    raw: Any = None,
     obsm: Mapping[str, Any] | None = None,
+    obsp: Mapping[str, Any] | None = None,
     layer: str | None = None,
+    max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
     pieces: list[pd.DataFrame] = []
     if obs is not None:
         pieces.append(evaluate_select(obs_frame(adata), obs))
     if x is not None:
-        pieces.append(evaluate_select(x_frame(adata, layer=layer), x))
+        selected = evaluate_select(x_frame(adata, layer=layer), x)
+        _check_matrix_materialization(selected, max_matrix_values, context="to_df")
+        pieces.append(selected)
+    if raw is not None:
+        selected = evaluate_select(raw_frame(adata), raw)
+        _check_matrix_materialization(selected, max_matrix_values, context="to_df raw")
+        pieces.append(selected.add_prefix("raw_"))
     for key, selector in (obsm or {}).items():
         selected = evaluate_select(obsm_frame(adata, key), selector)
+        selected = selected.add_prefix(f"{key}_")
+        pieces.append(selected)
+    for key, selector in (obsp or {}).items():
+        selected = evaluate_select(source_frame(adata, "obsp", key=key), selector)
+        _check_matrix_materialization(selected, max_matrix_values, context=f"to_df obsp {key!r}")
         selected = selected.add_prefix(f"{key}_")
         pieces.append(selected)
     if not pieces:
@@ -1271,16 +1320,25 @@ def to_tidy_adata(
     *,
     obs: Any = None,
     x: Any = None,
+    raw: Any = None,
     layer: str | None = None,
     obs_name: str = "obs_name",
     feature: str = "feature",
     value: str = "value",
     allow_all_features: bool = False,
+    max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
-    if x is None and not allow_all_features:
+    if x is not None and raw is not None:
+        msg = "to_tidy accepts x or raw, not both"
+        raise IncompatibleAxisError(msg)
+    if x is None and raw is None and not allow_all_features:
         msg = "to_tidy requires explicit x feature selection; pass allow_all_features=True to export all features"
         raise SelectionError(msg)
-    wide = evaluate_select(x_frame(adata, layer=layer), x if x is not None else list(adata.var_names))
+    matrix = raw_frame(adata) if raw is not None else x_frame(adata, layer=layer)
+    all_features = list(matrix.columns)
+    selector = raw if raw is not None else (x if x is not None else all_features)
+    wide = evaluate_select(matrix, selector)
+    _check_matrix_materialization(wide, max_matrix_values, context="to_tidy")
     _check_reserved_names(wide.columns, {obs_name, feature, value}, context="to_tidy feature")
     wide = wide.copy()
     wide[obs_name] = adata.obs_names.to_numpy()
@@ -1305,16 +1363,25 @@ def pivot_longer_adata(
     *,
     obs: Any = None,
     x: Any = None,
+    raw: Any = None,
     layer: str | None = None,
     obs_name: str = "obs_name",
     names_to: str = "name",
     values_to: str = "value",
     allow_all_features: bool = False,
+    max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
-    if x is None and not allow_all_features:
+    if x is not None and raw is not None:
+        msg = "pivot_longer accepts x or raw, not both"
+        raise IncompatibleAxisError(msg)
+    if x is None and raw is None and not allow_all_features:
         msg = "pivot_longer requires explicit x feature selection; pass allow_all_features=True to export all features"
         raise SelectionError(msg)
-    values = evaluate_select(x_frame(adata, layer=layer), x if x is not None else list(adata.var_names))
+    matrix = raw_frame(adata) if raw is not None else x_frame(adata, layer=layer)
+    all_features = list(matrix.columns)
+    selector = raw if raw is not None else (x if x is not None else all_features)
+    values = evaluate_select(matrix, selector)
+    _check_matrix_materialization(values, max_matrix_values, context="pivot_longer")
     meta = evaluate_select(obs_frame(adata), obs) if obs is not None else pd.DataFrame(index=adata.obs_names)
     reserved = {obs_name, names_to, values_to}
     _check_reserved_names(values.columns, reserved, context="pivot_longer feature")
@@ -1326,6 +1393,35 @@ def pivot_longer_adata(
     wide = pd.concat([meta, values], axis=1)
     wide.insert(0, obs_name, adata.obs_names.to_numpy())
     return wide.melt(id_vars=[obs_name, *meta.columns], var_name=names_to, value_name=values_to)
+
+
+def as_frame_adata(
+    adata: AnnData,
+    source: str,
+    *,
+    key: str | None = None,
+    select: Any = None,
+    layer: str | None = None,
+    max_matrix_values: int | None = None,
+) -> pd.DataFrame:
+    frame = source_frame(adata, source, key=key, layer=layer)
+    selected = evaluate_select(frame, select)
+    if source in {"x", "raw", "obsm", "varm", "obsp", "varp"}:
+        context = f"as_frame {source}" if key is None else f"as_frame {source} {key!r}"
+        _check_matrix_materialization(selected, max_matrix_values, context=context)
+    return selected
+
+
+def _check_matrix_materialization(frame: pd.DataFrame, max_matrix_values: int | None, *, context: str) -> None:
+    if max_matrix_values is None:
+        return
+    if max_matrix_values < 0:
+        msg = "max_matrix_values must be non-negative or None"
+        raise AnnplyrError(msg)
+    values = frame.shape[0] * frame.shape[1]
+    if values > max_matrix_values:
+        msg = f"{context} would materialize {values} matrix values, which exceeds max_matrix_values={max_matrix_values}"
+        raise AnnplyrError(msg)
 
 
 def pivot_wider(

@@ -48,6 +48,13 @@ def x_frame(adata: AnnData, layer: str | None = None) -> pd.DataFrame:
     return matrix_frame(matrix, adata.obs_names, columns=adata.var_names)
 
 
+def raw_frame(adata: AnnData) -> pd.DataFrame:
+    if adata.raw is None:
+        msg = "AnnData object has no raw matrix"
+        raise UnknownSourceError(msg)
+    return matrix_frame(adata.raw.X, adata.obs_names, columns=adata.raw.var_names)
+
+
 def obsm_frame(adata: AnnData, key: str) -> pd.DataFrame:
     try:
         matrix = adata.obsm[key]
@@ -305,6 +312,11 @@ def source_frame(adata: AnnData, source: str, key: str | None = None, layer: str
         return var_frame(adata)
     if source == "x":
         return x_frame(adata, layer=layer)
+    if source == "raw":
+        if layer is not None:
+            msg = "raw source does not support layer"
+            raise UnknownSourceError(msg)
+        return raw_frame(adata)
     if source == "obsm":
         if key is None:
             msg = "obsm source requires a key"

@@ -1,6 +1,6 @@
 ---
 name: annplyr
-description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, obsm, and varm; plot-ready to_df/to_tidy extraction for plotnine or seaborn; and alignment, sparse/backed, or matrix-materialization safety."
+description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, raw, obsm, varm, obsp, varp, and tabular uns; plotnine-ready to_df/to_tidy/as_frame extraction; and alignment, sparse/backed, or matrix-materialization safety."
 license: BSD-3-Clause
 ---
 
@@ -11,17 +11,17 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 ## First Moves
 
 1. Import `annplyr as ap`; this registers the `adata.ap` accessor.
-2. Inspect `adata.n_obs`, `adata.n_vars`, `adata.obs.columns`, `adata.var.columns`, relevant `layers`, `obsm`, and `varm` keys before writing expressions.
+2. Inspect `adata.n_obs`, `adata.n_vars`, `adata.obs.columns`, `adata.var.columns`, relevant `layers`, `raw`, `obsm`, `varm`, `obsp`, `varp`, and `uns` keys before writing expressions.
 3. Prefer accessor verbs for AnnData-preserving operations and pandas extraction helpers only when tabular materialization is intended.
 4. Keep axis semantics explicit: `obs` operations act on cells/observations, `var` operations act on features/genes.
 
 ## Core Rules
 
 - Use `ap.col("name")`, selectors such as `ap.starts_with(...)`, and helpers such as `ap.mean(...)`, `ap.if_else(...)`, and `ap.case_when(...)` instead of pandas string queries.
-- `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like sources (`x`, `layers`, `obsm`, `varm`) are read-only expression sources.
+- `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like sources (`x`, layers, `raw`, `obsm`, `varm`) are read-only expression sources.
 - AnnData-returning verbs must preserve alignment across `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`, and `varp`.
 - Joins are metadata joins for `obs` or `var`; they should not silently create duplicated cells/features.
-- Whole-matrix long exports are expensive. Select features explicitly unless the user clearly asks for all features.
+- Whole-matrix long exports are expensive. Select features explicitly unless the user clearly asks for all features, and use `max_matrix_values=` for hard budgets.
 - Backed AnnData objects are read-only for mutating verbs unless the object is intentionally loaded into memory first.
 
 ## Reference Files

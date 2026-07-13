@@ -26,6 +26,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
   weighted counts, and add-count/tally helpers.
 - Sparse-preserving matrix frames, pairwise `obsp`/`varp` source frames, and
   controlled `uns` frame extraction.
+- Raw matrix read support for filtering, arranging, metadata mutation,
+  summaries, and pandas exports.
+- Public `adata.ap.as_frame()` extraction for `obs`, `var`, `x`, `raw`, `obsm`,
+  `varm`, `obsp`, `varp`, and tabular `uns` sources.
+- `max_matrix_values=` guards for matrix-materializing export helpers.
 
 ### Changed
 

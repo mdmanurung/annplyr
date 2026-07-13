@@ -4,12 +4,13 @@
 
 Use `adata.ap.<verb>(...)` when the result should remain aligned AnnData.
 
-- `filter(obs=..., var=..., x=..., layer=...)` subsets observations and features.
+- `filter(obs=..., var=..., x=..., raw=..., layer=...)` subsets observations and features.
 - `select(obs=..., var=..., x=...)` keeps metadata columns and selected features.
-- `arrange(obs=..., var=...)` reorders observations or features.
+- `arrange(obs=..., var=..., x=..., raw=...)` reorders observations or features.
 - `slice*` helpers default to `axis="obs"`; pass `axis="var"` for features.
-- `mutate(obs={...}, var={...}, x={...}, obsm={...}, varm={...})` writes metadata columns only.
+- `mutate(obs={...}, var={...}, x={...}, raw={...}, obsm={...}, varm={...})` writes metadata columns only.
 - `group_by(obs=...)` returns a grouped wrapper for iteration, filtering, mutation, summaries, and counts.
+- `as_frame(source, key=..., select=...)` extracts a controlled pandas frame from `obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`, `varp`, or tabular `uns`.
 
 ## Expressions And Selectors
 
@@ -42,7 +43,7 @@ Prefer:
 
 ```python
 plot_df = adata.ap.to_tidy(obs=["cluster"], x=["MS4A1", "CD79A"])
+raw_plot_df = adata.ap.to_tidy(obs=["cluster"], raw=["MS4A1"])
 ```
 
-Avoid unbounded matrix-to-long exports unless the user explicitly requests whole-matrix materialization.
-
+Avoid unbounded matrix-to-long exports unless the user explicitly requests whole-matrix materialization. Use `max_matrix_values=` when the workflow needs a hard budget.

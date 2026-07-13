@@ -1467,7 +1467,7 @@ def unchop(data: pd.DataFrame, columns: str | Sequence[str], *, keep_empty: bool
             continue
         size = max(size, 1)
         for i in range(size):
-            out = row.drop(labels=selected).to_dict()
+            out = cast(dict[str, Any], row.drop(labels=selected).to_dict())
             for column in selected:
                 values = _as_list_like(row[column])
                 out[column] = values[i] if i < len(values) else pd.NA
@@ -1491,7 +1491,7 @@ def unnest_longer(
         if not values and keep_empty:
             values = [pd.NA]
         for index, value in enumerate(values):
-            out = row.drop(labels=[column]).to_dict()
+            out = cast(dict[str, Any], row.drop(labels=[column]).to_dict())
             out[value_name] = value
             if indices_to is not None:
                 out[indices_to] = index

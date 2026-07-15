@@ -47,6 +47,9 @@ qc = adata.ap.as_frame("uns", key="qc_metrics")
 
 ## Pandas Rectangling Helpers
 
+These work on plain DataFrames and complement the AnnData verbs above for
+post-extraction wrangling.
+
 `annplyr` also provides pandas helpers such as `pivot_wider`, `nest`, `unnest`,
 `chop`, `unchop`, `pack`, `unpack`, `separate`, `separate_rows`, `extract`,
 `unite`, `drop_na`, and `fill`.

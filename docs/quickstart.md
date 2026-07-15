@@ -23,8 +23,8 @@ selected = adata.ap.select(
 
 ## Add Metadata From Matrix Sources
 
-`mutate()` writes only metadata columns. Matrix-like sources are read-only
-expression sources.
+`mutate()` writes only metadata columns; `x=`, `obsm=`, and other matrix
+arguments provide read-only expression inputs.
 
 ```python
 annotated = adata.ap.mutate(

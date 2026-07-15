@@ -4,7 +4,7 @@ requires = ["hatchling"]
 
 [project]
 name = "annplyr"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tidy, dataframe-style wrangling for AnnData."
 readme = "README.md"
 license = { file = "LICENSE" }

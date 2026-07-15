@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-15
+
 ### Added
 
 - Roadmap and GitHub issue backlog for tidyverse/scverse-grade development.
@@ -31,6 +33,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Public `adata.ap.as_frame()` extraction for `obs`, `var`, `x`, `raw`, `obsm`,
   `varm`, `obsp`, `varp`, and tabular `uns` sources.
 - `max_matrix_values=` guards for matrix-materializing export helpers.
+- Bundled Claude Code and Codex skill for AnnData wrangling guidance.
 
 ### Changed
 
@@ -38,6 +41,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - Mutating verbs now raise package errors for backed AnnData objects.
 - Long matrix exports require explicit feature selection unless full
   materialization is requested.
+
+### Fixed
+
+- Grouped `mutate` now uses positional indexing to correctly handle AnnData
+  with duplicate `obs_names` or `var_names`.
+- `relocate` raises `SelectionError` when the `before`/`after` anchor column
+  is among the columns being moved.
+- `unnest` preserves inner column names from the first non-empty nested frame,
+  so an all-empty result still has the correct schema.
+- `separate` always treats `sep` as a regular expression; NA source values now
+  produce `[pd.NA] * len(into)` instead of splitting the string `"None"`.
+
+### Documentation
+
+- Added tutorials and improved all vignettes.
+- Reorganized documentation navigation.
+- Added design-lineage section crediting annsel as inspiration and framing
+  tidyverse R users as the target audience.
 
 ## [0.1.0]
 

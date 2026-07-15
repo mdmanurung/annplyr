@@ -44,3 +44,12 @@ AnnData-returning verbs use AnnData-native slicing so `X`, layers, `obsm`,
 `annplyr` raises typed package errors for invalid selectors, missing sources,
 unsafe joins, duplicate names, and incompatible axis operations. See
 {doc}`../api` for the full error reference.
+
+## Design lineage
+
+`annplyr` draws direct inspiration from
+[annsel](https://github.com/srivarra/annsel), which introduced
+predicate-based selection on AnnData objects. `annplyr` extends that idea to
+the full `dplyr`/`tidyr` verb set — `mutate`, `summarize`, `group_by`, joins,
+and tidy extraction — for R tidyverse users moving to Python single-cell
+analysis.

@@ -10,6 +10,14 @@ an `adata.ap` accessor. It is designed for single-cell workflows where metadata,
 expression matrices, layers, embeddings, and loadings should be queried together
 without losing AnnData alignment.
 
+`annplyr` draws design inspiration from
+[annsel](https://github.com/srivarra/annsel), which pioneered predicate-based
+selection on AnnData objects. Where annsel focuses on selection and filtering,
+`annplyr` extends the vocabulary to the full `dplyr`/`tidyr` toolkit —
+`mutate`, `summarize`, `group_by`, joins, and tidy extraction — targeting R
+tidyverse users who want the same expressive, composable style in Python
+single-cell pipelines.
+
 ## Installation
 
 ```bash

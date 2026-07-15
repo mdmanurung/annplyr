@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 from anndata import AnnData, read_h5ad
@@ -66,6 +67,18 @@ def test_grouped_var_count_and_keys(dense_adata: AnnData) -> None:
         pd.DataFrame({"feature_type": ["rna", "protein"], "n": [3, 1]}),
     )
     assert grouped.group_data()[".rows"].tolist() == [["g0", "g1", "g3"], ["g2"]]
+
+
+def test_grouped_mutate_handles_duplicate_obs_names() -> None:
+    # Label-based .loc assignment breaks when obs_names are non-unique; positional
+    # indexing must be used instead.
+    x = np.zeros((4, 2), dtype=float)
+    obs = pd.DataFrame({"batch": ["A", "A", "B", "B"]}, index=["x", "x", "x", "x"])
+    adata = AnnData(X=x, obs=obs)
+
+    mutated = adata.ap.group_by(obs="batch").mutate(obs={"n": ap.row_number()})
+
+    assert mutated.obs["n"].tolist() == [1, 2, 1, 2]
 
 
 def test_grouped_mutate_rejects_backed_before_writing(tmp_path, dense_adata: AnnData) -> None:

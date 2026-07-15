@@ -145,19 +145,45 @@ class GroupedAnnData:
             raise AnnplyrError(msg)
         if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obsm)):
             out = self._adata if inplace else self._adata.copy()
-            for _, group in self._iter_groups(out):
+            by_frame = self._by_frame(out)
+            obs_col_pieces: dict[str, list[tuple[np.ndarray, pd.Series]]] = {}
+            for _, key_row in by_frame.drop_duplicates().iterrows():
+                mask = _key_mask(by_frame, key_row)
+                positions = np.where(mask.to_numpy())[0]
+                group = out[mask.to_numpy(), :]
                 for frame, assignments in _obs_assignment_frames(group, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer):
-                    values = evaluate_assignments(frame, assignments)
-                    for column in values.columns:
-                        cast(pd.DataFrame, out.obs).loc[group.obs_names, column] = values[column]
+                    group_values = evaluate_assignments(frame, assignments)
+                    for column in group_values.columns:
+                        if column not in obs_col_pieces:
+                            obs_col_pieces[column] = []
+                        obs_col_pieces[column].append((positions, group_values[column].reset_index(drop=True)))
+            obs_df = cast(pd.DataFrame, out.obs)
+            for column, pieces in obs_col_pieces.items():
+                all_pos = np.concatenate([p for p, _ in pieces])
+                order = np.argsort(all_pos, kind="stable")
+                merged = pd.concat([s for _, s in pieces], ignore_index=True).iloc[order]
+                obs_df[column] = merged.to_numpy()
             return mutate_adata(out, var=var, varm=varm, layer=layer, inplace=True)
         if self._axis == "var" and any(value is not None for value in (var, varm)):
             out = self._adata if inplace else self._adata.copy()
-            for _, group in self._iter_groups(out):
+            by_frame = self._by_frame(out)
+            var_col_pieces: dict[str, list[tuple[np.ndarray, pd.Series]]] = {}
+            for _, key_row in by_frame.drop_duplicates().iterrows():
+                mask = _key_mask(by_frame, key_row)
+                positions = np.where(mask.to_numpy())[0]
+                group = out[:, mask.to_numpy()]
                 for frame, assignments in _var_assignment_frames(group, var=var, varm=varm):
-                    values = evaluate_assignments(frame, assignments)
-                    for column in values.columns:
-                        cast(pd.DataFrame, out.var).loc[group.var_names, column] = values[column]
+                    group_values = evaluate_assignments(frame, assignments)
+                    for column in group_values.columns:
+                        if column not in var_col_pieces:
+                            var_col_pieces[column] = []
+                        var_col_pieces[column].append((positions, group_values[column].reset_index(drop=True)))
+            var_df = cast(pd.DataFrame, out.var)
+            for column, pieces in var_col_pieces.items():
+                all_pos = np.concatenate([p for p, _ in pieces])
+                order = np.argsort(all_pos, kind="stable")
+                merged = pd.concat([s for _, s in pieces], ignore_index=True).iloc[order]
+                var_df[column] = merged.to_numpy()
             return mutate_adata(out, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer, inplace=True)
         return mutate_adata(
             self._adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=inplace

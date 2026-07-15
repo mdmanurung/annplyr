@@ -112,6 +112,14 @@ def test_relocate_rejects_missing_anchor_for_target_source(dense_adata: AnnData)
     assert relocated.var.columns.tolist() == ["feature_type", "chrom", "length"]
 
 
+def test_relocate_rejects_anchor_among_moved_columns(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.SelectionError, match="anchor"):
+        dense_adata.ap.relocate(obs=["score", "batch"], before="score")
+
+    with pytest.raises(ap.SelectionError, match="anchor"):
+        dense_adata.ap.relocate(obs=["score", "batch"], after="batch")
+
+
 def test_last_col_rejects_out_of_bounds_offset(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="last_col"):
         dense_adata.ap.select(obs=ap.last_col(offset=-1))

@@ -205,3 +205,20 @@ def test_tidyr_style_dataframe_helpers() -> None:
 
     hoisted = ap.hoist(pd.DataFrame({"info": [{"sample": "s1", "n": 3}]}), "info", sample="sample", n="n")
     assert hoisted[["sample", "n"]].iloc[0].tolist() == ["s1", 3]
+
+
+def test_unnest_preserves_inner_columns_when_all_nested_frames_are_empty() -> None:
+    empty_inner = pd.DataFrame({"x": pd.Series([], dtype=float), "y": pd.Series([], dtype=str)})
+    nested = pd.DataFrame({"id": ["a", "b"], "data": [empty_inner, empty_inner.copy()]})
+    result = ap.unnest(nested, "data")
+    assert result.columns.tolist() == ["id", "x", "y"]
+    assert len(result) == 0
+
+
+def test_separate_treats_sep_as_regex_and_handles_na() -> None:
+    data = pd.DataFrame({"s": ["a1b", "c2d", None]})
+    result = ap.separate(data, "s", into=["pre", "post"], sep=r"\d")
+    assert result["pre"].tolist()[:2] == ["a", "c"]
+    assert result["post"].tolist()[:2] == ["b", "d"]
+    assert pd.isna(result["pre"].iloc[2])
+    assert pd.isna(result["post"].iloc[2])

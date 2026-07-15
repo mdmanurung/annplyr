@@ -317,9 +317,15 @@ def _relocated_order(
     elif before is None and after is None:
         index = 0
     elif before is not None:
+        if before in columns:
+            msg = f"Relocate anchor {before!r} is among the columns being moved; use a stationary column as anchor"
+            raise SelectionError(msg)
         msg = f"Unknown relocate anchor: {before!r}"
         raise UnknownColumnError(msg)
     elif after is not None:
+        if after in columns:
+            msg = f"Relocate anchor {after!r} is among the columns being moved; use a stationary column as anchor"
+            raise SelectionError(msg)
         msg = f"Unknown relocate anchor: {after!r}"
         raise UnknownColumnError(msg)
     else:
@@ -1300,6 +1306,7 @@ def to_df_adata(
         pieces.append(selected.add_prefix("raw_"))
     for key, selector in (obsm or {}).items():
         selected = evaluate_select(obsm_frame(adata, key), selector)
+        _check_matrix_materialization(selected, max_matrix_values, context=f"to_df obsm {key!r}")
         selected = selected.add_prefix(f"{key}_")
         pieces.append(selected)
     for key, selector in (obsp or {}).items():
@@ -1490,17 +1497,21 @@ def unnest(data: pd.DataFrame, column: str) -> pd.DataFrame:
         raise UnknownColumnError(msg)
     rows: list[pd.DataFrame] = []
     outer_columns = [name for name in data.columns if name != column]
+    inner_columns: list[str] | None = None
     for _, row in data.iterrows():
         nested = row[column]
         if not isinstance(nested, pd.DataFrame):
             msg = f"unnest column {column!r} must contain pandas DataFrame objects"
             raise SelectionError(msg)
+        if inner_columns is None:
+            inner_columns = [str(c) for c in nested.columns]
         if nested.empty:
             continue
         prefix = pd.DataFrame({name: [row[name]] * len(nested) for name in outer_columns})
         rows.append(pd.concat([prefix.reset_index(drop=True), nested.reset_index(drop=True)], axis=1))
     if not rows:
-        return pd.DataFrame(columns=[*outer_columns])
+        extra = inner_columns if inner_columns is not None else []
+        return pd.DataFrame(columns=[*outer_columns, *extra])
     return pd.concat(rows, ignore_index=True)
 
 
@@ -1686,9 +1697,32 @@ def separate(
     sep: str = "_",
     remove: bool = True,
 ) -> pd.DataFrame:
+    """Split a single column into multiple columns using a regular expression separator.
+
+    Parameters
+    ----------
+    data:
+        Input DataFrame.
+    column:
+        Name of the column to split.
+    into:
+        Names for the output columns produced by the split.
+    sep:
+        Regular expression used to split the column value. Defaults to ``"_"``.
+        Both :func:`separate` and :func:`separate_rows` treat *sep* as a
+        regular expression, matching tidyr's documented behaviour.
+    remove:
+        If ``True`` (the default), remove the source column from the result.
+    """
     _check_dataframe_columns(data, [column], context="separate")
     out = data.copy()
-    split = out[column].astype("string").str.split(sep, n=len(into) - 1, expand=True)
+    max_splits = len(into) - 1
+    split_series = out[column].map(
+        lambda value: re.split(sep, str(value), maxsplit=max_splits)
+        if not pd.isna(value)
+        else [pd.NA] * len(into)
+    )
+    split = pd.DataFrame(split_series.tolist(), index=out.index)
     for index, name in enumerate(into):
         out[str(name)] = split[index] if index in split.columns else pd.NA
     if remove:
@@ -1697,6 +1731,19 @@ def separate(
 
 
 def separate_rows(data: pd.DataFrame, columns: str | Sequence[str], *, sep: str = ",") -> pd.DataFrame:
+    """Separate delimited values in one or more columns into multiple rows.
+
+    Parameters
+    ----------
+    data:
+        Input DataFrame.
+    columns:
+        Column name or sequence of column names whose values should be expanded.
+    sep:
+        Regular expression used to split each value. Defaults to ``","``
+        (a literal comma). Both :func:`separate` and :func:`separate_rows` treat
+        *sep* as a regular expression, matching tidyr's documented behaviour.
+    """
     selected = [columns] if isinstance(columns, str) else list(columns)
     _check_dataframe_columns(data, selected, context="separate_rows")
     out = data.copy()

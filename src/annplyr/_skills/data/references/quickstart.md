@@ -47,6 +47,18 @@ summary = adata.ap.summarize(
 )
 ```
 
+Use grouped operations with `group_by`; most verbs operate group-locally on the result:
+
+```python
+# row number within each group
+adata.ap.group_by(obs="batch").mutate(obs={"group_row": ap.row_number()})
+
+# count observations per group, optionally weighted
+adata.ap.count("batch")           # returns DataFrame
+adata.ap.count("batch", wt="n_counts", name="total_counts")
+adata.ap.add_count("batch")       # appends the count column to AnnData
+```
+
 Use plot-ready extraction when the next step is pandas, plotnine, seaborn, or a notebook table:
 
 ```python

@@ -29,8 +29,14 @@ adata = adata.ap.mutate(obs={"new_column": ap.col("old_column")})
 
 Prefer annplyr's typed errors over broad `ValueError` paths in package code:
 
-- `SelectionError` for invalid selectors.
+- `SelectionError` for invalid selectors, and when `relocate`'s `before`/`after` anchor is among the columns being moved.
 - `UnknownColumnError` or `UnknownSourceError` for unresolved expression sources.
 - `DuplicateNameError` and `NameRepairError` for schema collisions.
 - `IncompatibleAxisError` and `SizeMismatchError` for axis or length mismatches.
 - `JoinRelationshipError` for unsafe join cardinality.
+
+## Parsing and Nesting Helpers
+
+`separate(df, col, into=..., sep=..., ...)` always treats `sep` as a regular expression. NA values in the source column yield `[pd.NA] * len(into)` — the string `"None"` is never split.
+
+`unnest(df, col)` captures inner column names from the first non-empty nested frame, so an all-empty result still has the correct schema (the expected columns are present but with zero rows).

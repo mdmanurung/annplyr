@@ -1,5 +1,3 @@
-# Changelog
+```{include} ../CHANGELOG.md
 
-## 0.1.0
-
-- Initial V1 package scaffold.
+```

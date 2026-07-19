@@ -37,6 +37,6 @@ Prefer annplyr's typed errors over broad `ValueError` paths in package code:
 
 ## Parsing and Nesting Helpers
 
-`separate(df, col, into=..., sep=..., ...)` always treats `sep` as a regular expression. NA values in the source column yield `[pd.NA] * len(into)` — the string `"None"` is never split.
+`separate(df, col, into=..., sep=..., ...)` always treats `sep` as a regular expression. NA values in the source column yield `[pd.NA] * len(into)`; the string `"None"` is never split.
 
 `unnest(df, col)` captures inner column names from the first non-empty nested frame, so an all-empty result still has the correct schema (the expected columns are present but with zero rows).

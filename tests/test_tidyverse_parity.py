@@ -215,6 +215,17 @@ def test_unnest_preserves_inner_columns_when_all_nested_frames_are_empty() -> No
     assert len(result) == 0
 
 
+def test_rectangling_helpers_reject_output_name_collisions() -> None:
+    with pytest.raises(ap.DuplicateNameError, match="pack"):
+        ap.pack(pd.DataFrame({"metrics": ["existing"], "a": [1]}), "metrics", ["a"])
+
+    with pytest.raises(ap.DuplicateNameError, match="unnest_wider"):
+        ap.unnest_wider(pd.DataFrame({"id": [1], "info": [{"id": 2}]}), "info")
+
+    with pytest.raises(ap.DuplicateNameError, match="unpack"):
+        ap.unpack(pd.DataFrame({"id": [1], "metrics": [{"id": 2}]}), "metrics")
+
+
 def test_separate_treats_sep_as_regex_and_handles_na() -> None:
     data = pd.DataFrame({"s": ["a1b", "c2d", None]})
     result = ap.separate(data, "s", into=["pre", "post"], sep=r"\d")

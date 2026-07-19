@@ -1638,6 +1638,7 @@ def unnest_wider(data: pd.DataFrame, column: str, *, names_sep: str | None = Non
     wider = pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame(index=data.index)
     wider.columns = [f"{column}{names_sep}{name}" if names_sep is not None else str(name) for name in wider.columns]
     out = data.drop(columns=[column]).reset_index(drop=True)
+    _check_output_columns_available(out.columns, wider.columns, context="unnest_wider")
     return pd.concat([out, wider], axis=1)
 
 
@@ -1645,6 +1646,7 @@ def pack(data: pd.DataFrame, column: str, columns: str | Sequence[str]) -> pd.Da
     selected = [columns] if isinstance(columns, str) else list(columns)
     _check_dataframe_columns(data, selected, context="pack")
     out = data.drop(columns=selected).copy()
+    _check_output_columns_available(out.columns, [column], context="pack")
     packed = data.loc[:, selected].apply(lambda row: row.to_dict(), axis=1)
     insert_at = _first_column_position(data, selected, fallback=len(out.columns))
     out.insert(min(insert_at, len(out.columns)), column, packed)
@@ -1661,6 +1663,7 @@ def unpack(
     _check_dataframe_columns(data, [column], context="unpack")
     wider = unnest_wider(data.loc[:, [column]], column, names_sep=names_sep)
     out = data.drop(columns=[column]).copy() if remove else data.copy()
+    _check_output_columns_available(out.columns, wider.columns, context="unpack")
     insert_at = _first_column_position(data, [column], fallback=len(out.columns))
     for offset, wider_column in enumerate(wider.columns):
         out.insert(min(insert_at + offset, len(out.columns)), str(wider_column), wider[wider_column].to_numpy())
@@ -1733,9 +1736,7 @@ def separate(
     out = data.copy()
     max_splits = len(into) - 1
     split_series = out[column].map(
-        lambda value: re.split(sep, str(value), maxsplit=max_splits)
-        if not pd.isna(value)
-        else [pd.NA] * len(into)
+        lambda value: re.split(sep, str(value), maxsplit=max_splits) if not pd.isna(value) else [pd.NA] * len(into)
     )
     split = pd.DataFrame(split_series.tolist(), index=out.index)
     for index, name in enumerate(into):
@@ -1866,3 +1867,12 @@ def _check_dataframe_columns(data: pd.DataFrame, columns: Sequence[str], *, cont
     if missing:
         msg = f"Unknown {context} column(s): {', '.join(missing)}"
         raise UnknownColumnError(msg)
+
+
+def _check_output_columns_available(
+    existing: pd.Index | Sequence[str], new: pd.Index | Sequence[str], *, context: str
+) -> None:
+    collisions = sorted({str(column) for column in existing} & {str(column) for column in new})
+    if collisions:
+        msg = f"{context} output column(s) would duplicate existing column(s): {', '.join(collisions)}"
+        raise DuplicateNameError(msg)

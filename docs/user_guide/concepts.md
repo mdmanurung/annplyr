@@ -1,8 +1,8 @@
 # Core Concepts
 
-`annplyr` treats AnnData as an aligned object, not just a collection of pandas
-tables. Verbs that return AnnData must preserve alignment across coordinated
-containers.
+`annplyr` treats AnnData as an aligned object rather than a loose collection of
+pandas tables. Verbs that return AnnData must preserve alignment across
+coordinated containers.
 
 ## Axes
 
@@ -50,6 +50,6 @@ unsafe joins, duplicate names, and incompatible axis operations. See
 `annplyr` draws direct inspiration from
 [annsel](https://github.com/srivarra/annsel), which introduced
 predicate-based selection on AnnData objects. `annplyr` extends that idea to
-the full `dplyr`/`tidyr` verb set — `mutate`, `summarize`, `group_by`, joins,
-and tidy extraction — for R tidyverse users moving to Python single-cell
+the full `dplyr`/`tidyr` verb set (`mutate`, `summarize`, `group_by`, joins,
+and tidy extraction) for R tidyverse users moving to Python single-cell
 analysis.

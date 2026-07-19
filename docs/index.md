@@ -39,7 +39,7 @@ Run the first AnnData wrangling examples.
 :link: tutorials
 :link-type: doc
 
-Work through the notebooks, including the comprehensive tour.
+Work through the notebooks, including the full tour.
 :::
 
 :::{grid-item-card} API Reference

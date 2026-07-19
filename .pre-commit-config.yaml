@@ -6,15 +6,11 @@ default_stages:
   - pre-push
 minimum_pre_commit_version: 2.16.0
 repos:
-  - repo: https://github.com/biomejs/pre-commit
-    rev: v2.5.2
-    hooks:
-      - id: biome-format
-        exclude: ^\.cruft\.json$
   - repo: https://github.com/tox-dev/pyproject-fmt
     rev: v2.25.1
     hooks:
       - id: pyproject-fmt
+        additional_dependencies: [tomli]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.20
     hooks:

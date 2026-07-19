@@ -56,6 +56,19 @@ def test_join_na_matches_never_does_not_enrich_missing_keys(dense_adata: AnnData
     assert pd.isna(joined.obs.loc["c3", "site"])
 
 
+def test_join_policy_arguments_reject_unknown_values(dense_adata: AnnData) -> None:
+    other = pd.DataFrame({"batch": ["A"], "label": ["x"]})
+
+    with pytest.raises(ap.JoinRelationshipError, match="unmatched"):
+        dense_adata.ap.left_join(other, by="batch", unmatched="warn")
+
+    with pytest.raises(ap.JoinRelationshipError, match="na_matches"):
+        dense_adata.ap.left_join(other, by="batch", na_matches="all")
+
+    with pytest.raises(ap.JoinRelationshipError, match="na_matches"):
+        dense_adata.ap.semi_join(other, by="batch", na_matches="all")
+
+
 def test_semi_join_and_anti_join_subset_anndata_axes(dense_adata: AnnData) -> None:
     keep_obs = pd.DataFrame({"batch": ["A"]})
     assert dense_adata.ap.semi_join(keep_obs, by="batch").obs_names.tolist() == ["c0", "c1", "c4"]

@@ -1058,6 +1058,8 @@ def _join_adata(
 ) -> AnnData:
     _ensure_not_backed(adata, f"{how}_join")
     axis = _axis(axis)
+    _validate_join_unmatched(unmatched)
+    _validate_join_na_matches(na_matches)
     left = _axis_table(adata, axis).copy()
     right = _coerce_join_frame(other)
     by_columns = _join_by_columns(left, right, by)
@@ -1115,6 +1117,18 @@ def _join_adata(
 
 def _axis_table(adata: AnnData, axis: str) -> pd.DataFrame:
     return _obs_table(adata) if axis == "obs" else _var_table(adata)
+
+
+def _validate_join_unmatched(unmatched: str) -> None:
+    if unmatched not in {"drop", "error"}:
+        msg = "unmatched must be 'drop' or 'error'"
+        raise JoinRelationshipError(msg)
+
+
+def _validate_join_na_matches(na_matches: str) -> None:
+    if na_matches not in {"na", "never"}:
+        msg = "na_matches must be 'na' or 'never'"
+        raise JoinRelationshipError(msg)
 
 
 def _coerce_join_frame(other: pd.DataFrame | Mapping[str, Any]) -> pd.DataFrame:
@@ -1221,6 +1235,7 @@ def _join_filter_mask(
     na_matches: str,
 ) -> pd.Series:
     axis = _axis(axis)
+    _validate_join_na_matches(na_matches)
     left = _axis_table(adata, axis)
     right = _coerce_join_frame(other)
     by_columns = _join_by_columns(left, right, by)

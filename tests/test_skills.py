@@ -34,6 +34,13 @@ def test_skill_examples_only_use_supported_annplyr_expression_methods() -> None:
     assert ".log1p()" not in quickstart
 
 
+def test_skill_rename_patterns_match_public_api() -> None:
+    api_patterns = (install.bundled_skill_dir() / "references" / "api-patterns.md").read_text()
+
+    assert "rename(obs={new_name: old_name}, var={...})" in api_patterns
+    assert "rename_with(str.lower, obs=...)" in api_patterns
+
+
 def test_install_skill_copies_bundle_and_refuses_existing_destination(tmp_path: Path) -> None:
     dest = tmp_path / "skills" / "annplyr"
 

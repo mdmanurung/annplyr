@@ -22,6 +22,17 @@ adata.ap.select(
 )
 ```
 
+## Rename And Relocate
+
+`rename()` maps new names to existing names. `rename_with()` applies a function
+to selected names.
+
+```python
+adata.ap.rename(obs={"sample_id": "sample"}, var={"gene_symbol": "symbol"})
+adata.ap.rename_with(str.lower, obs=ap.starts_with("QC_"))
+adata.ap.relocate(obs=["sample_id"], before="cell_type")
+```
+
 ## Arrange And Slice
 
 ```python

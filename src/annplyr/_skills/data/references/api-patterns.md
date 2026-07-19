@@ -7,8 +7,8 @@ Use `adata.ap.<verb>(...)` when the result should remain aligned AnnData.
 **Subsetting and column ops:**
 - `filter(obs=..., var=..., x=..., raw=..., layer=...)` — subset observations or features.
 - `select(obs=..., var=..., x=...)` — keep named metadata columns and selected features.
-- `rename(obs={old: new}, var={...})` — rename metadata columns by mapping.
-- `rename_with(obs=fn, var=fn)` — rename columns by applying a function to names.
+- `rename(obs={new_name: old_name}, var={...})` — rename metadata columns by mapping new names to existing names.
+- `rename_with(str.lower, obs=...)` — rename selected columns by applying a function to names.
 - `relocate(obs=..., before=..., after=...)` — reorder metadata columns. Raises `SelectionError` when the `before`/`after` anchor is among the columns being moved.
 - `distinct(obs=..., var=..., keep_all=...)` — deduplicate by selected columns.
 - `arrange(obs=..., var=..., x=..., raw=...)` — reorder observations or features.

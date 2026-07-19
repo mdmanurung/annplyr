@@ -124,13 +124,13 @@ def add_sample_meta(
 
 def feature_present(
     adata: AnnData,
-    features: Sequence[str],
+    features: str | Sequence[str],
     *,
     feature_column: str | None = None,
     case_check: bool = True,
 ) -> FeaturePresence:
     """Check requested features against ``var_names`` or a feature metadata column."""
-    requested = [str(feature) for feature in features]
+    requested = [features] if isinstance(features, str) else [str(feature) for feature in features]
     if feature_column is None:
         available = [str(feature) for feature in adata.var_names]
     else:

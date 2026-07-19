@@ -79,6 +79,11 @@ def test_feature_present_reports_missing_and_wrong_case_features(dense_adata: An
         ),
     )
 
+    single = ap.feature_present(adata, "g0")
+    assert single.found_features == ["g0"]
+    assert single.missing_features == []
+    assert single.all_found
+
     symbols = ap.feature_present(adata, ["CD3E", "ms4a1", "missing"], feature_column="symbol")
     assert symbols.found_features == ["CD3E"]
     assert symbols.missing_features == ["ms4a1", "missing"]

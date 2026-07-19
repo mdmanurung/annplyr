@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import annplyr as ap
 from annplyr._skills import install
 
 
@@ -79,3 +80,17 @@ def test_console_script_is_declared() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text())
 
     assert pyproject["project"]["scripts"]["annplyr-install-skills"] == "annplyr._skills.install:main"
+
+
+def test_public_version_matches_project_metadata() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+
+    assert ap.__version__ == pyproject["project"]["version"]
+
+
+def test_release_metadata_matches_project_version() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    version = pyproject["project"]["version"]
+
+    assert f'version: "{version}"' in Path("CITATION.cff").read_text()
+    assert f'version = "{version}"' in Path("docs/conf.py").read_text()

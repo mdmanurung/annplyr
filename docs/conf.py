@@ -21,7 +21,7 @@ try:
 except PackageNotFoundError:
     project = "annplyr"
     author = "annplyr developers"
-    version = "0.1.0"
+    version = "0.2.0"
     repository_url = "https://github.com/mdmanurung/annplyr"
 
 copyright = f"{datetime.now():%Y}, {author}."

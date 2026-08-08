@@ -3,20 +3,11 @@
 [![Test](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml)
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://mdmanurung.github.io/annplyr/)
 
-`annplyr` provides tidy, dataframe-style wrangling for AnnData objects through
-an `adata.ap` accessor. It is designed for single-cell workflows where metadata,
-expression matrices, layers, embeddings, and loadings should be queried together
-without losing AnnData alignment.
-
-`annplyr` draws design inspiration from
-[annsel](https://github.com/srivarra/annsel), which pioneered predicate-based
-selection on AnnData objects. Where annsel focuses on selection and filtering,
-`annplyr` extends the vocabulary to the full `dplyr`/`tidyr` toolkit —
-`mutate`, `summarize`, `group_by`, joins, and tidy extraction — targeting R
-tidyverse users who want the same expressive, composable style in Python
-single-cell pipelines.
+`annplyr` provides tidy, dataframe-style wrangling for AnnData through the
+`adata.ap` accessor. Version 0.3 focuses on safe axis ownership, positional
+alignment, projected matrix reads, persistent grouping, and explicit
+materialization budgets.
 
 ## Installation
 
@@ -24,112 +15,68 @@ single-cell pipelines.
 pip install annplyr
 ```
 
-For development:
-
-```bash
-git clone https://github.com/mdmanurung/annplyr
-cd annplyr
-uv sync --all-extras
-```
-
-## Claude Code Skill
-
-`annplyr` ships an Agent Skill for Claude Code that teaches the agent how to use
-the library correctly: the `adata.ap` accessor, AnnData axis alignment rules,
-tidyverse-style verbs, plot-ready extraction, and sparse/backed-data footguns.
-It is bundled with the Python package, but Claude Code does not scan installed
-Python packages automatically, so install it once into your personal skills
-directory:
-
-```bash
-annplyr-install-skills --agent claude
-```
-
-This copies the skill to `~/.claude/skills/annplyr/`, where it is available to
-Claude Code in every project. Re-run with `--force` after upgrading `annplyr` to
-refresh the installed copy. Once installed, ask Claude Code for annplyr tasks
-such as "filter this AnnData with `adata.ap`", "make plotnine-ready data from
-these genes", or "summarize expression by cluster", and the skill can be
-consulted automatically.
-
-The skill is a router (`SKILL.md`) that points to detailed reference files
-loaded on demand, so it adds little context cost until it is used. If you would
-rather not copy files into your home directory, point Claude Code at the bundled
-copy in place instead:
-
-```bash
-export CLAUDE_SKILLS_PATH="$(annplyr-install-skills --print-path)"
-```
-
-For Codex, install the same bundled skill with:
-
-```bash
-annplyr-install-skills --agent codex
-```
-
-Running `annplyr-install-skills` with no `--agent` installs both Claude Code and
-Codex copies.
-
-## Quickstart
+Importing the package registers the accessor:
 
 ```python
 import annplyr as ap
-
-filtered = adata.ap.filter(obs=ap.col("batch") == "A", x=ap.col("GeneA") > 0)
-plot_data = filtered.ap.to_df(obs=["batch"], x=["GeneA"])
 ```
 
-The current API includes:
+## Persistent grouping
 
-- row/feature verbs: `filter`, `select`, `rename`, `rename_with`, `relocate`,
-  `arrange`, `distinct`, `slice`, `slice_head`, `slice_tail`, `slice_min`,
-  `slice_max`, and `slice_sample`;
-- mutation and summaries: `mutate`, `transmute`, `group_by`, `summarize`,
-  `summarise`, weighted `count`/`tally`, `add_count`, and `add_tally`;
-- AnnData-safe metadata joins: `left_join`, `inner_join`, `right_join`,
-  `full_join`, `semi_join`, and `anti_join`;
-- extraction helpers: `pull`, `to_df`, `to_tidy`, `pivot_longer`,
-  `pivot_wider`, `as_frame`, `nest_by`, `nest`, `unnest`, `unnest_longer`,
-  `unnest_wider`, `chop`, `unchop`, `pack`, `unpack`, `hoist`,
-  `separate`, `separate_rows`, `extract`, `unite`, `drop_na`, `fill`,
-  and `pipe`;
-- scoped single-cell utilities for sample metadata, feature presence checks,
-  safe obs/var name edits, and Scanpy-compatible palette storage;
-- expression helpers such as `col`, `lit`, `desc`, `between`, `if_else`,
-  `case_when`, `case_match`, `recode`, `near`, `row_number`, `lead`, `lag`,
-  `across`, `pick`, `if_any`, `if_all`, rank helpers including `ntile`,
-  cumulative helpers, and compact aggregation helpers.
+AnnData-returning grouped verbs keep their grouping until `ungroup()`:
 
-AnnData-returning verbs preserve AnnData axis alignment. Joins can enrich or
-subset `obs`/`var` metadata, but they raise `JoinRelationshipError` instead of
-silently adding or duplicating cells or features. Matrix exports support
-selected `X`/layer features, `raw`, `obsm`, obs-axis `obsp`, and controlled
-`as_frame()` access to `obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`,
-`varp`, and tabular `uns` entries. Matrix-long exports require an explicit
-feature selection by default; pass `allow_all_features=True` when a whole-matrix
-materialization is intentional, and use `max_matrix_values=` to enforce a public
-materialization budget. Mutating verbs raise an `AnnplyrError` for backed
-AnnData objects unless you first load them into memory.
+```python
+result = (
+    adata.ap.group_by(obs="batch")
+    .filter(obs=ap.col("n_counts") > 1_000)
+    .mutate(obs={"within_batch": ap.row_number()})
+    .select(obs=["batch", "cell_type", "within_batch"])
+    .ungroup()
+)
+```
 
-See `docs/roadmap.md` for the tidyverse/scverse-grade development plan.
+Axis-changing verbs return independent AnnData objects by default. Pass
+`copy=False` only when a view or materialized non-copy result is acceptable;
+the contract does not guarantee `is_view`. Same-shape metadata operations use
+`inplace=True` for exact in-place identity.
+
+## Sources and materialization
+
+Expressions can address `obs`, `var`, selected `X` or layer features, `raw`,
+`obsm`, and `varm`. Extraction also supports `obsp`, `varp`, and tabular `uns`
+through `as_frame()`. Select matrix columns explicitly and set a cumulative
+read budget when materialization size matters:
+
+```python
+plot_data = adata.ap.to_tidy(
+    obs=["cell_type"],
+    x=["MS4A1", "CD79A"],
+    max_matrix_values=2 * adata.n_obs,
+)
+```
+
+The planner rejects an over-budget multi-source request before its first matrix
+read. Sparse wide exports preserve pandas sparse columns; backed axis
+operations with `copy=True` return independent in-memory selections.
+
+## Documentation
+
+- [Quickstart](https://mdmanurung.github.io/annplyr/quickstart.html)
+- [User guide](https://mdmanurung.github.io/annplyr/user_guide/concepts.html)
+- [API reference](https://mdmanurung.github.io/annplyr/api.html)
+- [v0.2 to v0.3 migration guide](https://mdmanurung.github.io/annplyr/migration-v0.3.html)
+
+The package also bundles an annplyr Agent Skill. Install or refresh it with
+`annplyr-install-skills --agent codex` or
+`annplyr-install-skills --agent claude --force`.
 
 ## Development
 
-This repository follows the scverse cookiecutter style for local tooling:
-
 ```bash
 pytest -q
+uvx hatch run type:check
 uvx hatch run docs:build
-prek run --all-files
-uv build
+uvx hatch run docs:doctest
 ```
-
-The package metadata is managed through `pyproject.toml`, with Hatch
-environments for tests and documentation.
-
-The Sphinx documentation site is published to GitHub Pages by the `Docs`
-workflow after pushes to `main`.
-
-## Citation
 
 Citation metadata is available in `CITATION.cff`.

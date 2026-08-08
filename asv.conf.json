@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "project": "annplyr",
+  "project_url": "https://github.com/mdmanurung/annplyr",
+  "repo": ".",
+  "branches": ["main"],
+  "environment_type": "virtualenv",
+  "pythons": ["3.14"],
+  "build_command": [
+    "PIP_NO_BUILD_ISOLATION=0 python -m build",
+    "python -m pip wheel --no-deps -w {build_cache_dir} {build_dir}"
+  ],
+  "install_command": [
+    "in-dir={env_dir} python -m pip install --no-deps --force-reinstall {wheel_file}"
+  ],
+  "matrix": {
+    "req": {
+      "anndata": ["==0.12.19"],
+      "narwhals": ["==2.23.0"],
+      "numpy": ["==2.4.6"],
+      "pandas": ["==2.3.3"],
+      "scipy": ["==1.16.3"]
+    },
+    "env_nobuild": {
+      "BLIS_NUM_THREADS": ["1"],
+      "MKL_NUM_THREADS": ["1"],
+      "NUMEXPR_NUM_THREADS": ["1"],
+      "OMP_NUM_THREADS": ["1"],
+      "OPENBLAS_NUM_THREADS": ["1"],
+      "VECLIB_MAXIMUM_THREADS": ["1"]
+    }
+  },
+  "benchmark_dir": "benchmarks",
+  "env_dir": ".asv/env",
+  "results_dir": ".asv/results",
+  "html_dir": ".asv/html",
+  "install_timeout": 1200,
+  "build_cache_size": 2,
+  "hash_length": 8,
+  "launch_method": "spawn"
+}

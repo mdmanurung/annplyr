@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "annplyr"
-version = "0.2.0"
+version = "0.3.0"
 description = "Tidy, dataframe-style wrangling for AnnData."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -52,6 +52,15 @@ type = [
   "mypy>=1.13",
   "pandas-stubs",
 ]
+benchmark = [
+  "anndata==0.12.19",
+  "asv==0.6.6",
+  "narwhals[pandas]==2.23.0",
+  "numpy==2.4.6",
+  "pandas==2.3.3",
+  "psutil>=6",
+  "scipy==1.16.3",
+]
 doc = [
   "ipykernel",
   "ipython",
@@ -73,6 +82,7 @@ envs.default.installer = "uv"
 envs.default.dependency-groups = [ "dev" ]
 envs.docs.scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
+envs.docs.scripts.doctest = "sphinx-build -M doctest docs docs/_build -W {args}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
 envs.docs.dependency-groups = [ "doc" ]
 envs.hatch-test.scripts.cov-combine = "coverage combine"
@@ -121,6 +131,7 @@ lint.ignore = [
   "E741",
 ]
 lint.per-file-ignores."*/__init__.py" = [ "F401" ]
+lint.per-file-ignores."benchmarks/*" = [ "D", "E402" ]
 lint.per-file-ignores."docs/*" = [ "I" ]
 lint.per-file-ignores."tests/*" = [ "D" ]
 lint.pydocstyle.convention = "numpy"
@@ -144,6 +155,7 @@ run.omit = [ "**/test_*.py" ]
 run.patch = [ "subprocess" ]
 run.source = [ "annplyr" ]
 report.exclude_also = [ "@(abc\\.)?abstractmethod", "raise NotImplementedError" ]
+report.fail_under = 85
 report.show_missing = true
 
 [tool.cruft]

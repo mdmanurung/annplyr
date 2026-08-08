@@ -20,9 +20,11 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 - Use `ap.col("name")`, selectors such as `ap.starts_with(...)`, and helpers such as `ap.mean(...)`, `ap.if_else(...)`, and `ap.case_when(...)` instead of pandas string queries.
 - `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like sources (`x`, layers, `raw`, `obsm`, `varm`) are read-only expression sources.
 - AnnData-returning verbs must preserve alignment across `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`, and `varp`.
+- Axis-changing verbs default to independent results. Treat `copy=False` as permission for either a view or a materialized result, never as an `is_view` guarantee.
+- Same-shape writers use `inplace=False`; grouped AnnData verbs preserve grouping until `ungroup()`.
 - Joins are metadata joins for `obs` or `var`; they should not silently create duplicated cells/features.
-- Whole-matrix long exports are expensive. Select features explicitly unless the user clearly asks for all features, and use `max_matrix_values=` for hard budgets.
-- Backed AnnData objects are read-only for mutating verbs unless the object is intentionally loaded into memory first.
+- Whole-matrix long exports are expensive. Select features explicitly unless the user clearly asks for all features, and use cumulative `max_matrix_values=` budgets.
+- Backed axis selection with `copy=True` returns an in-memory result. Load backed objects before same-shape mutation.
 
 ## Reference Files
 
@@ -43,4 +45,5 @@ For docs or skill changes, also check the Sphinx build when practical:
 
 ```bash
 uvx hatch run docs:build
+uvx hatch run docs:doctest
 ```

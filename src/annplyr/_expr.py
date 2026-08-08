@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import narwhals as nw
+import numpy as np
 import pandas as pd
 
-from annplyr._errors import DuplicateNameError, UnknownColumnError
+from annplyr._errors import DuplicateNameError, SelectionError, UnknownColumnError
 
 _MISSING = object()
 
@@ -16,6 +17,221 @@ _MISSING = object()
 @dataclass(frozen=True)
 class Desc:
     expr: Any
+
+
+Cardinality = Literal["row", "scalar", "unknown"]
+
+
+def _merge_dependencies(*values: Any) -> frozenset[str] | None:
+    dependencies: set[str] = set()
+    for value in values:
+        if isinstance(value, AnnplyrExpr):
+            if value.dependencies is None:
+                return None
+            dependencies.update(value.dependencies)
+        elif isinstance(value, nw.Expr):
+            return None
+        elif isinstance(value, Mapping):
+            nested = _merge_dependencies(*value.values())
+            if nested is None:
+                return None
+            dependencies.update(nested)
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            nested = _merge_dependencies(*value)
+            if nested is None:
+                return None
+            dependencies.update(nested)
+    return frozenset(dependencies)
+
+
+def _unwrap(value: Any) -> Any:
+    if isinstance(value, AnnplyrExpr):
+        return value.expr
+    if isinstance(value, Mapping):
+        return {key: _unwrap(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_unwrap(item) for item in value)
+    if isinstance(value, list):
+        return [_unwrap(item) for item in value]
+    return value
+
+
+def _combined_cardinality(*values: Any) -> Cardinality:
+    cardinalities = [value.cardinality for value in values if isinstance(value, AnnplyrExpr)]
+    if any(cardinality == "unknown" for cardinality in cardinalities):
+        return "unknown"
+    if any(cardinality == "row" for cardinality in cardinalities):
+        return "row"
+    return "scalar"
+
+
+@dataclass(frozen=True)
+class AnnplyrExpr:
+    """Narwhals expression plus conservative source-planning metadata."""
+
+    expr: nw.Expr
+    dependencies: frozenset[str] | None
+    output_width: int | None = 1
+    cardinality: Cardinality = "unknown"
+
+    __array_priority__ = 1000
+
+    def to_narwhals(self) -> nw.Expr:
+        """Return the wrapped public Narwhals expression."""
+        return self.expr
+
+    def _binary(self, other: Any, method: str, *, reflected: bool = False) -> AnnplyrExpr:
+        if reflected:
+            reverse_method = f"__r{method[2:]}"
+            result = getattr(self.expr, reverse_method)(_unwrap(other))
+        else:
+            result = getattr(self.expr, method)(_unwrap(other))
+        return AnnplyrExpr(
+            result,
+            _merge_dependencies(self, other),
+            1,
+            _combined_cardinality(self, other),
+        )
+
+    def __add__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__add__")
+
+    def __radd__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__add__", reflected=True)
+
+    def __sub__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__sub__")
+
+    def __rsub__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__sub__", reflected=True)
+
+    def __mul__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__mul__")
+
+    def __rmul__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__mul__", reflected=True)
+
+    def __truediv__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__truediv__")
+
+    def __rtruediv__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__truediv__", reflected=True)
+
+    def __floordiv__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__floordiv__")
+
+    def __rfloordiv__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__floordiv__", reflected=True)
+
+    def __mod__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__mod__")
+
+    def __rmod__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__mod__", reflected=True)
+
+    def __pow__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__pow__")
+
+    def __rpow__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__pow__", reflected=True)
+
+    def __and__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__and__")
+
+    def __rand__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__and__", reflected=True)
+
+    def __or__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__or__")
+
+    def __ror__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__or__", reflected=True)
+
+    def __eq__(self, other: Any) -> AnnplyrExpr:  # type: ignore[override]
+        return self._binary(other, "__eq__")
+
+    def __ne__(self, other: Any) -> AnnplyrExpr:  # type: ignore[override]
+        return self._binary(other, "__ne__")
+
+    def __lt__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__lt__")
+
+    def __le__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__le__")
+
+    def __gt__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__gt__")
+
+    def __ge__(self, other: Any) -> AnnplyrExpr:
+        return self._binary(other, "__ge__")
+
+    def __invert__(self) -> AnnplyrExpr:
+        return AnnplyrExpr(~self.expr, self.dependencies, self.output_width, self.cardinality)
+
+    def __neg__(self) -> AnnplyrExpr:
+        return AnnplyrExpr(-self.expr, self.dependencies, self.output_width, self.cardinality)
+
+    def __pos__(self) -> AnnplyrExpr:
+        return self
+
+    def __bool__(self) -> bool:
+        raise TypeError("AnnplyrExpr cannot be used as a Python boolean; combine predicates with & or |")
+
+    def __getattr__(self, name: str) -> Any:
+        attribute = getattr(self.expr, name)
+        if callable(attribute):
+            return _expression_method(self, attribute, name)
+        return _ExprNamespace(self, attribute)
+
+
+@dataclass(frozen=True)
+class _ExprNamespace:
+    owner: AnnplyrExpr
+    value: Any
+
+    def __getattr__(self, name: str) -> Any:
+        attribute = getattr(self.value, name)
+        if callable(attribute):
+            return _expression_method(self.owner, attribute, name)
+        return _ExprNamespace(self.owner, attribute)
+
+
+_SCALAR_METHODS = {"all", "any", "first", "last", "len", "max", "mean", "median", "min", "n_unique", "std", "sum"}
+
+
+def _expression_method(owner: AnnplyrExpr, method: Callable[..., Any], name: str) -> Callable[..., Any]:
+    def call(*args: Any, **kwargs: Any) -> Any:
+        result = method(*(_unwrap(arg) for arg in args), **{key: _unwrap(value) for key, value in kwargs.items()})
+        if not isinstance(result, nw.Expr):
+            return result
+        dependencies = _merge_dependencies(owner, args, kwargs)
+        if name == "over":
+            cardinality: Cardinality = "row"
+        elif name in _SCALAR_METHODS or kwargs.get("returns_scalar") is True:
+            cardinality = "scalar"
+        else:
+            cardinality = _combined_cardinality(owner, *args)
+        return AnnplyrExpr(result, dependencies, owner.output_width, cardinality)
+
+    return call
+
+
+def to_narwhals(value: Any) -> Any:
+    """Unwrap an annplyr expression; leave non-wrapper values unchanged."""
+    return _unwrap(value)
+
+
+def expression_dependencies(value: Any) -> frozenset[str] | None:
+    """Return exact dependencies or ``None`` for an opaque expression."""
+    if isinstance(value, AnnplyrExpr):
+        return value.dependencies
+    if isinstance(value, nw.Expr):
+        return None
+    if isinstance(value, Desc):
+        return expression_dependencies(value.expr)
+    if hasattr(value, "to_expr"):
+        return None
+    return frozenset()
 
 
 class AnnplyrSelector(Protocol):
@@ -116,7 +332,19 @@ class _WhereSelector:
     def resolve(self, frame: pd.DataFrame, columns: list[str], public_columns: list[str]) -> list[str]:
         selected: list[str] = []
         for column in public_columns:
-            if self.predicate(frame[column]):
+            probe = pd.Series([], dtype=frame[column].dtype, name=column)
+            try:
+                decision = self.predicate(probe)
+            except Exception as exc:
+                msg = (
+                    "where() predicates receive a zero-length typed Series in v0.3; "
+                    "value-dependent predicates are unsupported"
+                )
+                raise SelectionError(msg) from exc
+            if not isinstance(decision, (bool, np.bool_)):
+                msg = "where() predicates must return one bool from schema/dtype information"
+                raise SelectionError(msg)
+            if bool(decision):
                 selected.append(column)
         return selected
 
@@ -257,7 +485,8 @@ class _IfAnyAll:
     def to_expr(self, frame: pd.DataFrame) -> Any:
         selected = _resolve_columns(self.selector, frame)
         if not selected:
-            return lit(False if self.how == "any" else True)
+            row = col("__annplyr_row_number__")
+            return row < 0 if self.how == "any" else row > 0
         expr = self.predicate(selected[0])
         for column in selected[1:]:
             next_expr = self.predicate(column)
@@ -289,19 +518,25 @@ def _function_label(function: Any, index: int) -> str:
     return name
 
 
-def col(*names: str | Iterable[str]) -> nw.Expr:
-    return nw.col(*names)
+def col(*names: str | Iterable[str]) -> AnnplyrExpr:
+    flattened: list[str] = []
+    for name in names:
+        if isinstance(name, str):
+            flattened.append(name)
+        else:
+            flattened.extend(str(item) for item in name)
+    return AnnplyrExpr(nw.col(*flattened), frozenset(flattened), len(flattened), "row")
 
 
-def lit(value: Any) -> nw.Expr:
-    return nw.lit(value)
+def lit(value: Any) -> AnnplyrExpr:
+    return AnnplyrExpr(nw.lit(value), frozenset(), 1, "scalar")
 
 
-obs_names: nw.Expr = col("__annplyr_obs_names__").alias("obs_names")
-var_names: nw.Expr = col("__annplyr_var_names__").alias("var_names")
+obs_names: AnnplyrExpr = col("__annplyr_obs_names__").alias("obs_names")
+var_names: AnnplyrExpr = col("__annplyr_var_names__").alias("var_names")
 
 
-def desc(expr: str | nw.Expr) -> Desc:
+def desc(expr: str | AnnplyrExpr | nw.Expr) -> Desc:
     return Desc(col(expr) if isinstance(expr, str) else expr)
 
 
@@ -366,51 +601,58 @@ def if_all(selector: Any, predicate: Callable[[str], Any]) -> Any:
     return _IfAnyAll(selector=selector, predicate=predicate, how="all")
 
 
-def _expr(expr: str | nw.Expr) -> nw.Expr:
-    return col(expr) if isinstance(expr, str) else expr
+def _expr(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
+    if isinstance(expr, str):
+        return col(expr)
+    if isinstance(expr, AnnplyrExpr):
+        return expr
+    if isinstance(expr, nw.Expr):
+        return AnnplyrExpr(expr, None, None, "unknown")
+    msg = "expression must be a column name, AnnplyrExpr, or Narwhals expression"
+    raise UnknownColumnError(msg)
 
 
-def n() -> nw.Expr:
-    return nw.len()
+def n() -> AnnplyrExpr:
+    return AnnplyrExpr(nw.len(), frozenset(), 1, "scalar")
 
 
-def n_distinct(expr: str | nw.Expr) -> nw.Expr:
+def n_distinct(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).n_unique()
 
 
-def mean(expr: str | nw.Expr) -> nw.Expr:
+def mean(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).mean()
 
 
-def median(expr: str | nw.Expr) -> nw.Expr:
+def median(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).median()
 
 
-def sd(expr: str | nw.Expr) -> nw.Expr:
+def sd(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).std()
 
 
-def sum(expr: str | nw.Expr) -> nw.Expr:
+def sum(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).sum()
 
 
-def min(expr: str | nw.Expr) -> nw.Expr:
+def min(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).min()
 
 
-def max(expr: str | nw.Expr) -> nw.Expr:
+def max(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).max()
 
 
-def first(expr: str | nw.Expr) -> nw.Expr:
+def first(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).first()
 
 
-def last(expr: str | nw.Expr) -> nw.Expr:
+def last(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).last()
 
 
-def nth(expr: str | nw.Expr, n: int, *, default: Any = None) -> nw.Expr:
+def nth(expr: str | AnnplyrExpr | nw.Expr, n: int, *, default: Any = None) -> AnnplyrExpr:
     def _take_nth(series: Any) -> Any:
         index = n if n >= 0 else series.len() + n
         if index < 0 or index >= series.len():
@@ -420,7 +662,7 @@ def nth(expr: str | nw.Expr, n: int, *, default: Any = None) -> nw.Expr:
     return _expr(expr).map_batches(_take_nth, returns_scalar=True)
 
 
-def lead(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
+def lead(expr: str | AnnplyrExpr | nw.Expr, n: int = 1, *, default: Any = None) -> AnnplyrExpr:
     if n < 0:
         return lag(expr, -n, default=default)
     if n == 0:
@@ -428,10 +670,11 @@ def lead(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
     shifted = _expr(expr).shift(-n)
     if default is None:
         return shifted
-    return nw.when(col("__annplyr_row_number__") > (nw.len() - n)).then(_literal_expr(default)).otherwise(shifted)
+    length = AnnplyrExpr(nw.len(), frozenset(), 1, "scalar")
+    return if_else(col("__annplyr_row_number__") > (length - n), default, shifted)
 
 
-def lag(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
+def lag(expr: str | AnnplyrExpr | nw.Expr, n: int = 1, *, default: Any = None) -> AnnplyrExpr:
     if n < 0:
         return lead(expr, -n, default=default)
     if n == 0:
@@ -439,135 +682,151 @@ def lag(expr: str | nw.Expr, n: int = 1, *, default: Any = None) -> nw.Expr:
     shifted = _expr(expr).shift(n)
     if default is None:
         return shifted
-    return nw.when(col("__annplyr_row_number__") <= n).then(_literal_expr(default)).otherwise(shifted)
+    return if_else(col("__annplyr_row_number__") <= n, default, shifted)
 
 
-def coalesce(*exprs: str | nw.Expr | Any) -> nw.Expr:
-    values = [col(expr) if isinstance(expr, str) else _literal_expr(expr) for expr in exprs]
-    return nw.coalesce(*values)
+def coalesce(*exprs: str | AnnplyrExpr | nw.Expr | Any) -> AnnplyrExpr:
+    values = [
+        col(expr) if isinstance(expr, str) else _expr(expr) if isinstance(expr, (AnnplyrExpr, nw.Expr)) else lit(expr)
+        for expr in exprs
+    ]
+    return AnnplyrExpr(
+        nw.coalesce(*[_unwrap(value) for value in values]),
+        _merge_dependencies(*values),
+        1,
+        _combined_cardinality(*values),
+    )
 
 
-def na_if(expr: str | nw.Expr, value: Any) -> nw.Expr:
+def na_if(expr: str | AnnplyrExpr | nw.Expr, value: Any) -> AnnplyrExpr:
     base = _expr(expr)
-    return nw.when(base == value).then(None).otherwise(base)
+    return if_else(base == value, None, base)
 
 
-def replace_na(expr: str | nw.Expr, value: Any) -> nw.Expr:
+def replace_na(expr: str | AnnplyrExpr | nw.Expr, value: Any) -> AnnplyrExpr:
     return _expr(expr).fill_null(value)
 
 
-def is_na(expr: str | nw.Expr) -> nw.Expr:
+def is_na(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).is_null()
 
 
-def min_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def min_rank(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     return _expr(expr).rank("min", descending=descending)
 
 
-def max_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def max_rank(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     return _expr(expr).rank("max", descending=descending)
 
 
-def average_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def average_rank(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     return _expr(expr).rank("average", descending=descending)
 
 
-def dense_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def dense_rank(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     return _expr(expr).rank("dense", descending=descending)
 
 
-def percent_rank(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def percent_rank(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     rank = min_rank(expr, descending=descending) - 1
     denominator = n() - 1
-    return nw.when(denominator == 0).then(0).otherwise(rank / denominator)
+    return if_else(denominator == 0, 0, rank / denominator)
 
 
-def cume_dist(expr: str | nw.Expr, *, descending: bool = False) -> nw.Expr:
+def cume_dist(expr: str | AnnplyrExpr | nw.Expr, *, descending: bool = False) -> AnnplyrExpr:
     rank = _expr(expr).rank("max", descending=descending)
     return rank / n()
 
 
-def ntile(expr: str | nw.Expr, buckets: int) -> nw.Expr:
+def ntile(expr: str | AnnplyrExpr | nw.Expr, buckets: int) -> AnnplyrExpr:
     if buckets < 1:
         msg = "ntile buckets must be a positive integer"
         raise UnknownColumnError(msg)
     return (((_expr(expr).rank("ordinal") - 1) * buckets) / n()).floor() + 1
 
 
-def cum_sum(expr: str | nw.Expr) -> nw.Expr:
+def cum_sum(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cum_sum()
 
 
-def cum_min(expr: str | nw.Expr) -> nw.Expr:
+def cum_min(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cum_min()
 
 
-def cum_max(expr: str | nw.Expr) -> nw.Expr:
+def cum_max(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cum_max()
 
 
-def cum_prod(expr: str | nw.Expr) -> nw.Expr:
+def cum_prod(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cum_prod()
 
 
-def cummean(expr: str | nw.Expr) -> nw.Expr:
+def cummean(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cum_sum() / row_number()
 
 
-def cumany(expr: str | nw.Expr) -> nw.Expr:
+def cumany(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cast(nw.Int64).cum_sum() > 0
 
 
-def cumall(expr: str | nw.Expr) -> nw.Expr:
+def cumall(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     return _expr(expr).cast(nw.Int64).cum_sum() == row_number()
 
 
-def near(expr: str | nw.Expr, other: Any, *, tolerance: float = 1e-8) -> nw.Expr:
+def near(expr: str | AnnplyrExpr | nw.Expr, other: Any, *, tolerance: float = 1e-8) -> AnnplyrExpr:
     return (_expr(expr) - _expr_or_literal(other)).abs() <= tolerance
 
 
-def case_match(expr: str | nw.Expr, *cases: tuple[Any, Any], default: Any = None) -> nw.Expr:
+def case_match(expr: str | AnnplyrExpr | nw.Expr, *cases: tuple[Any, Any], default: Any = None) -> AnnplyrExpr:
     base = _expr(expr)
     out = _literal_expr(default)
     for values, replacement in reversed(cases):
         condition = base.is_in(list(values)) if isinstance(values, (list, tuple, set, frozenset)) else base == values
-        out = nw.when(condition).then(_literal_expr(replacement)).otherwise(out)
+        out = if_else(condition, replacement, out)
     return out
 
 
-def recode(expr: str | nw.Expr, mapping: Mapping[Any, Any], *, default: Any = _MISSING) -> nw.Expr:
+def recode(expr: str | AnnplyrExpr | nw.Expr, mapping: Mapping[Any, Any], *, default: Any = _MISSING) -> AnnplyrExpr:
     cases = tuple((value, replacement) for value, replacement in mapping.items())
     return case_match(expr, *cases, default=_expr(expr) if default is _MISSING else default)
 
 
 def between(
-    expr: str | nw.Expr,
+    expr: str | AnnplyrExpr | nw.Expr,
     lower: Any,
     upper: Any,
     *,
     closed: Literal["left", "right", "none", "both"] = "both",
-) -> nw.Expr:
+) -> AnnplyrExpr:
     return _expr(expr).is_between(lower, upper, closed=closed)
 
 
 def _literal_expr(value: Any) -> Any:
-    return value if isinstance(value, nw.Expr) else lit(value)
+    return value if isinstance(value, (AnnplyrExpr, nw.Expr)) else lit(value)
 
 
 def _expr_or_literal(value: Any) -> Any:
-    return _expr(value) if isinstance(value, (str, nw.Expr)) else lit(value)
+    return _expr(value) if isinstance(value, (str, AnnplyrExpr, nw.Expr)) else lit(value)
 
 
-def if_else(condition: nw.Expr, true: Any, false: Any) -> nw.Expr:
-    return nw.when(condition).then(_literal_expr(true)).otherwise(_literal_expr(false))
+def if_else(condition: AnnplyrExpr | nw.Expr, true: Any, false: Any) -> AnnplyrExpr:
+    true_expr = _literal_expr(true)
+    false_expr = _literal_expr(false)
+    result = nw.when(_unwrap(condition)).then(_unwrap(true_expr)).otherwise(_unwrap(false_expr))
+    return AnnplyrExpr(
+        result,
+        _merge_dependencies(condition, true_expr, false_expr),
+        1,
+        _combined_cardinality(condition, true_expr, false_expr),
+    )
 
 
-def case_when(*cases: tuple[nw.Expr, Any], default: Any = None) -> nw.Expr:
+def case_when(*cases: tuple[AnnplyrExpr | nw.Expr, Any], default: Any = None) -> AnnplyrExpr:
     expr = _literal_expr(default)
     for condition, value in reversed(cases):
         expr = if_else(condition, value, expr)
     return expr
 
 
-def row_number() -> nw.Expr:
+def row_number() -> AnnplyrExpr:
     return col("__annplyr_row_number__")

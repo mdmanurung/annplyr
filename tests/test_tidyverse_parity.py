@@ -103,19 +103,23 @@ def test_grouped_matrix_sources_arrange_distinct_and_slices_are_group_local(dens
     adata.obs["label"] = ["x", "x", "x", "x", "y"]
     grouped = dense_adata.ap.group_by(obs="batch")
 
-    assert grouped.slice_min(ap.col("score"), n=1).obs_names.tolist() == ["c0", "c2"]
-    assert grouped.slice_max(ap.col("score"), n=1).obs_names.tolist() == ["c4", "c3"]
-    assert grouped.slice_tail(n=0).n_obs == 0
+    assert grouped.slice_min(ap.col("score"), n=1).ungroup().obs_names.tolist() == ["c0", "c2"]
+    assert grouped.slice_max(ap.col("score"), n=1).ungroup().obs_names.tolist() == ["c4", "c3"]
+    assert grouped.slice_tail(n=0).ungroup().n_obs == 0
 
     sampled = grouped.slice_sample(n=1, random_state=7)
-    assert sampled.n_obs == 2
-    assert sampled.obs["batch"].tolist() == ["A", "B"]
+    assert sampled.ungroup().n_obs == 2
+    assert sampled.ungroup().obs["batch"].tolist() == ["A", "B"]
 
-    assert grouped.filter(x=ap.row_number() == 1).obs_names.tolist() == ["c0", "c2"]
+    assert grouped.filter(x=ap.row_number() == 1).ungroup().obs_names.tolist() == ["c0", "c2"]
     group_rows = grouped.mutate(x={"group_row": ap.row_number()})
-    assert group_rows.obs["group_row"].tolist() == [1, 2, 1, 2, 3]
-    assert grouped.arrange(x=ap.desc("g0")).obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
-    assert adata.ap.group_by(obs="batch").distinct(obs="label", keep_all=True).obs_names.tolist() == ["c0", "c4", "c2"]
+    assert group_rows.ungroup().obs["group_row"].tolist() == [1, 2, 1, 2, 3]
+    assert grouped.arrange(x=ap.desc("g0")).ungroup().obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
+    assert adata.ap.group_by(obs="batch").distinct(obs="label", keep_all=True).ungroup().obs_names.tolist() == [
+        "c0",
+        "c4",
+        "c2",
+    ]
 
 
 def test_slice_helpers_validate_edge_cases(dense_adata: AnnData) -> None:
@@ -146,7 +150,7 @@ def test_weighted_count_tally_and_add_tally(dense_adata: AnnData) -> None:
     assert added.obs["batch_score_sum"].tolist() == [5.5, 5.5, 3.5, 3.5, 5.5]
 
     grouped_added = dense_adata.ap.group_by(obs="batch").add_tally(wt="score", name="batch_score_sum")
-    assert grouped_added.obs["batch_score_sum"].tolist() == [5.5, 5.5, 3.5, 3.5, 5.5]
+    assert grouped_added.ungroup().obs["batch_score_sum"].tolist() == [5.5, 5.5, 3.5, 3.5, 5.5]
 
 
 def test_tidyr_style_dataframe_helpers() -> None:

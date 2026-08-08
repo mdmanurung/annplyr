@@ -17,7 +17,7 @@ from annplyr._errors import (
     UnknownSourceError,
 )
 from annplyr._frames import evaluate_select, obs_frame
-from annplyr._verbs import _axis, _ensure_not_backed, left_join_adata, summarize_adata
+from annplyr._verbs import _axis, _ensure_not_backed, _same_shape_target, left_join_adata, summarize_adata
 
 
 @dataclass(frozen=True)
@@ -104,10 +104,11 @@ def add_sample_meta(
     *,
     sample: str,
     by: str | None = None,
-    copy: bool = True,
+    inplace: bool = False,
     suffixes: tuple[str, str] = ("", "_meta"),
 ) -> AnnData:
     """Add sample-level metadata to ``adata.obs`` without changing observation order."""
+    _ensure_not_backed(adata, "add_sample_meta")
     _check_obs_column(adata, sample)
     by = sample if by is None else by
     metadata = _coerce_sample_metadata(meta)
@@ -119,7 +120,11 @@ def add_sample_meta(
             msg = f"Metadata already contains target sample column {sample!r}"
             raise DuplicateNameError(msg)
         metadata = metadata.rename(columns={by: sample})
-    return left_join_adata(adata, metadata, by=sample, axis="obs", suffixes=suffixes, copy=copy)
+    planned = left_join_adata(adata, metadata, by=sample, axis="obs", suffixes=suffixes, copy=True)
+    if not inplace:
+        return planned
+    adata.obs = planned.obs.copy()
+    return adata
 
 
 def feature_present(
@@ -166,20 +171,24 @@ def feature_present(
     )
 
 
-def rename_obs_names(adata: AnnData, mapper: Callable[[str], str] | Mapping[str, str], *, copy: bool = True) -> AnnData:
+def rename_obs_names(
+    adata: AnnData, mapper: Callable[[str], str] | Mapping[str, str], *, inplace: bool = False
+) -> AnnData:
     """Rename observation names while preserving AnnData alignment.
 
     Mapping inputs follow the package rename convention: ``{new_name: old_name}``.
     """
-    return _rename_axis_names(adata, mapper, axis="obs", copy=copy)
+    return _rename_axis_names(adata, mapper, axis="obs", inplace=inplace)
 
 
-def rename_var_names(adata: AnnData, mapper: Callable[[str], str] | Mapping[str, str], *, copy: bool = True) -> AnnData:
+def rename_var_names(
+    adata: AnnData, mapper: Callable[[str], str] | Mapping[str, str], *, inplace: bool = False
+) -> AnnData:
     """Rename variable names while preserving AnnData alignment.
 
     Mapping inputs follow the package rename convention: ``{new_name: old_name}``.
     """
-    return _rename_axis_names(adata, mapper, axis="var", copy=copy)
+    return _rename_axis_names(adata, mapper, axis="var", inplace=inplace)
 
 
 def replace_name_suffix(
@@ -188,7 +197,7 @@ def replace_name_suffix(
     new_suffix: str = "",
     *,
     axis: str = "obs",
-    copy: bool = True,
+    inplace: bool = False,
 ) -> AnnData:
     """Replace a suffix on observation or variable names."""
     if current_suffix:
@@ -197,12 +206,14 @@ def replace_name_suffix(
         )
     else:
         mapper = lambda name: f"{name}{new_suffix}"
-    return _rename_axis_names(adata, mapper, axis=axis, copy=copy)
+    return _rename_axis_names(adata, mapper, axis=axis, inplace=inplace)
 
 
-def add_name_prefix(adata: AnnData, prefix: str, *, axis: str = "obs", sep: str = "_", copy: bool = True) -> AnnData:
+def add_name_prefix(
+    adata: AnnData, prefix: str, *, axis: str = "obs", sep: str = "_", inplace: bool = False
+) -> AnnData:
     """Add a prefix to observation or variable names."""
-    return _rename_axis_names(adata, lambda name: f"{prefix}{sep}{name}", axis=axis, copy=copy)
+    return _rename_axis_names(adata, lambda name: f"{prefix}{sep}{name}", axis=axis, inplace=inplace)
 
 
 def name_duplicates(adata: AnnData, *, axis: str = "obs") -> pd.DataFrame:
@@ -225,13 +236,13 @@ def store_palette(
     palette: Mapping[Any, str] | Sequence[str],
     *,
     key: str | None = None,
-    copy: bool = True,
+    inplace: bool = False,
 ) -> AnnData:
     """Store a Scanpy-compatible observation palette in ``adata.uns``."""
     _ensure_not_backed(adata, "store_palette")
     levels = _obs_levels(adata, obs)
     colors = _palette_colors(levels, palette)
-    out = adata.copy() if copy else adata
+    out = _same_shape_target(adata, inplace=inplace, verb="store_palette")
     out.uns[key or f"{obs}_colors"] = colors
     return out
 
@@ -282,14 +293,14 @@ def _rename_axis_names(
     mapper: Callable[[str], str] | Mapping[str, str],
     *,
     axis: str,
-    copy: bool,
+    inplace: bool,
 ) -> AnnData:
     _ensure_not_backed(adata, f"rename_{axis}_names")
     axis = _axis(axis)
     names = [str(name) for name in _axis_names(adata, axis)]
     new_names = _map_names(names, mapper, axis=axis)
     _check_unique_names(new_names, axis=axis)
-    out = adata.copy() if copy else adata
+    out = _same_shape_target(adata, inplace=inplace, verb=f"rename_{axis}_names")
     if axis == "obs":
         out.obs_names = new_names
     else:

@@ -17,6 +17,7 @@ from annplyr._errors import (
     UnknownColumnError,
     UnknownSourceError,
 )
+from annplyr._expr import AnnplyrExpr, to_narwhals
 
 ROW_NUMBER = "__annplyr_row_number__"
 OBS_NAMES = "__annplyr_obs_names__"
@@ -26,14 +27,16 @@ VIRTUAL_ATTR = "annplyr_virtual_columns"
 
 
 def obs_frame(adata: AnnData) -> pd.DataFrame:
-    frame = cast(pd.DataFrame, adata.obs).copy()
+    frame = cast(pd.DataFrame, adata.obs).copy(deep=False)
+    frame.index = pd.RangeIndex(len(frame))
     frame[OBS_NAMES] = adata.obs_names.to_numpy()
     frame.attrs[VIRTUAL_ATTR] = {OBS_NAMES}
     return frame
 
 
 def var_frame(adata: AnnData) -> pd.DataFrame:
-    frame = cast(pd.DataFrame, adata.var).copy()
+    frame = cast(pd.DataFrame, adata.var).copy(deep=False)
+    frame.index = pd.RangeIndex(len(frame))
     frame[VAR_NAMES] = adata.var_names.to_numpy()
     frame.attrs[VIRTUAL_ATTR] = {VAR_NAMES}
     return frame
@@ -45,14 +48,14 @@ def x_frame(adata: AnnData, layer: str | None = None) -> pd.DataFrame:
     except KeyError as exc:
         msg = f"Unknown layer: {layer!r}"
         raise UnknownSourceError(msg) from exc
-    return matrix_frame(matrix, adata.obs_names, columns=adata.var_names)
+    return matrix_frame(matrix, pd.RangeIndex(adata.n_obs), columns=adata.var_names)
 
 
 def raw_frame(adata: AnnData) -> pd.DataFrame:
     if adata.raw is None:
         msg = "AnnData object has no raw matrix"
         raise UnknownSourceError(msg)
-    return matrix_frame(adata.raw.X, adata.obs_names, columns=adata.raw.var_names)
+    return matrix_frame(adata.raw.X, pd.RangeIndex(adata.n_obs), columns=adata.raw.var_names)
 
 
 def obsm_frame(adata: AnnData, key: str) -> pd.DataFrame:
@@ -61,7 +64,7 @@ def obsm_frame(adata: AnnData, key: str) -> pd.DataFrame:
     except KeyError as exc:
         msg = f"Unknown obsm key: {key!r}"
         raise UnknownSourceError(msg) from exc
-    return matrix_frame(matrix, adata.obs_names)
+    return matrix_frame(matrix, pd.RangeIndex(adata.n_obs))
 
 
 def varm_frame(adata: AnnData, key: str) -> pd.DataFrame:
@@ -70,7 +73,7 @@ def varm_frame(adata: AnnData, key: str) -> pd.DataFrame:
     except KeyError as exc:
         msg = f"Unknown varm key: {key!r}"
         raise UnknownSourceError(msg) from exc
-    return matrix_frame(matrix, adata.var_names)
+    return matrix_frame(matrix, pd.RangeIndex(adata.n_vars))
 
 
 def obsp_frame(adata: AnnData, key: str) -> pd.DataFrame:
@@ -139,7 +142,9 @@ def matrix_frame(matrix: Any, index: pd.Index, *, columns: pd.Index | Sequence[s
 
 
 def with_row_number(frame: pd.DataFrame) -> pd.DataFrame:
-    work = frame.copy()
+    # Evaluation only adds or replaces whole columns, so a shallow scratch
+    # frame avoids copying every metadata block without exposing source writes.
+    work = frame.copy(deep=False)
     work[ROW_NUMBER] = np.arange(1, len(work) + 1)
     virtual = set(work.attrs.get(VIRTUAL_ATTR, set()))
     virtual.add(ROW_NUMBER)
@@ -176,8 +181,8 @@ def selector_list(value: Any) -> list[Any]:
 
 def expr_for(value: Any) -> Any:
     if isinstance(value, str):
-        return nw.col(value)
-    return value
+        value = nw.col(value)
+    return to_narwhals(value)
 
 
 def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
@@ -198,7 +203,7 @@ def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
                 if names:
                     resolved_exprs.append(nw.col(*names))
             else:
-                resolved_exprs.append(expr)
+                resolved_exprs.append(to_narwhals(expr))
         except UnknownColumnError:
             raise
         except Exception as exc:
@@ -238,7 +243,7 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
 
 def _predicate_expr(frame: pd.DataFrame, predicate: Any) -> Any:
     if hasattr(predicate, "to_expr"):
-        return predicate.to_expr(frame)
+        return to_narwhals(predicate.to_expr(frame))
     return expr_for(predicate)
 
 
@@ -270,19 +275,65 @@ def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | A
         return pd.DataFrame(index=frame.index)
     work = with_row_number(frame)
     assigned = pd.DataFrame(index=frame.index)
-    for name, expr in assignments.items():
+    for batch in _assignment_batches(assignments):
         try:
-            result = nw.from_native(work).select(expr_for(expr).alias(name)).to_native()
+            expressions = [expr_for(expr).alias(name) for name, expr in batch]
+            result = nw.from_native(work).select(*expressions).to_native()
         except ColumnNotFoundError as exc:
             msg = f"Unknown column in assignment: {exc}"
             raise UnknownColumnError(msg) from exc
         except Exception as exc:
             msg = f"Assignment failed: {exc}"
             raise SelectionError(msg) from exc
-        series = _aligned_assignment_series(result[name], frame.index, name=name)
-        assigned[name] = series
-        work[name] = series
+        for name, _ in batch:
+            series = _aligned_assignment_series(result[name], frame.index, name=name)
+            assigned[name] = series
+            work[name] = series
     return assigned
+
+
+def _assignment_batches(assignments: Mapping[str, Any]) -> list[list[tuple[str, Any]]]:
+    """Batch only contiguous wrapped expressions proven mutually independent."""
+    batches: list[list[tuple[str, Any]]] = []
+    current: list[tuple[str, Any]] = []
+    current_outputs: set[str] = set()
+    current_dependencies: set[str] = set()
+    current_cardinality: str | None = None
+
+    def flush() -> None:
+        nonlocal current, current_outputs, current_dependencies, current_cardinality
+        if current:
+            batches.append(current)
+        current = []
+        current_outputs = set()
+        current_dependencies = set()
+        current_cardinality = None
+
+    for name, expression in assignments.items():
+        batchable = (
+            isinstance(expression, AnnplyrExpr)
+            and expression.dependencies is not None
+            and expression.output_width == 1
+            and expression.cardinality in {"row", "scalar"}
+        )
+        dependencies = set(expression.dependencies or ()) if isinstance(expression, AnnplyrExpr) else set()
+        compatible = (
+            batchable
+            and (current_cardinality is None or current_cardinality == expression.cardinality)
+            and not dependencies.intersection(current_outputs)
+            and name not in current_dependencies
+        )
+        if not compatible:
+            flush()
+        if batchable:
+            current.append((name, expression))
+            current_outputs.add(name)
+            current_dependencies.update(dependencies)
+            current_cardinality = expression.cardinality
+        else:
+            batches.append([(name, expression)])
+    flush()
+    return batches
 
 
 def _aligned_assignment_series(series: pd.Series, index: pd.Index, *, name: str) -> pd.Series:

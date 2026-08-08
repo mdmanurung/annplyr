@@ -1,81 +1,114 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from typing import Any, cast
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 
 from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
+from annplyr._expr import col
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
+from annplyr._groups import GroupPlan, GroupSpec
 from annplyr._verbs import (
-    _obs_assignment_frames,
+    _axis_positions,
+    _desc_order_by,
+    _slice_selector,
+    _sort_values_for_frame,
+    _subset_positions,
     _validate_slice_n,
-    _var_assignment_frames,
     add_count_adata,
+    anti_join_adata,
     arrange_adata,
-    count_frame,
     distinct_adata,
     filter_adata,
+    full_join_adata,
+    inner_join_adata,
+    left_join_adata,
     mutate_adata,
-    slice_max_adata,
-    slice_min_adata,
+    relocate_adata,
+    rename_adata,
+    rename_with_adata,
+    right_join_adata,
+    select_adata,
+    semi_join_adata,
     summarize_adata,
+    transmute_adata,
 )
+
+T = TypeVar("T")
 
 
 class GroupedAnnData:
-    """A grouped AnnData wrapper."""
+    """Persistent positional grouping over one AnnData metadata axis."""
 
-    def __init__(self, adata: AnnData, *, obs: Any = None, var: Any = None):
-        if obs is not None and var is not None:
-            msg = "group_by currently accepts one axis at a time"
-            raise IncompatibleAxisError(msg)
+    def __init__(
+        self,
+        adata: AnnData,
+        *,
+        obs: Any = None,
+        var: Any = None,
+        spec: GroupSpec | None = None,
+    ):
         self._adata = adata
-        self._axis = "obs" if obs is not None else "var"
-        self._by = obs if obs is not None else var
+        self._spec = spec if spec is not None else GroupSpec.resolve(adata, obs=obs, var=var)
+        self._spec.validate(adata)
+
+    @property
+    def spec(self) -> GroupSpec:
+        return self._spec
+
+    @property
+    def _axis(self) -> str:
+        return self._spec.axis
+
+    @property
+    def _by(self) -> list[str]:
+        return list(self._spec.columns)
+
+    def _plan(self) -> GroupPlan:
+        return GroupPlan.build(self._adata, self._spec)
+
+    def _wrap(self, adata: AnnData, *, spec: GroupSpec | None = None) -> GroupedAnnData:
+        return GroupedAnnData(adata, spec=spec or self._spec)
+
+    def _same_shape_result(
+        self,
+        adata: AnnData,
+        *,
+        inplace: bool,
+        spec: GroupSpec | None = None,
+    ) -> GroupedAnnData:
+        updated = spec or self._spec
+        if inplace:
+            if adata is not self._adata:
+                raise AnnplyrError("grouped in-place verb returned a replacement AnnData object")
+            self._spec = updated
+            return self
+        return self._wrap(adata, spec=updated)
 
     def __iter__(self) -> Iterator[tuple[dict[str, Any], AnnData]]:
-        yield from self._iter_groups(self._adata)
-
-    def _iter_groups(self, adata: AnnData) -> Iterator[tuple[dict[str, Any], AnnData]]:
-        by_frame = self._by_frame(adata)
-        for _, key_row in by_frame.drop_duplicates().iterrows():
-            mask = _key_mask(by_frame, key_row)
-            key = _key_dict(key_row)
+        plan = self._plan()
+        for row, positions in zip(range(len(plan.keys)), plan.positions, strict=True):
+            key = {column: plan.keys.iloc[row][column] for column in self._spec.columns}
             if self._axis == "obs":
-                yield key, adata[mask.to_numpy(), :]
+                group = _subset_positions(self._adata, positions, None, copy=False)
             else:
-                yield key, adata[:, mask.to_numpy()]
-
-    def _axis_frame(self, adata: AnnData) -> pd.DataFrame:
-        return obs_frame(adata) if self._axis == "obs" else var_frame(adata)
-
-    def _by_frame(self, adata: AnnData) -> pd.DataFrame:
-        return evaluate_select(self._axis_frame(adata), self._by)
+                group = _subset_positions(self._adata, None, positions, copy=False)
+            yield key, group
 
     def group_vars(self) -> list[str]:
-        """Return grouping variable names."""
-        return list(self._by_frame(self._adata).columns)
+        self._spec.validate(self._adata)
+        return list(self._spec.columns)
 
     def group_keys(self) -> pd.DataFrame:
-        """Return one row per group key."""
-        return self._by_frame(self._adata).drop_duplicates().reset_index(drop=True)
+        return self._plan().keys.copy()
 
     def group_data(self) -> pd.DataFrame:
-        """Return group keys plus axis labels in each group."""
-        by_frame = self._by_frame(self._adata)
-        rows: list[dict[str, Any]] = []
-        for _, key_row in by_frame.drop_duplicates().iterrows():
-            mask = _key_mask(by_frame, key_row)
-            row = _key_dict(key_row)
-            row[".rows"] = by_frame.index[mask.to_numpy()].tolist()
-            rows.append(row)
-        return pd.DataFrame(rows, columns=[*by_frame.columns, ".rows"])
+        return self._plan().group_data()
 
     def ungroup(self) -> AnnData:
-        """Return the underlying AnnData object."""
         return self._adata
 
     def filter(
@@ -89,34 +122,12 @@ class GroupedAnnData:
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
-        copy: bool = False,
-    ) -> AnnData:
-        adata = self._adata
-        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obs_names, obsm)):
-            labels: list[str] = []
-            for _, group in self._iter_groups(adata):
-                filtered = filter_adata(
-                    group,
-                    obs=obs,
-                    x=x,
-                    raw=raw,
-                    obs_names=obs_names,
-                    obsm=obsm,
-                    layer=layer,
-                    copy=False,
-                )
-                labels.extend(filtered.obs_names.tolist())
-            adata = adata[labels, :]
-            obs = x = raw = obs_names = obsm = None
-        elif self._axis == "var" and any(value is not None for value in (var, var_names, varm)):
-            labels = []
-            for _, group in self._iter_groups(adata):
-                filtered = filter_adata(group, var=var, var_names=var_names, varm=varm, copy=False)
-                labels.extend(filtered.var_names.tolist())
-            adata = adata[:, labels]
-            var = var_names = varm = None
-        return filter_adata(
-            adata,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        plan = self._plan()
+        result = filter_adata(
+            self._adata,
             obs=obs,
             var=var,
             x=x,
@@ -127,7 +138,118 @@ class GroupedAnnData:
             varm=varm,
             layer=layer,
             copy=copy,
+            max_matrix_values=max_matrix_values,
+            _group_positions=plan.positions,
+            _group_axis=self._axis,
         )
+        return self._wrap(result)
+
+    def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> GroupedAnnData:
+        self._spec.validate(self._adata)
+        if self._axis == "obs" and obs is not None:
+            obs = self._retain_group_keys(obs, axis="obs")
+        elif self._axis == "var" and var is not None:
+            var = self._retain_group_keys(var, axis="var")
+        result = select_adata(self._adata, obs=obs, var=var, x=x, copy=copy)
+        return self._wrap(result)
+
+    def _retain_group_keys(self, selector: Any, *, axis: str) -> list[str]:
+        frame = obs_frame(self._adata) if axis == "obs" else var_frame(self._adata)
+        selected = [str(column) for column in evaluate_select(frame, selector).columns]
+        omitted = [column for column in self._spec.columns if column not in selected]
+        return [*omitted, *selected]
+
+    def rename(
+        self,
+        obs: Mapping[str, str] | None = None,
+        var: Mapping[str, str] | None = None,
+        x: Mapping[str, str] | None = None,
+        *,
+        inplace: bool = False,
+    ) -> GroupedAnnData:
+        axis_mapping = obs if self._axis == "obs" else var
+        update = {old: new for new, old in (axis_mapping or {}).items()}
+        spec = self._spec.renamed(update)
+        result = rename_adata(self._adata, obs=obs, var=var, x=x, inplace=inplace)
+        return self._same_shape_result(result, inplace=inplace, spec=spec)
+
+    def rename_with(
+        self,
+        func: Callable[[str], str],
+        *,
+        obs: Any = None,
+        var: Any = None,
+        x: Any = None,
+        inplace: bool = False,
+    ) -> GroupedAnnData:
+        before = list(cast(pd.DataFrame, self._adata.obs if self._axis == "obs" else self._adata.var).columns)
+        result = rename_with_adata(
+            self._adata,
+            func,
+            obs=obs,
+            var=var,
+            x=x,
+            inplace=inplace,
+        )
+        after = list(cast(pd.DataFrame, result.obs if self._axis == "obs" else result.var).columns)
+        spec = self._spec.renamed(dict(zip(before, after, strict=True)))
+        return self._same_shape_result(result, inplace=inplace, spec=spec)
+
+    def relocate(
+        self,
+        obs: Any = None,
+        var: Any = None,
+        x: Any = None,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        inplace: bool = False,
+    ) -> GroupedAnnData:
+        result = relocate_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            before=before,
+            after=after,
+            inplace=inplace,
+        )
+        return self._same_shape_result(result, inplace=inplace)
+
+    def transmute(
+        self,
+        obs: Mapping[str, Any] | None = None,
+        var: Mapping[str, Any] | None = None,
+        x: Mapping[str, Any] | None = None,
+        raw: Mapping[str, Any] | None = None,
+        obsm: Mapping[str, Mapping[str, Any]] | None = None,
+        varm: Mapping[str, Mapping[str, Any]] | None = None,
+        layer: str | None = None,
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        plan = self._plan()
+        if self._axis == "obs":
+            retained = {column: col(column) for column in self._spec.columns}
+            retained.update(obs or {})
+            obs = retained
+        else:
+            retained = {column: col(column) for column in self._spec.columns}
+            retained.update(var or {})
+            var = retained
+        result = transmute_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            max_matrix_values=max_matrix_values,
+            _group_positions=plan.positions,
+            _group_axis=self._axis,
+        )
+        return self._wrap(result)
 
     def mutate(
         self,
@@ -139,55 +261,24 @@ class GroupedAnnData:
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
         inplace: bool = False,
-    ) -> AnnData:
-        if self._adata.isbacked:
-            msg = "grouped mutate cannot modify an AnnData object in backed mode; call .to_memory() first"
-            raise AnnplyrError(msg)
-        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obsm)):
-            out = self._adata if inplace else self._adata.copy()
-            by_frame = self._by_frame(out)
-            obs_col_pieces: dict[str, list[tuple[np.ndarray, pd.Series]]] = {}
-            for _, key_row in by_frame.drop_duplicates().iterrows():
-                mask = _key_mask(by_frame, key_row)
-                positions = np.where(mask.to_numpy())[0]
-                group = out[mask.to_numpy(), :]
-                for frame, assignments in _obs_assignment_frames(group, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer):
-                    group_values = evaluate_assignments(frame, assignments)
-                    for column in group_values.columns:
-                        if column not in obs_col_pieces:
-                            obs_col_pieces[column] = []
-                        obs_col_pieces[column].append((positions, group_values[column].reset_index(drop=True)))
-            obs_df = cast(pd.DataFrame, out.obs)
-            for column, pieces in obs_col_pieces.items():
-                all_pos = np.concatenate([p for p, _ in pieces])
-                order = np.argsort(all_pos, kind="stable")
-                merged = pd.concat([s for _, s in pieces], ignore_index=True).iloc[order]
-                obs_df[column] = merged.to_numpy()
-            return mutate_adata(out, var=var, varm=varm, layer=layer, inplace=True)
-        if self._axis == "var" and any(value is not None for value in (var, varm)):
-            out = self._adata if inplace else self._adata.copy()
-            by_frame = self._by_frame(out)
-            var_col_pieces: dict[str, list[tuple[np.ndarray, pd.Series]]] = {}
-            for _, key_row in by_frame.drop_duplicates().iterrows():
-                mask = _key_mask(by_frame, key_row)
-                positions = np.where(mask.to_numpy())[0]
-                group = out[:, mask.to_numpy()]
-                for frame, assignments in _var_assignment_frames(group, var=var, varm=varm):
-                    group_values = evaluate_assignments(frame, assignments)
-                    for column in group_values.columns:
-                        if column not in var_col_pieces:
-                            var_col_pieces[column] = []
-                        var_col_pieces[column].append((positions, group_values[column].reset_index(drop=True)))
-            var_df = cast(pd.DataFrame, out.var)
-            for column, pieces in var_col_pieces.items():
-                all_pos = np.concatenate([p for p, _ in pieces])
-                order = np.argsort(all_pos, kind="stable")
-                merged = pd.concat([s for _, s in pieces], ignore_index=True).iloc[order]
-                var_df[column] = merged.to_numpy()
-            return mutate_adata(out, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer, inplace=True)
-        return mutate_adata(
-            self._adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=inplace
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        plan = self._plan()
+        result = mutate_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            inplace=inplace,
+            max_matrix_values=max_matrix_values,
+            _group_positions=plan.positions,
+            _group_axis=self._axis,
         )
+        return self._same_shape_result(result, inplace=inplace)
 
     def summarize(
         self,
@@ -198,8 +289,10 @@ class GroupedAnnData:
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
+        max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
-        return summarize_adata(
+        plan = self._plan()
+        result = summarize_adata(
             self._adata,
             obs=obs,
             var=var,
@@ -207,24 +300,63 @@ class GroupedAnnData:
             raw=raw,
             obsm=obsm,
             varm=varm,
-            by=self._by,
+            by=list(self._spec.columns),
             layer=layer,
-        )
+            max_matrix_values=max_matrix_values,
+        ).reset_index(drop=True)
+        if len(result) == len(plan.keys):
+            for column in self._spec.columns:
+                result[column] = pd.Series(plan.keys[column].array, index=result.index)
+        return result
 
     summarise = summarize
 
     def count(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
+        plan = self._plan()
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
-        return count_frame(frame, by=self._by, wt=wt, sort=sort, name=name)
+        if wt is None:
+            counts = [len(positions) for positions in plan.positions]
+        else:
+            weights = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"]
+            counts = [weights.iloc[positions].sum() for positions in plan.positions]
+        result = plan.keys.copy()
+        result[name] = counts
+        if sort:
+            result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
+        return result
 
     def tally(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
         return self.count(wt=wt, sort=sort, name=name)
 
-    def add_count(self, *, wt: Any = None, sort: bool = False, name: str = "n", inplace: bool = False) -> AnnData:
-        return add_count_adata(self._adata, by=self._by, wt=wt, sort=sort, axis=self._axis, name=name, inplace=inplace)
+    def add_count(
+        self,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        name: str = "n",
+        inplace: bool = False,
+    ) -> GroupedAnnData:
+        self._plan()
+        result = add_count_adata(
+            self._adata,
+            by=list(self._spec.columns),
+            wt=wt,
+            sort=sort,
+            axis=self._axis,
+            name=name,
+            inplace=inplace,
+        )
+        return self._same_shape_result(result, inplace=inplace)
 
-    def add_tally(self, *, wt: Any = None, sort: bool = False, name: str = "n", inplace: bool = False) -> AnnData:
-        return add_count_adata(self._adata, by=self._by, wt=wt, sort=sort, axis=self._axis, name=name, inplace=inplace)
+    def add_tally(
+        self,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        name: str = "n",
+        inplace: bool = False,
+    ) -> GroupedAnnData:
+        return self.add_count(wt=wt, sort=sort, name=name, inplace=inplace)
 
     def arrange(
         self,
@@ -235,24 +367,25 @@ class GroupedAnnData:
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
-        copy: bool = False,
-    ) -> AnnData:
-        adata = self._adata
-        if self._axis == "obs" and any(value is not None for value in (obs, x, raw, obsm)):
-            labels: list[str] = []
-            for _, group in self._iter_groups(adata):
-                arranged = arrange_adata(group, obs=obs, x=x, raw=raw, obsm=obsm, layer=layer, copy=False)
-                labels.extend(arranged.obs_names.tolist())
-            adata = adata[labels, :]
-            obs = x = raw = obsm = None
-        elif self._axis == "var" and any(value is not None for value in (var, varm)):
-            labels = []
-            for _, group in self._iter_groups(adata):
-                arranged = arrange_adata(group, var=var, varm=varm, copy=False)
-                labels.extend(arranged.var_names.tolist())
-            adata = adata[:, labels]
-            var = varm = None
-        return arrange_adata(adata, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, copy=copy)
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        plan = self._plan()
+        result = arrange_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            copy=copy,
+            max_matrix_values=max_matrix_values,
+            _group_positions=plan.positions,
+            _group_axis=self._axis,
+        )
+        return self._wrap(result)
 
     def distinct(
         self,
@@ -262,44 +395,74 @@ class GroupedAnnData:
         *,
         keep_all: bool = False,
         copy: bool = True,
-    ) -> AnnData:
-        if self._axis == "obs":
-            if var is not None:
-                msg = "obs-grouped distinct cannot use var selectors"
-                raise IncompatibleAxisError(msg)
-            labels: list[str] = []
-            for _, group in self._iter_groups(self._adata):
-                distinct = distinct_adata(group, obs=obs, x=x, axis="obs", keep_all=keep_all, copy=False)
-                labels.extend(distinct.obs_names.tolist())
-            return self._subset_labels(labels, copy=copy)
-        if obs is not None or x is not None:
-            msg = "var-grouped distinct cannot use obs or x selectors"
-            raise IncompatibleAxisError(msg)
-        labels = []
-        for _, group in self._iter_groups(self._adata):
-            distinct = distinct_adata(group, var=var, axis="var", keep_all=keep_all, copy=False)
-            labels.extend(distinct.var_names.tolist())
-        return self._subset_labels(labels, copy=copy)
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        if self._axis == "obs" and var is not None:
+            raise IncompatibleAxisError("obs-grouped distinct cannot use var selectors")
+        if self._axis == "var" and (obs is not None or x is not None):
+            raise IncompatibleAxisError("var-grouped distinct cannot use obs or x selectors")
+        if not keep_all and self._axis == "obs" and obs is not None:
+            obs = self._retain_group_keys(obs, axis="obs")
+        if not keep_all and self._axis == "var" and var is not None:
+            var = self._retain_group_keys(var, axis="var")
+        plan = self._plan()
+        result = distinct_adata(
+            self._adata,
+            obs=obs,
+            var=var,
+            x=x,
+            axis=self._axis,
+            keep_all=keep_all,
+            copy=copy,
+            max_matrix_values=max_matrix_values,
+            _group_positions=plan.positions,
+            _group_axis=self._axis,
+        )
+        return self._wrap(result)
 
-    def slice_head(self, n: int = 5, *, copy: bool = False) -> AnnData:
-        return self._slice_group_positions(n=n, tail=False, copy=copy)
+    def slice(self, *indices: Any, copy: bool = True) -> GroupedAnnData:
+        plan = self._plan()
+        selector = _slice_selector(indices)
+        pieces: list[np.ndarray] = []
+        for positions in plan.positions:
+            if isinstance(selector, slice):
+                local = np.arange(len(positions), dtype=np.intp)[selector]
+            else:
+                requested = np.asarray(selector)
+                if np.issubdtype(requested.dtype, np.bool_):
+                    local = _axis_positions(requested, len(positions), axis=self._axis)
+                else:
+                    normalized = requested.astype(np.intp, copy=True)
+                    normalized[normalized < 0] += len(positions)
+                    local = normalized[(normalized >= 0) & (normalized < len(positions))]
+            pieces.append(positions[local])
+        return self._subset_group_positions(pieces, copy=copy)
 
-    def slice_tail(self, n: int = 5, *, copy: bool = False) -> AnnData:
-        return self._slice_group_positions(n=n, tail=True, copy=copy)
+    def slice_head(self, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+        _validate_slice_n(n)
+        return self.slice(slice(0, n), copy=copy)
 
-    def slice_min(self, by: Any, n: int = 5, *, copy: bool = False) -> AnnData:
-        labels: list[str] = []
-        for _, group in self._iter_groups(self._adata):
-            sliced = slice_min_adata(group, by=by, n=n, axis=self._axis)
-            labels.extend(_axis_names(sliced, self._axis))
-        return self._subset_labels(labels, copy=copy)
+    def slice_tail(self, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+        _validate_slice_n(n)
+        return self.slice(slice(0, 0) if n == 0 else slice(-n, None), copy=copy)
 
-    def slice_max(self, by: Any, n: int = 5, *, copy: bool = False) -> AnnData:
-        labels: list[str] = []
-        for _, group in self._iter_groups(self._adata):
-            sliced = slice_max_adata(group, by=by, n=n, axis=self._axis)
-            labels.extend(_axis_names(sliced, self._axis))
-        return self._subset_labels(labels, copy=copy)
+    def slice_min(self, by: Any, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+        return self._slice_ordered(by, n=n, descending=False, copy=copy)
+
+    def slice_max(self, by: Any, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+        return self._slice_ordered(by, n=n, descending=True, copy=copy)
+
+    def _slice_ordered(self, by: Any, *, n: int, descending: bool, copy: bool) -> GroupedAnnData:
+        _validate_slice_n(n)
+        plan = self._plan()
+        frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
+        order_by = _desc_order_by(by) if descending else by
+        pieces: list[np.ndarray] = []
+        for positions in plan.positions:
+            local = frame.iloc[positions, :].reset_index(drop=True)
+            ordered = _sort_values_for_frame(local, order_by).to_numpy(dtype=np.intp)[:n]
+            pieces.append(positions[ordered])
+        return self._subset_group_positions(pieces, copy=copy)
 
     def slice_sample(
         self,
@@ -308,64 +471,231 @@ class GroupedAnnData:
         prop: float | None = None,
         replace: bool = False,
         random_state: int | None = None,
-        copy: bool = False,
-    ) -> AnnData:
+        copy: bool = True,
+    ) -> GroupedAnnData:
         if n is not None and prop is not None:
-            msg = "slice_sample accepts n and prop as mutually exclusive arguments"
-            raise SelectionError(msg)
+            raise SelectionError("slice_sample accepts n and prop as mutually exclusive arguments")
         if n is not None and n < 0:
-            msg = "slice_sample n must be non-negative"
-            raise SelectionError(msg)
+            raise SelectionError("slice_sample n must be non-negative")
         if prop is not None and prop < 0:
-            msg = "slice_sample prop must be non-negative"
-            raise SelectionError(msg)
+            raise SelectionError("slice_sample prop must be non-negative")
+        plan = self._plan()
         rng = np.random.default_rng(random_state)
-        labels: list[str] = []
-        for _, group in self._iter_groups(self._adata):
-            axis_names = _axis_names(group, self._axis)
-            size = len(axis_names)
-            take = int(round(size * prop)) if n is None and prop is not None else (n if n is not None else min(size, 1))
-            if not replace and take > size:
-                msg = "slice_sample n cannot be larger than a group size unless replace=True"
-                raise SelectionError(msg)
-            selected = rng.choice(axis_names, size=take, replace=replace)
-            labels.extend([str(label) for label in selected])
-        return self._subset_labels(labels, copy=copy)
+        pieces: list[np.ndarray] = []
+        for positions in plan.positions:
+            take = int(round(len(positions) * prop)) if n is None and prop is not None else (n if n is not None else 1)
+            if not replace and take > len(positions):
+                raise SelectionError("slice_sample n cannot be larger than a group size unless replace=True")
+            pieces.append(positions[rng.choice(len(positions), size=take, replace=replace)])
+        return self._subset_group_positions(pieces, copy=copy)
 
-    def _slice_group_positions(self, *, n: int, tail: bool, copy: bool) -> AnnData:
-        _validate_slice_n(n)
-        labels: list[str] = []
-        for _, group in self._iter_groups(self._adata):
-            axis_names = group.obs_names if self._axis == "obs" else group.var_names
-            selected = axis_names[0:0] if n == 0 else (axis_names[-n:] if tail else axis_names[:n])
-            labels.extend(selected.tolist())
-        if self._axis == "obs":
-            out = self._adata[labels, :]
-        else:
-            out = self._adata[:, labels]
-        return out.copy() if copy else out
+    def _subset_group_positions(self, pieces: list[np.ndarray], *, copy: bool) -> GroupedAnnData:
+        positions = np.concatenate(pieces) if pieces else np.empty(0, dtype=np.intp)
+        result = (
+            _subset_positions(self._adata, positions, None, copy=copy)
+            if self._axis == "obs"
+            else _subset_positions(self._adata, None, positions, copy=copy)
+        )
+        return self._wrap(result)
 
-    def _subset_labels(self, labels: list[str], *, copy: bool) -> AnnData:
-        if self._axis == "obs":
-            out = self._adata[labels, :]
-        else:
-            out = self._adata[:, labels]
-        return out.copy() if copy else out
+    def left_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "drop",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join(
+            "left",
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
 
+    def inner_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "drop",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join(
+            "inner",
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
 
-def _key_mask(by_frame: pd.DataFrame, key_row: pd.Series) -> pd.Series:
-    mask = pd.Series(True, index=by_frame.index)
-    for column, value in key_row.items():
-        if pd.isna(value):
-            mask &= by_frame[column].isna()
-        else:
-            mask &= by_frame[column].eq(value)
-    return mask
+    def right_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "error",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join(
+            "right",
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
 
+    def full_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str = "error",
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join(
+            "full",
+            other,
+            by=by,
+            axis=axis,
+            relationship=relationship,
+            multiple=multiple,
+            unmatched=unmatched,
+            na_matches=na_matches,
+            suffixes=suffixes,
+            copy=copy,
+        )
 
-def _key_dict(key_row: pd.Series) -> dict[str, Any]:
-    return {str(column): value for column, value in key_row.items()}
+    def semi_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        na_matches: str = "na",
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join("semi", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
+    def anti_join(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        na_matches: str = "na",
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        return self._join("anti", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
-def _axis_names(adata: AnnData, axis: str) -> list[str]:
-    return adata.obs_names.tolist() if axis == "obs" else adata.var_names.tolist()
+    def _join(
+        self,
+        kind: str,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None = None,
+        axis: str = "obs",
+        relationship: str = "many-to-one",
+        multiple: str = "error",
+        unmatched: str | None = None,
+        na_matches: str = "na",
+        suffixes: tuple[str, str] = ("", "_right"),
+        copy: bool = True,
+    ) -> GroupedAnnData:
+        self._plan()
+        functions = {
+            "left": left_join_adata,
+            "inner": inner_join_adata,
+            "right": right_join_adata,
+            "full": full_join_adata,
+            "semi": semi_join_adata,
+            "anti": anti_join_adata,
+        }
+        kwargs: dict[str, Any] = {"by": by, "axis": axis, "na_matches": na_matches, "copy": copy}
+        if kind not in {"semi", "anti"}:
+            kwargs.update(
+                relationship=relationship,
+                multiple=multiple,
+                unmatched=unmatched if unmatched is not None else ("error" if kind in {"right", "full"} else "drop"),
+                suffixes=suffixes,
+            )
+        result = functions[kind](self._adata, other, **kwargs)
+        spec = (
+            self._join_spec(other, by=by, axis=axis, suffixes=suffixes, result=result)
+            if kind not in {"semi", "anti"}
+            else self._spec
+        )
+        spec.validate(result)
+        return self._wrap(result, spec=spec)
+
+    def _join_spec(
+        self,
+        other: Any,
+        *,
+        by: str | Sequence[str] | None,
+        axis: str,
+        suffixes: tuple[str, str],
+        result: AnnData,
+    ) -> GroupSpec:
+        if axis != self._axis:
+            return self._spec
+        right = other if isinstance(other, pd.DataFrame) else pd.DataFrame(other)
+        left = cast(pd.DataFrame, self._adata.obs if axis == "obs" else self._adata.var)
+        by_columns = (
+            [column for column in left.columns if column in right.columns]
+            if by is None
+            else ([by] if isinstance(by, str) else list(by))
+        )
+        update = {
+            column: f"{column}{suffixes[0]}"
+            for column in self._spec.columns
+            if column in right.columns and column not in by_columns
+        }
+        spec = self._spec.renamed(update)
+        spec.validate(result)
+        return spec
+
+    def pipe(self, func: Callable[..., T] | tuple[Callable[..., T], str], *args: Any, **kwargs: Any) -> T:
+        if isinstance(func, tuple):
+            call, data_keyword = func
+            if data_keyword in kwargs:
+                raise AnnplyrError(f"{data_keyword!r} is both the pipe target and a keyword argument")
+            kwargs[data_keyword] = self
+            return call(*args, **kwargs)
+        return func(self, *args, **kwargs)

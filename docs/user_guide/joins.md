@@ -1,40 +1,60 @@
-# Joins
+# AnnData-Safe Joins
 
-Joins in `annplyr` are AnnData-safe metadata joins. They can enrich or subset
-`obs` or `var`, but they cannot silently create new cells, new features, or
-duplicated axis records.
+Joins enrich or subset `obs` or `var` metadata without manufacturing aligned
+matrix rows. They track the AnnData axis by integer position, so duplicate axis
+labels remain distinct.
 
-## Observation Metadata
+## Enrich metadata
 
-```python
-joined = adata.ap.left_join(sample_table, by="sample_id", axis="obs")
+```{testcode}
+sample_table = pd.DataFrame(
+    {"batch": ["A", "B"], "condition": ["treated", "control"]}
+)
+joined = adata.ap.left_join(sample_table, by="batch", axis="obs")
+
+assert joined.n_obs == adata.n_obs
+assert joined.obs["condition"].tolist() == ["treated", "control", "treated", "control"]
+assert "condition" not in adata.obs
 ```
 
-## Feature Metadata
+Joins return independent AnnData by default. Pass `copy=False` only when either
+a view or a materialized result is acceptable.
 
-```python
-annotated = adata.ap.left_join(gene_table, by="gene_id", axis="var")
+## Filter an axis
+
+Inner, semi, and anti joins may subset an axis while preserving original
+left-side order.
+
+```{testcode}
+allowed = pd.DataFrame({"batch": ["A"]})
+subset = adata.ap.semi_join(allowed, by="batch", axis="obs")
+removed = adata.ap.anti_join(allowed, by="batch", axis="obs")
+
+assert list(subset.obs_names) == ["cell_0", "cell_2"]
+assert list(removed.obs_names) == ["cell_1", "cell_3"]
 ```
 
-## Filtering Joins
+## Cardinality and right-only records
 
-```python
-subset = adata.ap.semi_join(allowed_samples, by="sample_id", axis="obs")
-removed = adata.ap.anti_join(excluded_genes, by="gene_id", axis="var")
-```
+Use `relationship`, `multiple`, `unmatched`, `na_matches`, and `suffixes` to
+make join assumptions explicit. The default relationship is `many-to-one`.
 
-## Relationship Checks
-
-Use relationship arguments when cardinality matters:
-
-```python
-adata.ap.left_join(
+```{testcode}
+checked = adata.ap.left_join(
     sample_table,
-    by="sample_id",
+    by="batch",
     axis="obs",
     relationship="many-to-one",
 )
+assert checked.n_obs == 4
 ```
 
-If a join would duplicate or add AnnData axis records, `annplyr` raises
-`JoinRelationshipError`.
+A right or full join cannot add a right-only cell or feature because no aligned
+`X`, layer, embedding, or pairwise record exists for it. Such requests raise
+`JoinRelationshipError` rather than returning a partly fabricated AnnData.
+Duplicate right keys, unmatched policies, invalid suffixes, and cross-axis
+requests also fail with typed package errors.
+
+Grouped joins execute globally and return a grouped wrapper when the resulting
+metadata still contains valid grouping keys. Suffixing a key updates the stored
+group specification deterministically.

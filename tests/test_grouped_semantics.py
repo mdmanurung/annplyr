@@ -26,14 +26,14 @@ def test_group_metadata_methods(dense_adata: AnnData) -> None:
 
     data = grouped.group_data()
     assert data.columns.tolist() == ["batch", "cell_type", ".rows"]
-    assert data[".rows"].tolist() == [["c0"], ["c1", "c4"], ["c2"], ["c3"]]
+    assert data[".rows"].tolist() == [[0], [1, 4], [2], [3]]
     assert grouped.ungroup() is dense_adata
 
 
 def test_grouped_obs_mutate_uses_group_local_row_number(dense_adata: AnnData) -> None:
     mutated = dense_adata.ap.group_by(obs="batch").mutate(obs={"within_batch": ap.row_number()})
 
-    assert mutated.obs["within_batch"].tolist() == [1, 2, 1, 2, 3]
+    assert mutated.ungroup().obs["within_batch"].tolist() == [1, 2, 1, 2, 3]
     assert "within_batch" not in dense_adata.obs
 
 
@@ -41,13 +41,13 @@ def test_grouped_filter_slice_and_add_count_are_group_local(dense_adata: AnnData
     grouped = dense_adata.ap.group_by(obs="batch")
 
     filtered = grouped.filter(obs=ap.row_number() == 1)
-    assert filtered.obs_names.tolist() == ["c0", "c2"]
+    assert filtered.ungroup().obs_names.tolist() == ["c0", "c2"]
 
     sliced = grouped.slice_head(n=1)
-    assert sliced.obs_names.tolist() == ["c0", "c2"]
+    assert sliced.ungroup().obs_names.tolist() == ["c0", "c2"]
 
     counted = grouped.add_count(name="batch_n")
-    assert counted.obs["batch_n"].tolist() == [3, 3, 2, 2, 3]
+    assert counted.ungroup().obs["batch_n"].tolist() == [3, 3, 2, 2, 3]
 
 
 def test_grouped_summarize_accepts_matrix_sources(dense_adata: AnnData) -> None:
@@ -66,7 +66,7 @@ def test_grouped_var_count_and_keys(dense_adata: AnnData) -> None:
         grouped.count().reset_index(drop=True),
         pd.DataFrame({"feature_type": ["rna", "protein"], "n": [3, 1]}),
     )
-    assert grouped.group_data()[".rows"].tolist() == [["g0", "g1", "g3"], ["g2"]]
+    assert grouped.group_data()[".rows"].tolist() == [[0, 1, 3], [2]]
 
 
 def test_grouped_mutate_handles_duplicate_obs_names() -> None:
@@ -78,7 +78,7 @@ def test_grouped_mutate_handles_duplicate_obs_names() -> None:
 
     mutated = adata.ap.group_by(obs="batch").mutate(obs={"n": ap.row_number()})
 
-    assert mutated.obs["n"].tolist() == [1, 2, 1, 2]
+    assert mutated.ungroup().obs["n"].tolist() == [1, 2, 1, 2]
 
 
 def test_grouped_mutate_rejects_backed_before_writing(tmp_path, dense_adata: AnnData) -> None:

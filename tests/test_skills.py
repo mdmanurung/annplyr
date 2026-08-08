@@ -41,6 +41,19 @@ def test_skill_rename_patterns_match_public_api() -> None:
     assert "rename_with(str.lower, obs=...)" in api_patterns
 
 
+def test_skill_extraction_and_utility_patterns_match_v03_signatures() -> None:
+    references = install.bundled_skill_dir() / "references"
+    api_patterns = (references / "api-patterns.md").read_text()
+    quickstart = (references / "quickstart.md").read_text()
+
+    assert "pull(col" not in api_patterns
+    assert "pivot_longer(cols" not in api_patterns
+    assert "`pull(obs=...)` / `pull(var=...)` / `pull(x=...)`" in api_patterns
+    assert 'add_sample_meta(adata, meta, sample="sample_id"' in api_patterns
+    assert 'name_duplicates(adata, axis="obs")' in api_patterns
+    assert "ranked.ungroup()" in quickstart
+
+
 def test_install_skill_copies_bundle_and_refuses_existing_destination(tmp_path: Path) -> None:
     dest = tmp_path / "skills" / "annplyr"
 
@@ -101,3 +114,4 @@ def test_release_metadata_matches_project_version() -> None:
 
     assert f'version: "{version}"' in Path("CITATION.cff").read_text()
     assert f'version = "{version}"' in Path("docs/conf.py").read_text()
+    assert 'date-released: "2026-08-08"' in Path("CITATION.cff").read_text()

@@ -1,6 +1,9 @@
 # Core Verbs
 
 The core verbs mirror tidy dataframe workflows while respecting AnnData axes.
+Filtering, ordering, distinct selection, and slicing use integer positions and
+return independent AnnData objects by default. Pass `copy=False` only when
+either a view or a materialized result is acceptable.
 
 ## Filter
 
@@ -52,6 +55,12 @@ adata.ap.mutate(
 )
 ```
 
+Mutation expressions are sequential: a later assignment may read a column
+created earlier in the same call. annplyr batches only assignments proven to be
+independent. Use `inplace=True` for a same-shape update that must return the
+identical input object. `transmute()` always returns an independent object and
+accepts no ownership flag.
+
 ## Summarize And Count
 
 ```python
@@ -63,3 +72,8 @@ adata.ap.summarize(
 
 adata.ap.count("cell_type", sort=True)
 ```
+
+Add `max_matrix_values=` whenever a verb reads matrix-backed expressions and a
+hard cumulative projection limit is needed. Invalid selectors, sources, axes,
+sizes, budgets, and joins raise the typed errors listed in {doc}`../api` before
+the operation mutates its input.

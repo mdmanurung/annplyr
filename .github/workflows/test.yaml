@@ -13,6 +13,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  benchmark-smoke:
+    name: Benchmark correctness smoke
+    runs-on: ubuntu-latest
+    env:
+      BLIS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          filter: blob:none
+          fetch-depth: 0
+      - name: Install uv and Python 3.14
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+      - name: Install the fixed benchmark stack
+        run: uv sync --group benchmark
+      - name: Register the ephemeral runner
+        run: uv run --group benchmark python scripts/asv_local.py machine --yes
+      - name: Execute CI-sized benchmark oracles
+        run: uv run --group benchmark python scripts/asv_local.py run --quick -E existing -b "^bench_smoke" --show-stderr
+
   get-environments:
     runs-on: ubuntu-latest
     outputs:
@@ -89,6 +115,7 @@ jobs:
     name: Tests pass in all hatch environments
     if: always()
     needs:
+      - benchmark-smoke
       - get-environments
       - test
     runs-on: ubuntu-latest

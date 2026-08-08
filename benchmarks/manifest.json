@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "seed": 20260808,
+  "stack": {
+    "python": "3.14.5",
+    "python_executable": "/exports/archive/hg-funcgenom-research/mdmanurung/conda/envs/codex/bin/python3.14",
+    "anndata": "0.12.19",
+    "narwhals": "2.23.0",
+    "numpy": "2.4.6",
+    "pandas": "2.3.3",
+    "scipy": "1.16.3"
+  },
+  "environment": {
+    "threads": 1,
+    "variables": [
+      "BLIS_NUM_THREADS",
+      "MKL_NUM_THREADS",
+      "NUMEXPR_NUM_THREADS",
+      "OMP_NUM_THREADS",
+      "OPENBLAS_NUM_THREADS",
+      "VECLIB_MAXIMUM_THREADS"
+    ],
+    "backed_cache": "warm"
+  },
+  "measurement": {
+    "timing_repeats_minimum": 7,
+    "timing_record_raw_samples": true,
+    "peak_rss_fresh_processes": 3,
+    "fixture_setup_excluded_from_timing": true,
+    "peak_rss_setup_allocation_caveat": true
+  },
+  "gates": {
+    "family_improvement_fraction": 0.20,
+    "primary_regression_fraction": 0.10,
+    "noise_method": "median absolute deviation with raw-sample overlap"
+  },
+  "families": {
+    "matrix_projection": {
+      "primary": [
+        "bench_projection.DenseProjection.time_filter_three_features",
+        "bench_projection.DenseProjection.time_export_ten_features",
+        "bench_projection.SparseProjection.time_filter_three_features",
+        "bench_projection.SparseProjection.time_to_df_ten_features",
+        "bench_projection.BackedProjection.time_selected_read"
+      ],
+      "rss": "dense_projection"
+    },
+    "grouped_execution": {
+      "primary": [
+        "bench_grouped.GroupedTwenty.time_filter",
+        "bench_grouped.GroupedTwenty.time_mutate",
+        "bench_grouped.GroupedTwenty.time_summarize",
+        "bench_grouped.GroupedTwenty.time_arrange",
+        "bench_grouped.GroupedTwenty.time_slice_head"
+      ],
+      "rss": "grouped_mutate"
+    },
+    "metadata_evaluation": {
+      "primary": [
+        "bench_metadata.WideMetadata.time_select_twenty",
+        "bench_metadata.WideMetadata.time_mutate_ten_independent",
+        "bench_metadata.WideMetadata.time_left_join",
+        "bench_metadata.WideMetadata.time_inner_join"
+      ],
+      "rss": "metadata_mutate"
+    }
+  },
+  "scenarios": {
+    "dense_projection": {
+      "shape": [20000, 2000],
+      "dtype": "float32",
+      "operations": ["filter_3", "export_10", "copy_false_call_10", "copy_false_realize_10"],
+      "oracle": "independent NumPy mask, exact shape and column order, unchanged input",
+      "copy_false_contract": "the call-cost and forced-realization methods permit either a view or a materialized non-mutating result"
+    },
+    "sparse_projection": {
+      "shape": [100000, 10000],
+      "density": 0.001,
+      "formats": ["csr", "csc"],
+      "operations": ["filter_3", "pull_1", "to_df_10", "to_tidy_10", "budget_reject"],
+      "oracle": "independent sparse sum mask, exact format, shape and columns"
+    },
+    "backed_projection": {
+      "dense_shape": [20000, 2000],
+      "sparse_shape": [100000, 10000],
+      "formats": ["dense", "csr", "csc"],
+      "operations": ["selected_read", "filter_3", "export_10", "budget_reject"],
+      "oracle": "independent projected mask and realized output shape",
+      "baseline_compatibility": "annplyr 0.2 materializes backed CSR/CSC with AnnData.to_memory inside every timed operation because the public API does not support backed sparse X; v0.3 candidates use the direct backed path"
+    },
+    "grouped_metadata": {
+      "rows": 200000,
+      "columns": 50,
+      "group_counts": [20, 50000],
+      "operations": ["filter", "mutate", "summarize", "arrange", "slice", "group_keys", "count"],
+      "oracle": "independent pandas transform and exact group/output counts"
+    },
+    "wide_metadata_joins": {
+      "rows": 200000,
+      "columns": 200,
+      "operations": ["select", "mutate", "left_join", "inner_join", "semi_join", "anti_join"],
+      "oracle": "exact surviving row counts, schema and assignment presence"
+    },
+    "rectangling": {
+      "table_rows": 100000,
+      "selected_export_shape": [20000, 50],
+      "operations": ["pivot", "nest_unnest", "chained_extraction"],
+      "oracle": "exact output shape and eager realization checksum"
+    }
+  },
+  "ci_smoke": {
+    "dense_shape": [1000, 200],
+    "sparse_shape": [5000, 1000],
+    "grouped_rows": 5000,
+    "timing_enforced": false
+  }
+}

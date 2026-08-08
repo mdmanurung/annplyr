@@ -64,7 +64,8 @@ class AnnplyrAccessor:
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
-        copy: bool = False,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
     ) -> AnnData:
         return filter_adata(
             self._obj,
@@ -78,9 +79,10 @@ class AnnplyrAccessor:
             varm=varm,
             layer=layer,
             copy=copy,
+            max_matrix_values=max_matrix_values,
         )
 
-    def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = False) -> AnnData:
+    def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> AnnData:
         return select_adata(self._obj, obs=obs, var=var, x=x, copy=copy)
 
     def rename(
@@ -89,9 +91,9 @@ class AnnplyrAccessor:
         var: Mapping[str, str] | None = None,
         x: Mapping[str, str] | None = None,
         *,
-        copy: bool = True,
+        inplace: bool = False,
     ) -> AnnData:
-        return rename_adata(self._obj, obs=obs, var=var, x=x, copy=copy)
+        return rename_adata(self._obj, obs=obs, var=var, x=x, inplace=inplace)
 
     def rename_with(
         self,
@@ -100,9 +102,9 @@ class AnnplyrAccessor:
         obs: Any = None,
         var: Any = None,
         x: Any = None,
-        copy: bool = True,
+        inplace: bool = False,
     ) -> AnnData:
-        return rename_with_adata(self._obj, func, obs=obs, var=var, x=x, copy=copy)
+        return rename_with_adata(self._obj, func, obs=obs, var=var, x=x, inplace=inplace)
 
     def relocate(
         self,
@@ -112,9 +114,9 @@ class AnnplyrAccessor:
         *,
         before: str | None = None,
         after: str | None = None,
-        copy: bool = True,
+        inplace: bool = False,
     ) -> AnnData:
-        return relocate_adata(self._obj, obs=obs, var=var, x=x, before=before, after=after, copy=copy)
+        return relocate_adata(self._obj, obs=obs, var=var, x=x, before=before, after=after, inplace=inplace)
 
     def distinct(
         self,
@@ -125,8 +127,18 @@ class AnnplyrAccessor:
         axis: str = "obs",
         keep_all: bool = False,
         copy: bool = True,
+        max_matrix_values: int | None = None,
     ) -> AnnData:
-        return distinct_adata(self._obj, obs=obs, var=var, x=x, axis=axis, keep_all=keep_all, copy=copy)
+        return distinct_adata(
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            axis=axis,
+            keep_all=keep_all,
+            copy=copy,
+            max_matrix_values=max_matrix_values,
+        )
 
     def left_join(
         self,
@@ -239,7 +251,7 @@ class AnnplyrAccessor:
         by: str | list[str] | None = None,
         axis: str = "obs",
         na_matches: str = "na",
-        copy: bool = False,
+        copy: bool = True,
     ) -> AnnData:
         return semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
@@ -250,7 +262,7 @@ class AnnplyrAccessor:
         by: str | list[str] | None = None,
         axis: str = "obs",
         na_matches: str = "na",
-        copy: bool = False,
+        copy: bool = True,
     ) -> AnnData:
         return anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
@@ -263,23 +275,35 @@ class AnnplyrAccessor:
         obsm: Mapping[str, Any] | None = None,
         varm: Mapping[str, Any] | None = None,
         layer: str | None = None,
-        copy: bool = False,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
     ) -> AnnData:
-        return arrange_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, copy=copy)
+        return arrange_adata(
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            copy=copy,
+            max_matrix_values=max_matrix_values,
+        )
 
-    def slice(self, *indices: Any, axis: str = "obs", copy: bool = False) -> AnnData:
+    def slice(self, *indices: Any, axis: str = "obs", copy: bool = True) -> AnnData:
         return slice_adata(self._obj, *indices, axis=axis, copy=copy)
 
-    def slice_head(self, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    def slice_head(self, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
         return slice_head_adata(self._obj, n=n, axis=axis, copy=copy)
 
-    def slice_tail(self, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    def slice_tail(self, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
         return slice_tail_adata(self._obj, n=n, axis=axis, copy=copy)
 
-    def slice_min(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    def slice_min(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
         return slice_min_adata(self._obj, by=by, n=n, axis=axis, copy=copy)
 
-    def slice_max(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = False) -> AnnData:
+    def slice_max(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
         return slice_max_adata(self._obj, by=by, n=n, axis=axis, copy=copy)
 
     def slice_sample(
@@ -290,7 +314,7 @@ class AnnplyrAccessor:
         replace: bool = False,
         random_state: int | None = None,
         axis: str = "obs",
-        copy: bool = False,
+        copy: bool = True,
     ) -> AnnData:
         return slice_sample_adata(
             self._obj,
@@ -312,9 +336,19 @@ class AnnplyrAccessor:
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
         inplace: bool = False,
+        max_matrix_values: int | None = None,
     ) -> AnnData:
         return mutate_adata(
-            self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer, inplace=inplace
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            inplace=inplace,
+            max_matrix_values=max_matrix_values,
         )
 
     def transmute(
@@ -326,8 +360,19 @@ class AnnplyrAccessor:
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
+        max_matrix_values: int | None = None,
     ) -> AnnData:
-        return transmute_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, layer=layer)
+        return transmute_adata(
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            layer=layer,
+            max_matrix_values=max_matrix_values,
+        )
 
     def group_by(self, obs: Any = None, var: Any = None) -> AnnData | GroupedAnnData:
         if obs is None and var is None:
@@ -345,8 +390,20 @@ class AnnplyrAccessor:
         *,
         by: Any = None,
         layer: str | None = None,
+        max_matrix_values: int | None = None,
     ):
-        return summarize_adata(self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, by=by, layer=layer)
+        return summarize_adata(
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            by=by,
+            layer=layer,
+            max_matrix_values=max_matrix_values,
+        )
 
     summarise = summarize
 
@@ -392,9 +449,21 @@ class AnnplyrAccessor:
         uns: Mapping[str, Any] | None = None,
         *,
         layer: str | None = None,
+        max_matrix_values: int | None = None,
     ):
         return pull_adata(
-            self._obj, obs=obs, var=var, x=x, raw=raw, obsm=obsm, varm=varm, obsp=obsp, varp=varp, uns=uns, layer=layer
+            self._obj,
+            obs=obs,
+            var=var,
+            x=x,
+            raw=raw,
+            obsm=obsm,
+            varm=varm,
+            obsp=obsp,
+            varp=varp,
+            uns=uns,
+            layer=layer,
+            max_matrix_values=max_matrix_values,
         )
 
     def to_df(

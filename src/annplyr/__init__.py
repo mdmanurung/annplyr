@@ -202,3 +202,9 @@ __all__ = [
     "var_names",
     "where",
 ]
+
+from annplyr._grouped import GroupedAnnData as _GroupedAnnData
+from annplyr._public_docs import install_public_docstrings as _install_public_docstrings
+
+_install_public_docstrings(_accessor.AnnplyrAccessor, _GroupedAnnData, globals(), __all__)
+del _GroupedAnnData, _install_public_docstrings

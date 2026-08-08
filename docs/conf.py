@@ -21,7 +21,7 @@ try:
 except PackageNotFoundError:
     project = "annplyr"
     author = "annplyr developers"
-    version = "0.2.0"
+    version = "0.3.0"
     repository_url = "https://github.com/mdmanurung/annplyr"
 
 copyright = f"{datetime.now():%Y}, {author}."
@@ -46,6 +46,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
+    "sphinx.ext.doctest",
     "sphinx.ext.napoleon",
     "sphinxcontrib.bibtex",
     "sphinxcontrib.katex",
@@ -63,6 +64,7 @@ napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = False
 napoleon_use_rtype = True
+napoleon_custom_sections = [("Ownership", "returns_style")]
 myst_heading_anchors = 6
 myst_enable_extensions = [
     "amsmath",
@@ -79,6 +81,36 @@ nb_merge_streams = True
 typehints_defaults = "braces"
 always_use_bars_union = True
 
+doctest_global_setup = """
+import numpy as np
+import pandas as pd
+from anndata import AnnData
+import annplyr as ap
+
+adata = AnnData(
+    X=np.array(
+        [
+            [2.0, 0.0, 1.0],
+            [0.0, 1.0, 3.0],
+            [4.0, 2.0, 0.0],
+            [1.0, 3.0, 2.0],
+        ],
+        dtype=np.float32,
+    ),
+    obs=pd.DataFrame(
+        {
+            "batch": pd.Categorical(["A", "B", "A", "B"], categories=["A", "B", "unused"]),
+            "cell_type": ["B cell", "T cell", "B cell", "T cell"],
+            "n_counts": pd.array([1200, 900, 1500, 1100], dtype="Int64"),
+        },
+        index=["cell_0", "cell_1", "cell_2", "cell_3"],
+    ),
+    var=pd.DataFrame(index=["MS4A1", "CD79A", "NKG7"]),
+)
+adata.layers["counts"] = adata.X.copy()
+adata.raw = adata
+"""
+
 source_suffix = {
     ".rst": "restructuredtext",
     ".ipynb": "myst-nb",
@@ -94,7 +126,15 @@ intersphinx_mapping = {
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
 }
 
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**.ipynb_checkpoints"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "**.ipynb_checkpoints",
+    "development/v0.3-executor-handoff.md",
+    "development/v0.3-revised-plan.md",
+    "development/v0.3-task-list.md",
+]
 
 html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]

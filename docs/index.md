@@ -8,9 +8,11 @@ together without losing AnnData alignment.
 ```python
 import annplyr as ap
 
-filtered = adata.ap.filter(
-    obs=ap.col("batch") == "A",
-    x=ap.col("MS4A1") > 0,
+filtered = (
+    adata.ap.group_by(obs="batch")
+    .filter(x=ap.col("MS4A1") > 0)
+    .mutate(obs={"within_batch": ap.row_number()})
+    .ungroup()
 )
 
 plot_data = filtered.ap.to_tidy(obs=["cell_type"], x=["MS4A1", "CD79A"])
@@ -49,6 +51,13 @@ Work through the notebooks, including the full tour.
 Look up accessor methods, expressions, selectors, helpers, and errors.
 :::
 
+:::{grid-item-card} Migrate to v0.3
+:link: migration-v0.3
+:link-type: doc
+
+Review changed ownership defaults, persistent grouping, budgets, and join rules.
+:::
+
 ::::
 
 ```{toctree}
@@ -57,6 +66,7 @@ Look up accessor methods, expressions, selectors, helpers, and errors.
 
 installation
 quickstart
+migration-v0.3
 tutorials
 ```
 
@@ -85,6 +95,8 @@ api
 :maxdepth: 1
 
 development/skills
+development/api-contract-v0.3
+development/performance-v0.3
 contributing
 template_usage
 ```

@@ -32,6 +32,7 @@ ruff check src tests
 ruff format src tests --check
 python -m mypy src/annplyr
 uvx hatch run docs:build
+uvx hatch run docs:doctest
 ```
 
 Use `UV_CACHE_DIR=/tmp/uv-cache` in restricted environments where the default

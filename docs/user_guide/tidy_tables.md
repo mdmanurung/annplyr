@@ -7,43 +7,57 @@ inspection outside AnnData.
 
 `to_df()` returns one row per observation.
 
-```python
+```{testcode}
 wide = adata.ap.to_df(
-    obs=["cell_type", "sample"],
+    obs=["cell_type", "batch"],
     x=["MS4A1", "CD79A"],
-    obsm={"X_pca": ["0", "1"]},
+    max_matrix_values=8,
 )
+
+assert wide.shape == (4, 4)
 ```
 
 ## Long Tables
 
 `to_tidy()` returns stable observation, feature, and value columns.
 
-```python
+```{testcode}
 long = adata.ap.to_tidy(
     obs=["cell_type"],
     x=["MS4A1", "CD79A"],
+    max_matrix_values=8,
 )
+
+assert long.shape == (8, 4)
 ```
 
 Whole-matrix long exports require explicit opt-in:
 
-```python
+```{testcode}
 long = adata.ap.to_tidy(
     allow_all_features=True,
-    max_matrix_values=1_000_000,
+    max_matrix_values=12,
 )
+
+assert len(long) == 12
 ```
+
+Budgets are checked cumulatively across every requested matrix source before
+the first read. An opaque raw Narwhals expression receives a conservative
+full-source charge.
 
 ## General Frame Extraction
 
 Use `as_frame()` for controlled access to AnnData containers:
 
-```python
-raw = adata.ap.as_frame("raw", select=["MS4A1"])
-neighbors = adata.ap.as_frame("obsp", key="connectivities", select=adata.obs_names[:10])
-qc = adata.ap.as_frame("uns", key="qc_metrics")
+```{testcode}
+raw = adata.ap.as_frame("raw", select=["MS4A1"], max_matrix_values=4)
+assert raw.shape == (4, 1)
 ```
+
+The same interface addresses `obs`, `var`, `x`, `raw`, `obsm`, `varm`,
+`obsp`, `varp`, and tabular `uns`. Pairwise and `uns` sources are extraction
+only.
 
 ## Pandas Rectangling Helpers
 

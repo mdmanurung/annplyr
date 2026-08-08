@@ -50,8 +50,9 @@ summary = adata.ap.summarize(
 Use grouped operations with `group_by`; most verbs operate group-locally on the result:
 
 ```python
-# row number within each group
-adata.ap.group_by(obs="batch").mutate(obs={"group_row": ap.row_number()})
+# row number within each group; ungroup only at an AnnData boundary
+ranked = adata.ap.group_by(obs="batch").mutate(obs={"group_row": ap.row_number()})
+ranked_adata = ranked.ungroup()
 
 # count observations per group, optionally weighted
 adata.ap.count("batch")           # returns DataFrame
@@ -66,3 +67,5 @@ wide = adata.ap.to_df(obs=["cell_type", "sample"], x=["MS4A1", "CD79A"])
 long = adata.ap.to_tidy(obs=["cell_type"], x=["MS4A1", "CD79A"])
 bounded = adata.ap.to_tidy(allow_all_features=True, max_matrix_values=1_000_000)
 ```
+
+Axis-changing verbs return independent AnnData by default. `copy=False` may be a view or materialized result. Same-shape writers use `inplace=True` only when exact input identity is required.

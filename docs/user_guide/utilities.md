@@ -12,6 +12,10 @@ summary = ap.sample_summary(adata, sample="sample_id")
 adata = ap.add_sample_meta(adata, sample="sample_id", meta=sample_table)
 ```
 
+`add_sample_meta(..., inplace=False)` returns an independent object. An
+explicit in-place call validates the sample relationship before writing and
+returns the identical AnnData.
+
 ## Feature Presence
 
 ```python
@@ -26,6 +30,9 @@ adata = ap.rename_obs_names(adata, lambda name: f"cell_{name}")
 adata = ap.add_name_prefix(adata, "sample1", axis="obs")
 duplicates = ap.name_duplicates(adata, axis="obs")
 ```
+
+Name and palette writers also use `inplace=False`; they do not accept the v0.2
+`copy=` argument.
 
 ## Palettes
 

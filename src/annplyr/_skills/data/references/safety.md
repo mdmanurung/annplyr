@@ -4,9 +4,11 @@
 
 AnnData has coordinated containers. If observations or features are subset or reordered, the matching axis must stay aligned in `X`, layers, `obsm`, `varm`, `obsp`, and `varp`. Prefer annplyr accessor verbs or AnnData-native slicing instead of manual pandas filtering plus reassignment.
 
+Axis-changing verbs default to independent AnnData. `copy=False` permits either a view or a materialized result and must not be used as an `is_view` assertion. Same-shape writers use `inplace=False`.
+
 ## Matrix Materialization
 
-Sparse matrices and backed arrays can be large. Predicates over selected matrix columns are fine; whole-matrix pandas exports should be explicit. For long exports, pass selected features unless the user intentionally accepts all-feature materialization. Use `max_matrix_values=` on `to_df()`, `to_tidy()`, `pivot_longer()`, or `as_frame()` when a workflow needs a hard materialization budget.
+Sparse matrices and backed arrays can be large. Predicates over selected matrix columns are fine; whole-matrix pandas exports should be explicit. For long exports, pass selected features unless the user intentionally accepts all-feature materialization. Use cumulative `max_matrix_values=` on matrix-reading verbs; annplyr plans every source and rejects over-budget requests before the first read.
 
 ## Mutation
 
@@ -18,7 +20,7 @@ Use `as_frame()` for inspection of non-core AnnData containers such as `raw`, `o
 
 ## Backed Objects
 
-Backed AnnData objects cannot safely support metadata mutation through annplyr. Load into memory first when mutation is intentional:
+Backed axis selection with `copy=True` produces an independent in-memory object. Backed objects cannot safely support same-shape metadata mutation through annplyr; load into memory first when mutation is intentional:
 
 ```python
 adata = adata.to_memory()

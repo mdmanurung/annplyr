@@ -3,8 +3,8 @@
 ## Accessor
 
 The `adata.ap` accessor is registered when `annplyr` is imported. AnnData-returning
-verbs preserve axis alignment for `X`, layers, `obsm`, `varm`, `obsp`, and
-`varp` through AnnData-native slicing. Expression sources include metadata,
+verbs preserve axis alignment for `X`, layers, `raw`, `obsm`, `varm`, `obsp`,
+and `varp` through positional slicing. Expression sources include metadata,
 selected `X`/layer features, `raw`, `obsm`, and `varm`; controlled extraction
 also exposes `obsp`, `varp`, and tabular `uns` values through `as_frame()`.
 
@@ -13,9 +13,28 @@ but they raise `JoinRelationshipError` when a requested join would add or
 duplicate cells/features. Long matrix exports materialize data into pandas and
 therefore require explicit feature selection unless `allow_all_features=True`;
 use `max_matrix_values=` on export helpers when a hard materialization budget is
-needed.
-Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
-`.to_memory()` first when mutation is intentional.
+needed. Backed `copy=True` subsetting returns an independent in-memory object;
+call `.to_memory()` before same-shape mutation.
+
+## Ownership, materialization, and failures by family
+
+| Public family | Return and ownership | Materialization | Principal typed failures |
+|---|---|---|---|
+| `filter`, `select`, `arrange`, `distinct`, `slice*` | Independent AnnData by default; `copy=False` may be a view or materialized | Projects requested positions/sources; backed `copy=True` loads the selection | `SelectionError`, `UnknownColumnError`, `UnknownSourceError`, `IncompatibleAxisError`, `AnnplyrError` |
+| six accessor joins | Independent AnnData by default; grouped calls return a grouped wrapper | Never manufactures right-only aligned records | `JoinRelationshipError`, `DuplicateNameError`, `IncompatibleAxisError` |
+| `rename`, `rename_with`, `relocate`, `mutate`, `add_count`, `add_tally` | Independent by default; `inplace=True` returns exact input identity | Metadata-only writes; matrix sources are read-only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `AnnplyrError` |
+| `transmute` | Always independent; no ownership argument | Replaces metadata columns while reading projected sources | selection/source/size/budget errors |
+| grouped AnnData verbs | New grouped wrapper, or identical wrapper for explicit in-place calls; `ungroup()` returns AnnData | One shared positional group plan; keys retained or updated | selection, axis, join, size, and budget errors |
+| summaries, count/tally, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Reads only planned columns/sources | selection/source/axis/budget errors |
+| `pull`, `to_df`, `to_tidy`, `pivot_longer`, `as_frame`, `nest_by` | pandas/Series or nested extraction result; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
+| expressions, selectors, and aggregators | `AnnplyrExpr`, selector, or expansion metadata; input unchanged | Lazy until evaluated; raw Narwhals is opaque and fully charged | `SelectionError`, `UnknownColumnError`, `UnknownSourceError` |
+| dataframe rectangling helpers | New pandas objects; input unchanged | Operates after explicit tabular extraction | `SelectionError`, `DuplicateNameError`, `SizeMismatchError` |
+| single-cell utilities | Readers return tables/reports; writers are independent unless `inplace=True` | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
+
+All cumulative `max_matrix_values=` checks plan every source before the first
+adapter read. See {doc}`migration-v0.3` for changed defaults and signatures and
+{doc}`development/api-contract-v0.3` for the mechanically checked callable-level
+contract.
 
 ```{eval-rst}
 .. autoclass:: annplyr._accessor.AnnplyrAccessor
@@ -26,6 +45,16 @@ Mutating verbs raise `AnnplyrError` on backed AnnData objects; call
 ```
 
 ## Expressions And Selectors
+
+Expression helpers return `AnnplyrExpr`. Operators, namespaces, and method
+chains propagate conservative dependency/cardinality metadata; call
+`to_narwhals()` for explicit raw-Narwhals interoperation. `where()` is a
+schema/dtype selector and must not inspect values.
+
+```{eval-rst}
+.. autoclass:: annplyr._expr.AnnplyrExpr
+   :members: to_narwhals
+```
 
 ```{eval-rst}
 .. autosummary::

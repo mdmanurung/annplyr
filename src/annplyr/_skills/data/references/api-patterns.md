@@ -5,35 +5,35 @@
 Use `adata.ap.<verb>(...)` when the result should remain aligned AnnData.
 
 **Subsetting and column ops:**
-- `filter(obs=..., var=..., x=..., raw=..., layer=...)` — subset observations or features.
-- `select(obs=..., var=..., x=...)` — keep named metadata columns and selected features.
+- `filter(obs=..., var=..., x=..., raw=..., layer=..., copy=True, max_matrix_values=...)` — subset observations or features.
+- `select(obs=..., var=..., x=..., copy=True)` — keep named metadata columns and selected features.
 - `rename(obs={new_name: old_name}, var={...})` — rename metadata columns by mapping new names to existing names.
 - `rename_with(str.lower, obs=...)` — rename selected columns by applying a function to names.
 - `relocate(obs=..., before=..., after=...)` — reorder metadata columns. Raises `SelectionError` when the `before`/`after` anchor is among the columns being moved.
-- `distinct(obs=..., var=..., keep_all=...)` — deduplicate by selected columns.
-- `arrange(obs=..., var=..., x=..., raw=...)` — reorder observations or features.
-- `slice(idx)` / `slice_head(n=...)` / `slice_tail(n=...)` / `slice_min(...)` / `slice_max(...)` / `slice_sample(n=..., random_state=...)` — position or rank-based slicing; default `axis="obs"`, pass `axis="var"` for features.
+- `distinct(obs=..., var=..., keep_all=..., copy=True, max_matrix_values=...)` — deduplicate by selected columns.
+- `arrange(obs=..., var=..., x=..., raw=..., copy=True, max_matrix_values=...)` — reorder observations or features.
+- `slice(idx, copy=True)` / `slice_head(n=...)` / `slice_tail(n=...)` / `slice_min(...)` / `slice_max(...)` / `slice_sample(n=..., random_state=...)` — position or rank-based slicing; default `axis="obs"`, pass `axis="var"` for features.
 
 **Mutation and summaries:**
 - `mutate(obs={...}, var={...}, x={...}, raw={...}, obsm={...}, varm={...}, layer=..., inplace=False)` — write metadata columns; matrix sources are read-only.
-- `transmute(obs={...}, ...)` — like `mutate` but drops all columns not produced by the call.
-- `group_by(obs=..., var=...)` — return a `GroupedAnnData` wrapper; most accessor verbs operate group-locally on it.
-- `summarize(obs={...}, ..., by=...)` — aggregate by grouping key; also callable as `summarise`.
+- `transmute(obs={...}, ..., max_matrix_values=...)` — like `mutate` but drops all columns not produced by the call; always independent and has no ownership flag.
+- `group_by(obs=..., var=...)` — return a persistent `GroupedAnnData` wrapper; call `ungroup()` for AnnData.
+- `summarize(obs={...}, ..., by=..., max_matrix_values=...)` — aggregate by grouping key; also callable as `summarise`.
 - `count(by=..., wt=..., sort=False, axis="obs", name="n")` — count rows, optionally weighted; returns a DataFrame.
 - `tally(wt=..., sort=False, axis="obs", name="n")` — like `count` without a grouping argument.
 - `add_count(by=..., wt=..., name="n")` — append a count column to AnnData and return AnnData.
 - `add_tally(wt=..., name="n")` — like `add_count` without a grouping argument.
 
 **Joins:**
-- `left_join(right, axis=..., by=..., relationship=...)` / `inner_join` / `right_join` / `full_join` / `semi_join` / `anti_join` — metadata joins on `obs` or `var`; raise `JoinRelationshipError` if cardinality would duplicate cells/features.
+- `left_join(right, axis=..., by=..., relationship=..., copy=True)` / `inner_join` / `right_join` / `full_join` / `semi_join` / `anti_join` — metadata joins on `obs` or `var`; reject duplicated or right-only cells/features.
 
 **Extraction and pipeline:**
-- `pull(col, axis="obs")` — extract a single metadata column as a Series.
-- `to_df(obs=..., var=..., x=..., obsm={...}, ...)` — wide DataFrame, one row per observation.
-- `to_tidy(obs=..., x=..., ...)` — long DataFrame with observation, feature, and value columns.
-- `pivot_longer(cols=..., names_to=..., values_to=...)` — pivot obs metadata columns to long form.
-- `as_frame(source, key=..., select=...)` — controlled access to any container (`obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`, `varp`, or tabular `uns`).
-- `nest_by(obs=..., key=...)` — nest observations into sub-AnnData objects grouped by a metadata column.
+- `pull(obs=...)` / `pull(var=...)` / `pull(x=...)` / `pull(raw=...)` — extract exactly one requested source column.
+- `to_df(obs=..., x=..., raw=..., obsm={...}, obsp={...}, max_matrix_values=...)` — wide DataFrame, one row per observation.
+- `to_tidy(obs=..., x=..., raw=..., allow_all_features=False, max_matrix_values=...)` — long DataFrame with observation, feature, and value columns.
+- `pivot_longer(obs=..., x=..., raw=..., names_to=..., values_to=..., max_matrix_values=...)` — pivot selected metadata/matrix columns to long form.
+- `as_frame(source, key=..., select=..., max_matrix_values=...)` — controlled access to any container (`obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`, `varp`, or tabular `uns`).
+- `nest_by(by=..., obs=..., var=..., axis="obs", name="data")` — nest axis subsets into AnnData objects grouped by metadata.
 - `pipe(fn, *args, **kwargs)` — pass the AnnData through an arbitrary function and return the result.
 
 ## Expressions And Selectors
@@ -89,9 +89,9 @@ Avoid unbounded matrix-to-long exports unless the user explicitly requests whole
 
 Standalone helpers for single-cell–specific metadata patterns:
 
-- `ap.feature_present(adata, features, ...)` / `ap.FeaturePresence(...)` — check which features are present across observations.
-- `ap.add_sample_meta(adata, meta_df, ...)` — enrich `obs` with per-sample metadata from a DataFrame.
-- `ap.sample_meta(adata, ...)` / `ap.sample_summary(adata, ...)` — extract or summarize sample-level metadata.
-- `ap.rename_obs_names(adata, mapping_or_fn)` / `ap.rename_var_names(adata, mapping_or_fn)` — safe obs/var axis label edits that preserve alignment.
-- `ap.get_palette(adata, key)` / `ap.store_palette(adata, key, palette)` — Scanpy-compatible categorical palette access and storage.
-- `ap.name_duplicates(names)` / `ap.add_name_prefix(names, prefix)` / `ap.replace_name_suffix(names, old, new)` — name repair utilities.
+- `ap.feature_present(adata, features, feature_column=..., case_check=True)` — report requested feature presence.
+- `ap.add_sample_meta(adata, meta, sample="sample_id", by=..., inplace=False)` — enrich `obs` with per-sample metadata.
+- `ap.sample_meta(adata, "sample_id", include=..., exclude=...)` / `ap.sample_summary(adata, "sample_id", ...)` — extract or summarize sample metadata.
+- `ap.rename_obs_names(adata, mapping_or_fn, inplace=False)` / `ap.rename_var_names(...)` — safe axis label edits.
+- `ap.get_palette(adata, "cell_type")` / `ap.store_palette(adata, "cell_type", palette, inplace=False)` — Scanpy-compatible palette access and storage.
+- `ap.name_duplicates(adata, axis="obs")` / `ap.add_name_prefix(adata, prefix, axis="obs", inplace=False)` / `ap.replace_name_suffix(adata, current, new, axis="obs", inplace=False)` — name utilities.

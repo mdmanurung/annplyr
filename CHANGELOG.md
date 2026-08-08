@@ -7,6 +7,71 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-08
+
+### Added
+
+- Persistent `GroupedAnnData` pipelines with `ungroup`, key-aware
+  select/rename/relocate/transmute, all six global joins, wrapper-aware
+  `pipe`, and deterministic first-seen group plans.
+- `AnnplyrExpr` expression metadata and `to_narwhals()` interoperation for raw
+  Narwhals consumers.
+- Dense, sparse, DataFrame, AnnData-view, and backed source adapters with
+  positional row/column projection and requested-order restoration.
+- Two-phase matrix request planning with cumulative `max_matrix_values=`
+  budgets across filtering, ordering, mutation, summaries, extraction, and
+  grouped counterparts.
+- A mechanically checked public API contract, fixed ASV benchmark manifest,
+  raw-sample evaluator, peak-RSS runner, and v0.3 performance report.
+- Dedicated v0.2-to-v0.3 migration documentation and executable Sphinx
+  examples.
+
+### Changed
+
+- Axis-changing and axis-ordering verbs now default to `copy=True`; explicit
+  `copy=False` may return either a view or a materialized object.
+- Same-shape public mutations use `inplace=False` instead of `copy=`, validate
+  before writing, and return the identical object for `inplace=True`.
+- `transmute()` is always independent and no longer accepts ownership flags.
+- Filtering, arranging, distinct selection, slicing, and joins reconstruct
+  AnnData by integer position, preserving duplicate axis-label identity.
+- Grouped AnnData-returning verbs preserve grouping, grouping columns are
+  retained deterministically, and key mutations regroup subsequent calls.
+- `group_data()[".rows"]` now stores zero-based integer positions. NA groups
+  are included, categorical order is preserved, and unobserved levels drop.
+- `where()` is schema/dtype-only. Raw Narwhals expressions remain supported as
+  opaque expressions and receive conservative full-source budget charges.
+- Backed `copy=True` subsetting returns an independent in-memory object;
+  selected sparse exports preserve sparse formats where the return type allows.
+- Right/full joins reject right-only AnnData axis records instead of silently
+  constructing cells or features without aligned matrix data.
+
+### Performance
+
+- Project selected matrix rows/columns before pandas conversion and reuse
+  metadata frames for safe expression sequences.
+- Batch proven-independent assignments and skip no-op metadata writes without
+  changing sequential mutation semantics.
+- On the frozen runner, the manifest's best improvements were 99.92% for
+  matrix projection, 68.87% for grouped execution, and 39.37% for metadata
+  evaluation. See `docs/development/performance-v0.3.md` for raw-sample ranges,
+  caveats, and the non-primary ASV continuous regressions.
+
+### Fixed
+
+- Preserve aligned containers and requested order when axis labels are
+  duplicated.
+- Preserve nullable integer, Boolean, string, and categorical dtypes when
+  grouped results are reconstructed positionally.
+- Reject cumulative and later-source over-budget requests before any adapter
+  reads occur.
+
+### Documentation
+
+- Updated ownership, grouping, join, source, backed/sparse, budget, and typed
+  failure guidance throughout the README, API reference, user guide, bundled
+  skill, and affected notebook cells.
+
 ## [0.2.0] - 2026-07-15
 
 ### Added

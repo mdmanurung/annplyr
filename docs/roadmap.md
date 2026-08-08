@@ -20,24 +20,31 @@ package into a tidyverse- and scverse-grade AnnData wrangling library.
 
 ## Current Hardening Status
 
-The package now has the main scverse-grade safety surface in place:
+Version 0.3 completes the contract, ownership, grouping, projection, and
+benchmark hardening described by Milestones 1-5:
 
 - `adata.ap` is registered through the AnnData namespace mechanism.
-- AnnData-preserving verbs rely on AnnData-native subsetting so `X`, layers,
-  `obsm`, `varm`, `obsp`, and `varp` stay aligned.
+- Axis verbs use positional identity and independent-object defaults so `X`,
+  layers, `raw`, `obsm`, `varm`, `obsp`, and `varp` stay aligned even when axis
+  labels are duplicated.
+- Persistent grouping uses one first-seen positional group plan, retains keys,
+  preserves extension/categorical dtypes, and exposes zero-based `.rows`.
 - Expression sources cover `obs`, `var`, selected `X`/layers, `raw`, `obsm`,
-  and `varm`.
+  and `varm`; `AnnplyrExpr` metadata supports safe projection and batching.
 - `as_frame()` provides controlled pandas extraction from `obs`, `var`, `x`,
   `raw`, `obsm`, `varm`, `obsp`, `varp`, and tabular `uns` entries.
-- Matrix-materializing exports support `max_matrix_values=` budgets, and long
-  matrix exports still require explicit feature selection unless
-  `allow_all_features=True`.
-- Backed AnnData objects support read-only operations in tests, while mutating
-  verbs raise typed package errors.
+- Dense, sparse, DataFrame, view, and backed adapters project rows/columns before
+  conversion. Cumulative `max_matrix_values=` budgets reject complete plans
+  before the first read.
+- Backed axis operations support independent in-memory selections while backed
+  same-shape mutation fails with typed errors.
+- A fixed ASV manifest, raw-sample evaluator, peak-RSS runner, and performance
+  report enforce the three v0.3 performance families.
 
-Remaining hardening work before a public 1.0 should focus on larger backed and
-sparse fixtures, chunked reductions for very large matrices, and more explicit
-benchmarks around column projection.
+Remaining work before a public 1.0 should focus on chunked reductions beyond
+the projected v0.3 surface, optimization of the non-primary high-cardinality
+and filtering-join benchmark regressions, broader downstream integration
+fixtures, and continued stabilization of public typing.
 
 ## Milestone 1: Public Contract And Errors
 

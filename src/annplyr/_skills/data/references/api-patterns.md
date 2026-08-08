@@ -33,7 +33,7 @@ Use `adata.ap.<verb>(...)` when the result should remain aligned AnnData.
 - `to_tidy(obs=..., x=..., raw=..., allow_all_features=False, max_matrix_values=...)` — long DataFrame with observation, feature, and value columns.
 - `pivot_longer(obs=..., x=..., raw=..., names_to=..., values_to=..., max_matrix_values=...)` — pivot selected metadata/matrix columns to long form.
 - `as_frame(source, key=..., select=..., max_matrix_values=...)` — controlled access to any container (`obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`, `varp`, or tabular `uns`).
-- `nest_by(by=..., obs=..., var=..., axis="obs", name="data")` — nest axis subsets into AnnData objects grouped by metadata.
+- `nest_by(by=..., obs=..., var=..., axis="obs", name="data")` — nest independent pandas metadata tables by first-seen group keys.
 - `pipe(fn, *args, **kwargs)` — pass the AnnData through an arbitrary function and return the result.
 
 ## Expressions And Selectors

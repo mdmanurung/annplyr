@@ -540,23 +540,23 @@ def desc(expr: str | AnnplyrExpr | nw.Expr) -> Desc:
     return Desc(col(expr) if isinstance(expr, str) else expr)
 
 
-def starts_with(prefix: str):
+def starts_with(prefix: str) -> AnnplyrSelector:
     return _PatternSelector(f"^{re.escape(prefix)}")
 
 
-def ends_with(suffix: str):
+def ends_with(suffix: str) -> AnnplyrSelector:
     return _PatternSelector(f"{re.escape(suffix)}$")
 
 
-def contains(pattern: str, *, regex: bool = False):
+def contains(pattern: str, *, regex: bool = False) -> AnnplyrSelector:
     return _PatternSelector(pattern if regex else re.escape(pattern))
 
 
-def matches(pattern: str):
+def matches(pattern: str) -> AnnplyrSelector:
     return _PatternSelector(pattern)
 
 
-def everything():
+def everything() -> AnnplyrSelector:
     return _EverythingSelector()
 
 

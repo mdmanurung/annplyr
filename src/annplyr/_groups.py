@@ -13,6 +13,7 @@ from annplyr._expr import AnnplyrExpr
 from annplyr._frames import VIRTUAL_COLUMNS, evaluate_select, obs_frame, var_frame
 
 Axis = Literal["obs", "var"]
+_MISSING_OBJECT_KEY = object()
 
 
 @dataclass(frozen=True)
@@ -67,11 +68,69 @@ class GroupPlan:
     positions: tuple[np.ndarray, ...]
     keys: pd.DataFrame
 
-    @classmethod
-    def build(cls, adata: AnnData, spec: GroupSpec) -> GroupPlan:
+    @staticmethod
+    def _key_frame(adata: AnnData, spec: GroupSpec) -> pd.DataFrame:
         spec.validate(adata)
         table = cast(pd.DataFrame, adata.obs if spec.axis == "obs" else adata.var)
-        key_frame = table.loc[:, list(spec.columns)].reset_index(drop=True)
+        return table.loc[:, list(spec.columns)].reset_index(drop=True)
+
+    @staticmethod
+    def _first_key_positions(key_frame: pd.DataFrame) -> np.ndarray:
+        """Find first-seen keys while treating all object null sentinels alike."""
+        comparison = key_frame
+        for column in key_frame.columns:
+            series = key_frame[column]
+            if not pd.api.types.is_object_dtype(series.dtype):
+                continue
+            missing = series.isna().to_numpy()
+            if not missing.any():
+                continue
+            if comparison is key_frame:
+                comparison = key_frame.copy()
+            normalized = series.to_numpy(dtype=object, copy=True)
+            normalized[missing] = _MISSING_OBJECT_KEY
+            comparison[column] = normalized
+        return np.flatnonzero(~comparison.duplicated(keep="first").to_numpy())
+
+    @classmethod
+    def keys_for(cls, adata: AnnData, spec: GroupSpec) -> pd.DataFrame:
+        """Return observed keys in first-seen order without building row groups."""
+        key_frame = cls._key_frame(adata, spec)
+        positions = cls._first_key_positions(key_frame)
+        return key_frame.iloc[positions, :].reset_index(drop=True).copy()
+
+    @classmethod
+    def count_for(
+        cls,
+        adata: AnnData,
+        spec: GroupSpec,
+        *,
+        weights: pd.Series | None,
+        name: str,
+    ) -> pd.DataFrame:
+        """Aggregate observed groups without constructing positional arrays."""
+        key_frame = cls._key_frame(adata, spec)
+        positions = cls._first_key_positions(key_frame)
+        keys = key_frame.iloc[positions, :].reset_index(drop=True).copy()
+        if key_frame.empty:
+            keys[name] = pd.Series(dtype="float64")
+            return keys
+        work = key_frame.copy()
+        weight_column = "__annplyr_group_weight__"
+        while weight_column in work.columns:
+            weight_column += "_"
+        if weights is not None:
+            work[weight_column] = weights.array
+        grouped = work.groupby(list(spec.columns), sort=False, observed=True, dropna=False)
+        values = grouped.size() if weights is None else grouped[weight_column].sum()
+        if len(values) != len(keys):
+            raise RuntimeError("group count keys do not match observed groups")
+        keys[name] = pd.Series(values.array, index=keys.index)
+        return keys
+
+    @classmethod
+    def build(cls, adata: AnnData, spec: GroupSpec) -> GroupPlan:
+        key_frame = cls._key_frame(adata, spec)
         if key_frame.empty:
             return cls(
                 spec,
@@ -88,15 +147,18 @@ class GroupPlan:
             dropna=False,
         )
         raw_ids = grouped.ngroup().to_numpy(dtype=np.intp)
-        buckets: dict[int, list[int]] = {}
-        for position, raw_group_id in enumerate(raw_ids):
-            buckets.setdefault(int(raw_group_id), []).append(position)
-        ordered = sorted(buckets.values(), key=lambda positions: positions[0])
-        position_arrays = tuple(np.asarray(positions, dtype=np.intp) for positions in ordered)
-        first_positions = np.asarray([positions[0] for positions in ordered], dtype=np.intp)
-        group_ids = np.empty(len(raw_ids), dtype=np.intp)
-        for dense_group_id, positions in enumerate(position_arrays):
-            group_ids[positions] = dense_group_id
+        raw_group_count = int(raw_ids.max()) + 1
+        row_positions = np.arange(len(raw_ids), dtype=np.intp)
+        first_by_raw_group = np.full(raw_group_count, len(raw_ids), dtype=np.intp)
+        np.minimum.at(first_by_raw_group, raw_ids, row_positions)
+        raw_group_order = np.argsort(first_by_raw_group, kind="stable")
+        dense_by_raw_group = np.empty(raw_group_count, dtype=np.intp)
+        dense_by_raw_group[raw_group_order] = np.arange(raw_group_count, dtype=np.intp)
+        group_ids = dense_by_raw_group[raw_ids]
+        counts = np.bincount(group_ids, minlength=raw_group_count)
+        grouped_positions = np.argsort(group_ids, kind="stable")
+        position_arrays = tuple(np.split(grouped_positions, np.cumsum(counts)[:-1]))
+        first_positions = first_by_raw_group[raw_group_order]
         keys = key_frame.iloc[first_positions, :].reset_index(drop=True).copy()
         return cls(spec, group_ids, first_positions, position_arrays, keys)
 

@@ -34,6 +34,12 @@ def test_v03_changed_signatures_are_consistent() -> None:
     ]:
         assert _parameters(getattr(AnnplyrAccessor, name))["copy"].default is True
 
+    for name in ["left_join", "inner_join", "right_join", "full_join", "semi_join", "anti_join"]:
+        assert (
+            _parameters(getattr(AnnplyrAccessor, name))["other"].annotation
+            == _parameters(getattr(GroupedAnnData, name))["other"].annotation
+        )
+
     for name in ["mutate", "rename", "rename_with", "relocate", "add_count", "add_tally"]:
         parameters = _parameters(getattr(AnnplyrAccessor, name))
         assert "copy" not in parameters
@@ -68,6 +74,25 @@ def test_every_public_callable_has_a_docstring() -> None:
     assert all(inspect.getdoc(obj) for obj in [*methods, *exports])
 
 
+def test_every_public_method_has_an_explicit_return_annotation() -> None:
+    methods = [
+        value
+        for cls in [AnnplyrAccessor, GroupedAnnData]
+        for name, value in inspect.getmembers(cls, predicate=callable)
+        if not name.startswith("_") or name == "__iter__"
+    ]
+    assert all(inspect.signature(method).return_annotation is not inspect.Signature.empty for method in methods)
+
+
+def test_grouped_interface_does_not_leak_internal_properties() -> None:
+    public_properties = {
+        name
+        for name, value in inspect.getmembers_static(GroupedAnnData)
+        if isinstance(value, property) and not name.startswith("_")
+    }
+    assert public_properties == set()
+
+
 def test_accessor_and_grouped_docstrings_cover_contract_sections() -> None:
     required = ["Parameters\n----------", "Returns\n-------", "Ownership\n---------", "Raises\n------"]
     for cls in [AnnplyrAccessor, GroupedAnnData]:
@@ -79,6 +104,15 @@ def test_accessor_and_grouped_docstrings_cover_contract_sections() -> None:
             assert all(section in doc for section in required), (
                 f"missing public docstring section: {cls.__name__}.{name}"
             )
+
+
+def test_join_and_pipe_docstrings_match_typed_failure_and_ownership_contracts() -> None:
+    for cls in [AnnplyrAccessor, GroupedAnnData]:
+        for name in ["left_join", "inner_join", "right_join", "full_join", "semi_join", "anti_join"]:
+            doc = inspect.getdoc(getattr(cls, name)) or ""
+            assert "JoinRelationshipError" in doc
+            assert "DuplicateNameError" in doc
+        assert "callable-defined" in (inspect.getdoc(cls.pipe) or "").lower()
 
 
 def test_sphinx_doctest_configuration_and_examples_are_present() -> None:

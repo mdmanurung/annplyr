@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-09
+
 ### Added
 
 - A deterministic, redistributable downstream AnnData fixture with exact H5AD,

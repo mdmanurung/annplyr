@@ -49,20 +49,20 @@ tidy extraction, and release-infrastructure work described by Milestones 1-7:
   categorical metadata, duplicate observation names, CSR data/layers/raw,
   dense axis embeddings, CSR/CSC pairwise containers, H5AD and Zarr round
   trips, concatenation, and a Scanpy preprocessing handoff.
+- Every GitHub Action is pinned to a traced release commit, checkout credentials
+  are not persisted, workflow permissions are minimal, and a blocking pedantic
+  zizmor audit plus scoped Dependabot updates keep that policy current.
 
 ## Remaining Work Before 1.0
 
-The remaining work is deliberately narrower than the completed milestone
-backlog:
+The tracked pre-1.0 readiness backlog is complete. New verbs are not a 1.0
+prerequisite unless they close a demonstrated workflow gap.
 
-1. Adopt only the vetted security hardening from the closed template update,
-   with traceable action pins, minimal permissions, scoped dependency updates,
-   and a clean zizmor audit
-   ([#12](https://github.com/mdmanurung/annplyr/issues/12)).
-
-Each item should be implemented through a focused issue with exact fixtures,
-baselines, and acceptance commands. New verbs are not a 1.0 prerequisite
-unless they close a demonstrated workflow gap.
+Issue [#12](https://github.com/mdmanurung/annplyr/issues/12) replaced the useful
+security ideas in closed template PR #8 without importing its package, coverage,
+documentation, or release churn. The accepted release-to-SHA map, least-
+privilege policy, zero-finding pedantic audit, and scoped update policy are
+recorded in {doc}`development/ci-security`.
 
 Issue [#13](https://github.com/mdmanurung/annplyr/issues/13) completed the
 downstream integration gate without adding a runtime dependency. Its generated

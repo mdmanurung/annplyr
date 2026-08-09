@@ -14,6 +14,9 @@ Enable these services for full infrastructure support:
   GitHub Actions.
 - Codecov for project and patch coverage reporting.
 - pre-commit.ci for automatic hook checks on pull requests.
+- Dependabot for grouped, cooldown-delayed GitHub Action updates only.
+- The blocking zizmor workflow for pinned-action, permission, credential, and
+  template-injection checks.
 - PyPI trusted publishing for release uploads from GitHub Actions.
 
 ## Template Sync
@@ -31,4 +34,8 @@ uvx hatch run docs:build
 prek run --all-files
 uv build
 uvx twine check --strict dist/*
+uvx zizmor==1.29.0 --persona=pedantic --no-progress .
 ```
+
+See {doc}`development/ci-security` for the accepted action-release map and
+least-privilege policy.

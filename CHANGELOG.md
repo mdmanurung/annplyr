@@ -20,6 +20,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
   `annplyr.typing`.
 - A clean downstream mypy fixture covering accessor chaining, grouping,
   expressions, joins, extraction, and generic `pipe()` returns.
+- A blocking pedantic zizmor workflow and grouped, seven-day-cooldown
+  Dependabot updates scoped to GitHub Actions.
 
 ### Changed
 
@@ -32,6 +34,9 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - `group_by()` now has overloads that distinguish its no-group typed AnnData
   return from `GroupedAnnData`; public selector, source, expression, join, and
   grouped-return annotations are frozen by a generated contract.
+- GitHub Actions now use release-traced immutable SHA pins, non-persistent
+  checkout credentials, least-privilege token scopes, quoted matrix inputs,
+  and a cache-disabled serialized trusted-publishing job.
 
 ### Performance
 

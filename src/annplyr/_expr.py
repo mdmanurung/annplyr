@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 import narwhals as nw
@@ -20,6 +20,16 @@ class Desc:
 
 
 Cardinality = Literal["row", "scalar", "unknown"]
+
+
+@dataclass(frozen=True)
+class _ReductionSpec:
+    """A scalar reduction that can be evaluated over bounded row chunks."""
+
+    operation: str
+    input_expr: nw.Expr | None
+    source_column: str | None = None
+    ddof: int = 1
 
 
 def _merge_dependencies(*values: Any) -> frozenset[str] | None:
@@ -73,6 +83,9 @@ class AnnplyrExpr:
     dependencies: frozenset[str] | None
     output_width: int | None = 1
     cardinality: Cardinality = "unknown"
+    _reduction: _ReductionSpec | None = field(default=None, repr=False, compare=False, kw_only=True)
+    _source_column: str | None = field(default=None, repr=False, compare=False, kw_only=True)
+    _chunk_safe: bool = field(default=True, repr=False, compare=False, kw_only=True)
 
     __array_priority__ = 1000
 
@@ -91,6 +104,7 @@ class AnnplyrExpr:
             _merge_dependencies(self, other),
             1,
             _combined_cardinality(self, other),
+            _chunk_safe=_chunk_safe(self, other),
         )
 
     def __add__(self, other: Any) -> AnnplyrExpr:
@@ -166,10 +180,22 @@ class AnnplyrExpr:
         return self._binary(other, "__ge__")
 
     def __invert__(self) -> AnnplyrExpr:
-        return AnnplyrExpr(~self.expr, self.dependencies, self.output_width, self.cardinality)
+        return AnnplyrExpr(
+            ~self.expr,
+            self.dependencies,
+            self.output_width,
+            self.cardinality,
+            _chunk_safe=self._chunk_safe,
+        )
 
     def __neg__(self) -> AnnplyrExpr:
-        return AnnplyrExpr(-self.expr, self.dependencies, self.output_width, self.cardinality)
+        return AnnplyrExpr(
+            -self.expr,
+            self.dependencies,
+            self.output_width,
+            self.cardinality,
+            _chunk_safe=self._chunk_safe,
+        )
 
     def __pos__(self) -> AnnplyrExpr:
         return self
@@ -197,6 +223,42 @@ class _ExprNamespace:
 
 
 _SCALAR_METHODS = {"all", "any", "first", "last", "len", "max", "mean", "median", "min", "n_unique", "std", "sum"}
+_CHUNK_REDUCTION_METHODS = _SCALAR_METHODS
+_CROSS_ROW_METHODS = {
+    "cum_count",
+    "cum_max",
+    "cum_min",
+    "cum_prod",
+    "cum_sum",
+    "diff",
+    "ewm_mean",
+    "map_batches",
+    "over",
+    "rank",
+    "replace_strict",
+    "rolling_max",
+    "rolling_mean",
+    "rolling_min",
+    "rolling_std",
+    "rolling_sum",
+    "shift",
+}
+
+
+def _chunk_safe(*values: Any) -> bool:
+    for value in values:
+        if isinstance(value, AnnplyrExpr):
+            if not value._chunk_safe:
+                return False
+        elif isinstance(value, nw.Expr):
+            return False
+        elif isinstance(value, Mapping):
+            if not _chunk_safe(*value.values()):
+                return False
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            if not _chunk_safe(*value):
+                return False
+    return True
 
 
 def _expression_method(owner: AnnplyrExpr, method: Callable[..., Any], name: str) -> Callable[..., Any]:
@@ -211,7 +273,35 @@ def _expression_method(owner: AnnplyrExpr, method: Callable[..., Any], name: str
             cardinality = "scalar"
         else:
             cardinality = _combined_cardinality(owner, *args)
-        return AnnplyrExpr(result, dependencies, owner.output_width, cardinality)
+        reduction = None
+        if (
+            name in _CHUNK_REDUCTION_METHODS
+            and owner.cardinality == "row"
+            and owner.output_width == 1
+            and owner._chunk_safe
+            and not args
+            and set(kwargs).issubset({"ddof"})
+        ):
+            reduction = _ReductionSpec(
+                name,
+                owner.expr,
+                owner._source_column,
+                int(kwargs.get("ddof", 1)),
+            )
+        elif name == "alias":
+            reduction = owner._reduction
+        chunk_safe = owner._chunk_safe and _chunk_safe(args, kwargs) and name not in _CROSS_ROW_METHODS
+        if cardinality == "scalar":
+            chunk_safe = False
+        return AnnplyrExpr(
+            result,
+            dependencies,
+            owner.output_width,
+            cardinality,
+            _reduction=reduction,
+            _source_column=owner._source_column if name == "alias" else None,
+            _chunk_safe=chunk_safe,
+        )
 
     return call
 
@@ -232,6 +322,11 @@ def expression_dependencies(value: Any) -> frozenset[str] | None:
     if hasattr(value, "to_expr"):
         return None
     return frozenset()
+
+
+def reduction_spec(value: Any) -> _ReductionSpec | None:
+    """Return bounded-reduction metadata for a canonical wrapped expression."""
+    return value._reduction if isinstance(value, AnnplyrExpr) else None
 
 
 class AnnplyrSelector(Protocol):
@@ -525,7 +620,14 @@ def col(*names: str | Iterable[str]) -> AnnplyrExpr:
             flattened.append(name)
         else:
             flattened.extend(str(item) for item in name)
-    return AnnplyrExpr(nw.col(*flattened), frozenset(flattened), len(flattened), "row")
+    source_column = flattened[0] if len(flattened) == 1 else None
+    return AnnplyrExpr(
+        nw.col(*flattened),
+        frozenset(flattened),
+        len(flattened),
+        "row",
+        _source_column=source_column,
+    )
 
 
 def lit(value: Any) -> AnnplyrExpr:
@@ -607,13 +709,20 @@ def _expr(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
     if isinstance(expr, AnnplyrExpr):
         return expr
     if isinstance(expr, nw.Expr):
-        return AnnplyrExpr(expr, None, None, "unknown")
+        return AnnplyrExpr(expr, None, None, "unknown", _chunk_safe=False)
     msg = "expression must be a column name, AnnplyrExpr, or Narwhals expression"
     raise UnknownColumnError(msg)
 
 
 def n() -> AnnplyrExpr:
-    return AnnplyrExpr(nw.len(), frozenset(), 1, "scalar")
+    return AnnplyrExpr(
+        nw.len(),
+        frozenset(),
+        1,
+        "scalar",
+        _reduction=_ReductionSpec("len", None),
+        _chunk_safe=False,
+    )
 
 
 def n_distinct(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
@@ -670,7 +779,7 @@ def lead(expr: str | AnnplyrExpr | nw.Expr, n: int = 1, *, default: Any = None) 
     shifted = _expr(expr).shift(-n)
     if default is None:
         return shifted
-    length = AnnplyrExpr(nw.len(), frozenset(), 1, "scalar")
+    length = AnnplyrExpr(nw.len(), frozenset(), 1, "scalar", _chunk_safe=False)
     return if_else(col("__annplyr_row_number__") > (length - n), default, shifted)
 
 
@@ -695,6 +804,7 @@ def coalesce(*exprs: str | AnnplyrExpr | nw.Expr | Any) -> AnnplyrExpr:
         _merge_dependencies(*values),
         1,
         _combined_cardinality(*values),
+        _chunk_safe=_chunk_safe(*values),
     )
 
 
@@ -818,6 +928,7 @@ def if_else(condition: AnnplyrExpr | nw.Expr, true: Any, false: Any) -> AnnplyrE
         _merge_dependencies(condition, true_expr, false_expr),
         1,
         _combined_cardinality(condition, true_expr, false_expr),
+        _chunk_safe=_chunk_safe(condition, true_expr, false_expr),
     )
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
@@ -11,6 +11,8 @@ from scipy import sparse
 
 from annplyr._errors import AnnplyrError, SelectionError, UnknownColumnError, UnknownSourceError
 from annplyr._expr import AnnplyrExpr, Desc, expression_dependencies
+
+DEFAULT_REDUCTION_CHUNK_VALUES = 25_165_824
 
 
 def _positions(indexer: Any, size: int, *, dimension: str) -> np.ndarray:
@@ -357,6 +359,86 @@ class PlannedRead:
     def projected_cells(self) -> int:
         return len(self.row_positions) * len(self.column_positions) if self.charge else 0
 
+    def read(self, row_positions: np.ndarray | None = None) -> pd.DataFrame:
+        """Read one validated projection while retaining positional order."""
+        rows = self.row_positions if row_positions is None else row_positions
+        if len(self.column_positions) == 0:
+            return pd.DataFrame(index=pd.RangeIndex(len(rows)))
+        frame = self.adapter.read(rows, self.column_positions)
+        frame.index = pd.RangeIndex(len(frame))
+        return frame
+
+
+@dataclass(frozen=True)
+class ChunkPlan:
+    """Deterministic row or column chunks for one resolved projection."""
+
+    request: PlannedRead
+    target_values: int = DEFAULT_REDUCTION_CHUNK_VALUES
+
+    def __post_init__(self) -> None:
+        if self.target_values <= 0:
+            raise AnnplyrError("chunk target must be positive")
+
+    @property
+    def rows_per_chunk(self) -> int:
+        width = max(1, len(self.request.column_positions))
+        return max(1, self.target_values // width)
+
+    @property
+    def chunk_count(self) -> int:
+        rows = len(self.request.row_positions)
+        return (rows + self.rows_per_chunk - 1) // self.rows_per_chunk
+
+    @property
+    def columns_per_chunk(self) -> int:
+        rows = max(1, len(self.request.row_positions))
+        return max(1, self.target_values // rows)
+
+    @property
+    def column_chunk_count(self) -> int:
+        if len(self.request.row_positions) > self.target_values:
+            return 0
+        columns = len(self.request.column_positions)
+        if columns == 0:
+            return 1
+        return (columns + self.columns_per_chunk - 1) // self.columns_per_chunk
+
+    def row_chunks(self) -> Iterator[np.ndarray]:
+        """Yield contiguous request-order row positions without copying them."""
+        step = self.rows_per_chunk
+        for start in range(0, len(self.request.row_positions), step):
+            yield self.request.row_positions[start : start + step]
+
+    def read_chunks(self) -> Iterator[tuple[np.ndarray, pd.DataFrame]]:
+        """Read each planned chunk after the enclosing planner is validated."""
+        for rows in self.row_chunks():
+            yield rows, self.request.read(rows)
+
+    def column_chunks(self) -> Iterator[np.ndarray]:
+        """Yield full-row column batches when one column fits the target."""
+        if len(self.request.row_positions) > self.target_values:
+            return
+        columns = self.request.column_positions
+        if len(columns) == 0:
+            yield columns
+            return
+        step = self.columns_per_chunk
+        for start in range(0, len(columns), step):
+            yield columns[start : start + step]
+
+    def read_column_chunks(self) -> Iterator[tuple[np.ndarray, pd.DataFrame]]:
+        """Read bounded full-row column batches in source-projection order."""
+        for columns in self.column_chunks():
+            request = PlannedRead(
+                self.request.adapter,
+                self.request.row_positions,
+                columns,
+                self.request.context,
+                self.request.charge,
+            )
+            yield columns, request.read()
+
 
 @dataclass
 class RequestPlanner:
@@ -402,12 +484,13 @@ class RequestPlanner:
 
     def execute(self) -> list[pd.DataFrame]:
         self.validate()
-        frames: list[pd.DataFrame] = []
-        for request in self.requests:
-            if len(request.column_positions) == 0:
-                frame = pd.DataFrame(index=pd.RangeIndex(len(request.row_positions)))
-            else:
-                frame = request.adapter.read(request.row_positions, request.column_positions)
-                frame.index = pd.RangeIndex(len(frame))
-            frames.append(frame)
-        return frames
+        return [request.read() for request in self.requests]
+
+    def chunk_plan(self, token: int, *, target_values: int = DEFAULT_REDUCTION_CHUNK_VALUES) -> ChunkPlan:
+        """Return one chunk plan after validating every cumulative request."""
+        self.validate()
+        try:
+            request = self.requests[token]
+        except IndexError as exc:
+            raise AnnplyrError(f"unknown planned request token: {token}") from exc
+        return ChunkPlan(request, target_values)

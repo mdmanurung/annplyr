@@ -38,10 +38,24 @@ from annplyr._frames import (
     with_row_number,
     x_frame,
 )
-from annplyr._sources import RequestPlanner, request_dependencies, source_adapter
+from annplyr._groups import GroupPlan
+from annplyr._reductions import ReductionPlan, SummaryGroupPlan, summarize_chunked
+from annplyr._sources import (
+    DEFAULT_REDUCTION_CHUNK_VALUES,
+    RequestPlanner,
+    request_dependencies,
+    source_adapter,
+)
 
 
-def _decorate_projected_frame(frame: pd.DataFrame, adata: AnnData, *, axis: str, request: Any) -> pd.DataFrame:
+def _decorate_projected_frame(
+    frame: pd.DataFrame,
+    adata: AnnData,
+    *,
+    axis: str,
+    request: Any,
+    row_positions: np.ndarray | None = None,
+) -> pd.DataFrame:
     """Attach an axis-name virtual only when dependency metadata requires it."""
     dependencies = request_dependencies(request, frame.iloc[:0, :])
     virtual_name = OBS_NAMES if axis == "obs" else VAR_NAMES
@@ -49,12 +63,29 @@ def _decorate_projected_frame(frame: pd.DataFrame, adata: AnnData, *, axis: str,
         return frame
     frame = frame.copy()
     if axis == "obs":
-        frame[OBS_NAMES] = adata.obs_names.to_numpy()
+        values = adata.obs_names.to_numpy()
+        frame[OBS_NAMES] = values if row_positions is None else values[row_positions]
         frame.attrs[VIRTUAL_ATTR] = {OBS_NAMES}
     else:
-        frame[VAR_NAMES] = adata.var_names.to_numpy()
+        values = adata.var_names.to_numpy()
+        frame[VAR_NAMES] = values if row_positions is None else values[row_positions]
         frame.attrs[VIRTUAL_ATTR] = {VAR_NAMES}
     return frame
+
+
+def _matrix_virtual_values(
+    adata: AnnData,
+    *,
+    axis: str,
+    request: Any,
+    schema: pd.DataFrame,
+) -> tuple[str | None, np.ndarray | None]:
+    dependencies = request_dependencies(request, schema)
+    virtual_name = OBS_NAMES if axis == "obs" else VAR_NAMES
+    if dependencies is not None and virtual_name not in dependencies:
+        return None, None
+    values = adata.obs_names.to_numpy() if axis == "obs" else adata.var_names.to_numpy()
+    return virtual_name, values
 
 
 def _add_matrix_request(
@@ -1076,44 +1107,6 @@ def _scatter_group_assignments(
     return output
 
 
-def _assignment_names_for_frames(frame_assignments: Any) -> list[str]:
-    names: list[str] = []
-    for frame, assignments in frame_assignments:
-        names.extend(expand_assignments(frame, assignments).keys())
-    return names
-
-
-def _obs_assignment_frames(
-    adata: AnnData,
-    *,
-    obs: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    raw: Mapping[str, Any] | None = None,
-    obsm: Mapping[str, Mapping[str, Any]] | None = None,
-    layer: str | None = None,
-):
-    if obs:
-        yield obs_frame(adata), obs
-    if x:
-        yield x_frame(adata, layer=layer), x
-    if raw:
-        yield raw_frame(adata), raw
-    for key, assignments in (obsm or {}).items():
-        yield obsm_frame(adata, key), assignments
-
-
-def _var_assignment_frames(
-    adata: AnnData,
-    *,
-    var: Mapping[str, Any] | None = None,
-    varm: Mapping[str, Mapping[str, Any]] | None = None,
-):
-    if var:
-        yield var_frame(adata), var
-    for key, assignments in (varm or {}).items():
-        yield varm_frame(adata, key), assignments
-
-
 def summarize_adata(
     adata: AnnData,
     *,
@@ -1126,6 +1119,7 @@ def summarize_adata(
     by: Any = None,
     layer: str | None = None,
     max_matrix_values: int | None = None,
+    _group_plan: GroupPlan | None = None,
 ) -> pd.DataFrame:
     obs_axis_requested = any(source is not None for source in (obs, x, raw, obsm))
     var_axis_requested = any(source is not None for source in (var, varm))
@@ -1171,74 +1165,53 @@ def summarize_adata(
             )
             descriptors.append((token, assignments, "obs"))
         by_source = obs_frame(adata)
-    projected = planner.execute()
-    sources: list[tuple[pd.DataFrame, Mapping[str, Any]]] = []
-    for frame_or_token, assignments, axis in descriptors:
-        frame = (
-            _decorate_projected_frame(projected[frame_or_token], adata, axis=axis, request=assignments)
-            if isinstance(frame_or_token, int)
-            else frame_or_token
-        )
-        sources.append((frame, assignments))
-    return summarize_sources(by_source, sources, by=by)
-
-
-def _obs_summary_sources(
-    adata: AnnData,
-    *,
-    obs: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    raw: Mapping[str, Any] | None = None,
-    obsm: Mapping[str, Mapping[str, Any]] | None = None,
-    layer: str | None = None,
-) -> list[tuple[pd.DataFrame, Mapping[str, Any]]]:
-    sources: list[tuple[pd.DataFrame, Mapping[str, Any]]] = []
-    if obs:
-        sources.append((obs_frame(adata), obs))
-    if x:
-        sources.append((x_frame(adata, layer=layer), x))
-    if raw:
-        sources.append((raw_frame(adata), raw))
-    for key, assignments in (obsm or {}).items():
-        sources.append((obsm_frame(adata, key), assignments))
-    return sources
-
-
-def _var_summary_sources(
-    adata: AnnData,
-    *,
-    var: Mapping[str, Any] | None = None,
-    varm: Mapping[str, Mapping[str, Any]] | None = None,
-) -> list[tuple[pd.DataFrame, Mapping[str, Any]]]:
-    sources: list[tuple[pd.DataFrame, Mapping[str, Any]]] = []
-    if var:
-        sources.append((var_frame(adata), var))
-    for key, assignments in (varm or {}).items():
-        sources.append((varm_frame(adata, key), assignments))
-    return sources
-
-
-def summarize_sources(
-    by_source: pd.DataFrame,
-    sources: list[tuple[pd.DataFrame, Mapping[str, Any]]],
-    *,
-    by: Any = None,
-) -> pd.DataFrame:
-    _, by_columns = prepare_by_frame(by_source, by)
-    by_values = evaluate_select(by_source, by) if by_columns else pd.DataFrame(index=by_source.index)
-    by_internal = [f"__annplyr_by_{i}__" for i, _ in enumerate(by_columns)]
+    planner.validate()
+    groups = SummaryGroupPlan.build(by_source, by, grouped=_group_plan)
     pieces: list[pd.DataFrame] = []
+    for frame_or_token, assignments, axis in descriptors:
+        if not isinstance(frame_or_token, int):
+            positions = np.arange(len(frame_or_token), dtype=np.intp)
+            work = groups.add_to_frame(frame_or_token, positions)
+            pieces.append(summarize_frame(work, assignments=assignments, by=groups.internal_columns))
+            continue
 
-    for frame, assignments in sources:
-        work = frame.copy()
-        for column, internal in zip(by_columns, by_internal, strict=True):
-            work[internal] = by_values[column].to_numpy()
-        pieces.append(summarize_frame(work, assignments=assignments, by=by_internal))
+        request = planner.requests[frame_or_token]
+        schema = request.adapter.schema
+        virtual_name, virtual_values = _matrix_virtual_values(
+            adata,
+            axis=axis,
+            request=assignments,
+            schema=schema,
+        )
+        planning_schema = schema.copy()
+        if virtual_name is not None and virtual_values is not None:
+            planning_schema[virtual_name] = pd.Series([], dtype=virtual_values.dtype)
+        reductions = ReductionPlan.resolve(planning_schema, assignments)
+        if reductions is not None:
+            chunks = planner.chunk_plan(
+                frame_or_token,
+                target_values=DEFAULT_REDUCTION_CHUNK_VALUES,
+            )
+            pieces.append(
+                summarize_chunked(
+                    chunks,
+                    reductions,
+                    groups,
+                    virtual_name=virtual_name,
+                    virtual_values=virtual_values,
+                )
+            )
+            continue
+
+        frame = _decorate_projected_frame(request.read(), adata, axis=axis, request=assignments)
+        positions = request.row_positions
+        work = groups.add_to_frame(frame, positions)
+        pieces.append(summarize_frame(work, assignments=assignments, by=groups.internal_columns))
 
     if not pieces:
         return count_frame(by_source, by=by)
-    result = _merge_summary_pieces(pieces, by_internal)
-    return result.rename(columns=dict(zip(by_internal, by_columns, strict=True)))
+    result = _merge_summary_pieces(pieces, list(groups.internal_columns))
+    return groups.restore_keys(result)
 
 
 def _merge_summary_pieces(pieces: list[pd.DataFrame], by_columns: list[str]) -> pd.DataFrame:

@@ -1379,7 +1379,7 @@ def count_frame(
     if not by_columns:
         value = work["__annplyr_wt__"].sum() if wt is not None else len(frame)
         return pd.DataFrame({name: [value]})
-    grouped = work.groupby(by_columns, sort=False, dropna=False)
+    grouped = work.groupby(by_columns, sort=False, observed=True, dropna=False)
     result = (
         grouped["__annplyr_wt__"].sum().reset_index(name=name)
         if wt is not None
@@ -1738,14 +1738,23 @@ def _join_filter_mask(
 ) -> pd.Series:
     axis = _axis(axis)
     _validate_join_na_matches(na_matches)
-    left = _axis_table(adata, axis).reset_index(drop=True)
+    left_table = _axis_table(adata, axis)
     right = _coerce_join_frame(other)
-    by_columns = _join_by_columns(left, right, by)
-    right_keys = right.loc[:, by_columns].drop_duplicates()
-    merged = left.loc[:, by_columns].merge(right_keys, how="left", on=by_columns, sort=False, indicator=True)
-    matches = merged["_merge"].eq("both")
-    if na_matches == "never":
-        matches &= ~left.loc[:, by_columns].isna().any(axis=1).to_numpy()
+    by_columns = _join_by_columns(left_table, right, by)
+    left = left_table.loc[:, by_columns].reset_index(drop=True)
+    right_keys = right.loc[:, by_columns]
+    if len(by_columns) == 1:
+        right_keys = right_keys.drop_duplicates()
+        column = by_columns[0]
+        matches = left[column].isin(right_keys[column].dropna())
+        if na_matches == "na" and right_keys[column].isna().any():
+            matches |= left[column].isna()
+    else:
+        right_keys = right_keys.groupby(by_columns, sort=False, observed=True, dropna=False).head(1)
+        merged = left.merge(right_keys, how="left", on=by_columns, sort=False, indicator=True)
+        matches = merged["_merge"].eq("both")
+        if na_matches == "never":
+            matches &= ~left.isna().any(axis=1).to_numpy()
     values = matches.to_numpy() if keep_matches else (~matches).to_numpy()
     return pd.Series(values, index=pd.RangeIndex(len(left)))
 
@@ -1781,16 +1790,16 @@ def pull_adata(
     elif raw is not None:
         matrix_spec = ("raw", None, raw, "obs")
     elif obsm is not None:
-        key, selector = next(iter(obsm.items()))
+        key, selector = _single_pull_mapping_item(obsm, source="obsm")
         matrix_spec = ("obsm", key, selector, "obs")
     elif varm is not None:
-        key, selector = next(iter(varm.items()))
+        key, selector = _single_pull_mapping_item(varm, source="varm")
         matrix_spec = ("varm", key, selector, "var")
     elif obsp is not None:
-        key, selector = next(iter(obsp.items()))
+        key, selector = _single_pull_mapping_item(obsp, source="obsp")
         matrix_spec = ("obsp", key, selector, "obs")
     elif varp is not None:
-        key, selector = next(iter(varp.items()))
+        key, selector = _single_pull_mapping_item(varp, source="varp")
         matrix_spec = ("varp", key, selector, "var")
     if matrix_spec is not None:
         source, request_key, selector, axis = matrix_spec
@@ -1811,8 +1820,15 @@ def pull_adata(
         result.index = adata.obs_names if axis == "obs" else adata.var_names
         return result
     RequestPlanner(max_matrix_values).validate()
-    key, selector = next(iter((uns or {}).items()))
+    key, selector = _single_pull_mapping_item(cast(Mapping[str, Any], uns), source="uns")
     return _first_series(evaluate_select(source_frame(adata, "uns", key=key), selector))
+
+
+def _single_pull_mapping_item(mapping: Mapping[str, Any], *, source: str) -> tuple[str, Any]:
+    if len(mapping) != 1:
+        msg = f"pull {source} requires exactly one source key"
+        raise UnknownSourceError(msg)
+    return next(iter(mapping.items()))
 
 
 def _first_series(frame: pd.DataFrame) -> pd.Series:
@@ -1919,23 +1935,71 @@ def to_tidy_adata(
     )
     matrix = _decorate_projected_frame(planner.execute()[token], adata, axis="obs", request=selector)
     wide = evaluate_select(matrix, selector)
-    _check_reserved_names(wide.columns, {obs_name, feature, value}, context="to_tidy feature")
     meta = (
         evaluate_select(obs_frame(adata), obs).reset_index(drop=True)
         if obs is not None
         else pd.DataFrame(index=wide.index)
     )
-    _check_reserved_names(meta.columns, {obs_name, feature, value}, context="to_tidy obs metadata")
+    _validate_long_export_names(
+        meta,
+        wide,
+        reserved={obs_name, feature, value},
+        context="to_tidy",
+    )
     combined = pd.concat([meta.reset_index(drop=True), wide.reset_index(drop=True)], axis=1)
     combined.insert(0, obs_name, adata.obs_names.to_numpy())
-    tidy = combined.melt(id_vars=[obs_name, *meta.columns], var_name=feature, value_name=value)
+    tidy = _pivot_obs_major(
+        combined,
+        id_vars=[obs_name, *meta.columns],
+        value_vars=list(wide.columns),
+        var_name=feature,
+        value_name=value,
+    )
     return tidy[[obs_name, feature, value, *([col for col in tidy.columns if col not in {obs_name, feature, value}])]]
+
+
+def _pivot_obs_major(
+    data: pd.DataFrame,
+    *,
+    id_vars: Sequence[str],
+    value_vars: Sequence[str],
+    var_name: str,
+    value_name: str,
+) -> pd.DataFrame:
+    """Pivot selected columns with rows varying before columns."""
+    row_count = len(data)
+    value_count = len(value_vars)
+    positions = np.repeat(np.arange(row_count, dtype=np.intp), value_count)
+    result = data.loc[:, list(id_vars)].iloc[positions].reset_index(drop=True)
+    result[var_name] = np.tile(np.asarray(value_vars, dtype=object), row_count)
+    values = data.loc[:, list(value_vars)]
+    if value_count and all(isinstance(dtype, pd.SparseDtype) for dtype in values.dtypes):
+        flattened = cast(Any, values).sparse.to_coo().reshape((row_count * value_count, 1), order="C")
+        result[value_name] = cast(Any, pd.arrays.SparseArray).from_spmatrix(flattened)
+    else:
+        result[value_name] = values.to_numpy().reshape(-1)
+    return result
 
 
 def _check_reserved_names(columns: pd.Index | Sequence[str], reserved: set[str], *, context: str) -> None:
     collisions = [str(column) for column in columns if str(column) in reserved]
     if collisions:
         msg = f"{context} column(s) collide with reserved output name(s): {', '.join(collisions)}"
+        raise NameRepairError(msg)
+
+
+def _validate_long_export_names(
+    meta: pd.DataFrame,
+    values: pd.DataFrame,
+    *,
+    reserved: set[str],
+    context: str,
+) -> None:
+    _check_reserved_names(values.columns, reserved, context=f"{context} feature")
+    _check_reserved_names(meta.columns, reserved, context=f"{context} obs metadata")
+    duplicated = sorted({str(column) for column in meta.columns} & {str(column) for column in values.columns})
+    if duplicated:
+        msg = f"Duplicate {context} column name(s) across sources: {', '.join(duplicated)}"
         raise NameRepairError(msg)
 
 
@@ -1975,15 +2039,16 @@ def pivot_longer_adata(
     values = evaluate_select(matrix, selector)
     meta = evaluate_select(obs_frame(adata), obs) if obs is not None else pd.DataFrame(index=adata.obs_names)
     reserved = {obs_name, names_to, values_to}
-    _check_reserved_names(values.columns, reserved, context="pivot_longer feature")
-    _check_reserved_names(meta.columns, reserved, context="pivot_longer obs metadata")
-    duplicated = sorted({str(column) for column in meta.columns} & {str(column) for column in values.columns})
-    if duplicated:
-        msg = f"Duplicate pivot_longer column name(s) across sources: {', '.join(duplicated)}"
-        raise NameRepairError(msg)
-    wide = pd.concat([meta, values], axis=1)
+    _validate_long_export_names(meta, values, reserved=reserved, context="pivot_longer")
+    wide = pd.concat([meta.reset_index(drop=True), values.reset_index(drop=True)], axis=1)
     wide.insert(0, obs_name, adata.obs_names.to_numpy())
-    return wide.melt(id_vars=[obs_name, *meta.columns], var_name=names_to, value_name=values_to)
+    return _pivot_obs_major(
+        wide,
+        id_vars=[obs_name, *meta.columns],
+        value_vars=list(values.columns),
+        var_name=names_to,
+        value_name=values_to,
+    )
 
 
 def as_frame_adata(

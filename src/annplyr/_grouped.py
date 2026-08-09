@@ -56,10 +56,6 @@ class GroupedAnnData:
         self._spec.validate(adata)
 
     @property
-    def spec(self) -> GroupSpec:
-        return self._spec
-
-    @property
     def _axis(self) -> str:
         return self._spec.axis
 
@@ -103,7 +99,7 @@ class GroupedAnnData:
         return list(self._spec.columns)
 
     def group_keys(self) -> pd.DataFrame:
-        return self._plan().keys.copy()
+        return GroupPlan.keys_for(self._adata, self._spec)
 
     def group_data(self) -> pd.DataFrame:
         return self._plan().group_data()
@@ -312,15 +308,11 @@ class GroupedAnnData:
     summarise = summarize
 
     def count(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
-        plan = self._plan()
-        frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
-        if wt is None:
-            counts = [len(positions) for positions in plan.positions]
-        else:
+        weights = None
+        if wt is not None:
+            frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
             weights = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"]
-            counts = [weights.iloc[positions].sum() for positions in plan.positions]
-        result = plan.keys.copy()
-        result[name] = counts
+        result = GroupPlan.count_for(self._adata, self._spec, weights=weights, name=name)
         if sort:
             result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
         return result
@@ -500,7 +492,7 @@ class GroupedAnnData:
 
     def left_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -526,7 +518,7 @@ class GroupedAnnData:
 
     def inner_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -552,7 +544,7 @@ class GroupedAnnData:
 
     def right_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -578,7 +570,7 @@ class GroupedAnnData:
 
     def full_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -604,7 +596,7 @@ class GroupedAnnData:
 
     def semi_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -615,7 +607,7 @@ class GroupedAnnData:
 
     def anti_join(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -627,7 +619,7 @@ class GroupedAnnData:
     def _join(
         self,
         kind: str,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None = None,
         axis: str = "obs",
@@ -666,7 +658,7 @@ class GroupedAnnData:
 
     def _join_spec(
         self,
-        other: Any,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
         by: str | Sequence[str] | None,
         axis: str,

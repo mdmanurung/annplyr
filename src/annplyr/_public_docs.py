@@ -7,16 +7,10 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 _AXIS_METHODS = {
-    "anti_join",
     "arrange",
     "distinct",
     "filter",
-    "full_join",
-    "inner_join",
-    "left_join",
-    "right_join",
     "select",
-    "semi_join",
     "slice",
     "slice_head",
     "slice_max",
@@ -24,6 +18,7 @@ _AXIS_METHODS = {
     "slice_sample",
     "slice_tail",
 }
+_JOIN_METHODS = {"anti_join", "full_join", "inner_join", "left_join", "right_join", "semi_join"}
 _INPLACE_METHODS = {"add_count", "add_tally", "mutate", "relocate", "rename", "rename_with"}
 _EXTRACTION_METHODS = {"as_frame", "nest_by", "pivot_longer", "pull", "to_df", "to_tidy"}
 _TABLE_METHODS = {
@@ -100,6 +95,19 @@ def _fill(
 
 
 def _method_policy(name: str, *, grouped: bool) -> tuple[str, str, tuple[str, ...]]:
+    if name in _JOIN_METHODS:
+        result = "GroupedAnnData" if grouped else "AnnData"
+        return (
+            result,
+            "Returns an independent result by default; ``copy=False`` may be a view or materialized.",
+            (
+                "SelectionError",
+                "UnknownColumnError",
+                "JoinRelationshipError",
+                "DuplicateNameError",
+                "AnnplyrError",
+            ),
+        )
     if name in _AXIS_METHODS:
         result = "GroupedAnnData" if grouped else "AnnData"
         return (
@@ -131,6 +139,12 @@ def _method_policy(name: str, *, grouped: bool) -> tuple[str, str, tuple[str, ..
         return (
             "AnnData",
             "Returns the wrapped AnnData and removes the grouping boundary.",
+            ("AnnplyrError",),
+        )
+    if name == "pipe":
+        return (
+            "The callable-defined result.",
+            "Passes the exact wrapped object; mutation and ownership are callable-defined.",
             ("AnnplyrError",),
         )
     return (

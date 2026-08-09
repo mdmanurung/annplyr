@@ -7,6 +7,9 @@ buck-out/
 /.idea/
 /.vscode/
 
+# Local review artifacts
+/.claude/reviews/
+
 # Compiled files
 .venv/
 __pycache__/

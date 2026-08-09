@@ -78,11 +78,57 @@ def test_semi_join_and_anti_join_subset_anndata_axes(dense_adata: AnnData) -> No
     assert dense_adata.ap.semi_join(keep_var, by="feature_type", axis="var").var_names.tolist() == ["g2"]
 
 
+def test_filtering_joins_match_nullable_keys_only_when_requested() -> None:
+    adata = AnnData(
+        X=np.arange(3, dtype=np.float64).reshape(3, 1),
+        obs=pd.DataFrame({"key": pd.array([1, pd.NA, 2], dtype="Int64")}, index=["a", "missing", "b"]),
+    )
+    missing = pd.DataFrame({"key": pd.array([pd.NA], dtype="Int64")})
+
+    assert adata.ap.semi_join(missing, by="key").obs_names.tolist() == ["missing"]
+    assert adata.ap.anti_join(missing, by="key").obs_names.tolist() == ["a", "b"]
+    assert adata.ap.semi_join(missing, by="key", na_matches="never").n_obs == 0
+    assert adata.ap.anti_join(missing, by="key", na_matches="never").obs_names.tolist() == ["a", "missing", "b"]
+
+
+def test_multikey_filtering_joins_canonicalize_mixed_object_null_sentinels() -> None:
+    names = ["none", "nan", "pandas-na", "value", "other"]
+    adata = AnnData(
+        X=np.arange(5, dtype=np.float64).reshape(5, 1),
+        obs=pd.DataFrame(
+            {
+                "key": pd.Series([None, np.nan, pd.NA, "x", "y"], dtype=object, index=names),
+                "scope": [1, 1, 1, 1, 1],
+            },
+            index=names,
+        ),
+    )
+    right = pd.DataFrame(
+        {
+            "key": pd.Series([None, np.nan, pd.NA, "x"], dtype=object),
+            "scope": [1, 1, 1, 1],
+        }
+    )
+
+    assert adata.ap.semi_join(right, by=["key", "scope"]).obs_names.tolist() == names[:4]
+    assert adata.ap.anti_join(right, by=["key", "scope"]).obs_names.tolist() == ["other"]
+    assert adata.ap.semi_join(right, by=["key", "scope"], na_matches="never").obs_names.tolist() == ["value"]
+    assert adata.ap.anti_join(right, by=["key", "scope"], na_matches="never").obs_names.tolist() == [
+        "none",
+        "nan",
+        "pandas-na",
+        "other",
+    ]
+
+
 def test_pivot_longer_and_pivot_wider_round_trip_selected_values(dense_adata: AnnData) -> None:
     long = dense_adata.ap.pivot_longer(obs=["batch"], x=["g0", "g3"])
 
     assert long.columns.tolist() == ["obs_name", "batch", "name", "value"]
     assert len(long) == dense_adata.n_obs * 2
+    assert list(long[["obs_name", "name"]].itertuples(index=False, name=None)) == [
+        (obs_name, feature) for obs_name in dense_adata.obs_names for feature in ["g0", "g3"]
+    ]
     assert long.loc[(long["obs_name"] == "c3") & (long["name"] == "g3"), "value"].item() == 8.0
 
     wide = ap.pivot_wider(long, id_cols=["obs_name", "batch"], names_from="name", values_from="value")
@@ -101,6 +147,18 @@ def test_pivot_longer_rejects_cross_source_duplicate_names(dense_adata: AnnData)
 def test_to_tidy_requires_explicit_features_by_default(dense_adata: AnnData) -> None:
     with pytest.raises(ap.SelectionError, match="explicit x"):
         dense_adata.ap.to_tidy(obs=["batch"])
+
+
+def test_to_tidy_is_obs_major_and_rejects_cross_source_duplicate_names(dense_adata: AnnData) -> None:
+    tidy = dense_adata.ap.to_tidy(obs=["batch"], x=["g0", "g3"])
+    assert list(tidy[["obs_name", "feature"]].itertuples(index=False, name=None)) == [
+        (obs_name, feature) for obs_name in dense_adata.obs_names for feature in ["g0", "g3"]
+    ]
+
+    adata = dense_adata.copy()
+    adata.obs["g0"] = ["meta"] * adata.n_obs
+    with pytest.raises(ap.NameRepairError, match="Duplicate"):
+        adata.ap.to_tidy(obs=["g0"], x=["g0"])
 
 
 def test_to_tidy_rejects_reserved_name_collisions(dense_adata: AnnData) -> None:
@@ -122,6 +180,9 @@ def test_nest_by_and_unnest_return_pandas_tables(dense_adata: AnnData) -> None:
     assert nested.columns.tolist() == ["batch", "data"]
     assert nested["batch"].tolist() == ["A", "B"]
     assert nested.loc[0, "data"].columns.tolist() == ["cell_type", "score"]
+    original_score = dense_adata.obs.loc["c0", "score"]
+    nested.loc[0, "data"].loc[0, "score"] = -999
+    assert dense_adata.obs.loc["c0", "score"] == original_score
 
     unnested = ap.unnest(nested, "data")
     assert unnested.columns.tolist() == ["batch", "cell_type", "score"]
@@ -154,6 +215,21 @@ def test_sparse_frames_preserve_sparse_dtypes_for_matrix_sources(sparse_adata: A
     assert all(isinstance(dtype, pd.SparseDtype) for dtype in frame.dtypes)
     filtered = sparse_adata.ap.filter(x=ap.col("g3") >= 40, layer="counts")
     assert filtered.obs_names.tolist() == ["c3", "c4"]
+
+
+@pytest.mark.parametrize("method,feature_column", [("to_tidy", "feature"), ("pivot_longer", "name")])
+def test_sparse_long_exports_preserve_value_dtype_and_obs_major_order(
+    sparse_adata: AnnData,
+    method: str,
+    feature_column: str,
+) -> None:
+    result = getattr(sparse_adata.ap, method)(x=["g0", "g3"])
+
+    assert isinstance(result["value"].dtype, pd.SparseDtype)
+    assert list(result[["obs_name", feature_column]].itertuples(index=False, name=None)) == [
+        (obs_name, feature) for obs_name in sparse_adata.obs_names for feature in ["g0", "g3"]
+    ]
+    assert result["value"].sparse.to_dense().tolist() == sparse_adata.X[:, [0, 3]].toarray().reshape(-1).tolist()
 
 
 def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData) -> None:

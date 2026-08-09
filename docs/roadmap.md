@@ -20,8 +20,8 @@ package into a tidyverse- and scverse-grade AnnData wrangling library.
 
 ## Current Hardening Status
 
-Version 0.3 completes the contract, ownership, grouping, projection, and
-benchmark hardening described by Milestones 1-5:
+Version 0.3 completes the public contract, ownership, grouping, projection,
+tidy extraction, and release-infrastructure work described by Milestones 1-7:
 
 - `adata.ap` is registered through the AnnData namespace mechanism.
 - Axis verbs use positional identity and independent-object defaults so `X`,
@@ -40,13 +40,37 @@ benchmark hardening described by Milestones 1-5:
   same-shape mutation fails with typed errors.
 - A fixed ASV manifest, raw-sample evaluator, peak-RSS runner, and performance
   report enforce the three v0.3 performance families.
+- Long exports preserve observation-major tidy ordering, grouped key/count
+  paths avoid per-group Python scans, and filtering joins read only their keys.
+- Public accessor methods carry explicit return annotations, documentation
+  examples are executable, and package metadata is ready for trusted
+  publishing.
 
-Remaining work before a public 1.0 should focus on chunked reductions beyond
-the projected v0.3 surface, optimization of the non-primary high-cardinality
-and filtering-join benchmark regressions, broader downstream integration
-fixtures, and continued stabilization of public typing.
+## Remaining Work Before 1.0
+
+The remaining work is deliberately narrower than the completed milestone
+backlog:
+
+1. Add bounded chunked reductions for dense, sparse, and backed adapters
+   ([#10](https://github.com/mdmanurung/annplyr/issues/10)). They
+   must match eager known-answer fixtures, respect cumulative budgets, and
+   demonstrate bounded peak RSS on a fixed runner.
+2. Add representative downstream integration fixtures covering serialization,
+   concatenation, and at least one optional scverse consumer without making
+   optional packages runtime dependencies
+   ([#13](https://github.com/mdmanurung/annplyr/issues/13)).
+3. Stabilize consumer-facing typing for the dynamically registered
+   `AnnData.ap` namespace and the grouped/expression return types. Internal
+   mypy success alone is not sufficient; a downstream type-check fixture must
+   pass ([#11](https://github.com/mdmanurung/annplyr/issues/11)).
+
+Each item should be implemented through a focused issue with exact fixtures,
+baselines, and acceptance commands. New verbs are not a 1.0 prerequisite
+unless they close a demonstrated workflow gap.
 
 ## Milestone 1: Public Contract And Errors
+
+Status: complete for v0.3.
 
 Define the current API precisely before broadening it.
 
@@ -73,6 +97,8 @@ Acceptance gates:
 
 ## Milestone 2: Selector And Expression Engine
 
+Status: complete for the supported v0.3 selector and expression surface.
+
 Bring selection and expression semantics closer to dplyr/tidyselect while
 remaining axis-aware.
 
@@ -93,6 +119,8 @@ Acceptance gates:
 - Dense, CSR, and CSC fixtures produce equivalent selector results.
 
 ## Milestone 3: Core Dplyr Verbs
+
+Status: complete for v0.3.
 
 Add the missing dataframe verbs that can be implemented without corrupting
 AnnData alignment.
@@ -117,12 +145,17 @@ Acceptance gates:
 
 ## Milestone 4: Grouped Semantics
 
+Status: complete for persistent v0.3 grouping. Additive regrouping flags are
+not part of the frozen interface; callers explicitly create a new grouping
+with `group_by()`.
+
 Make grouping behavior deterministic and consistent across verbs.
 
 Issue-sized tasks:
 
 - Add `ungroup`, `group_vars`, `group_keys`, and `group_data`.
-- Add `add` and `drop` arguments to `group_by`.
+- Keep regrouping explicit rather than adding shallow `add` and `drop` flag
+  combinations to `group_by`.
 - Make `filter`, `mutate`, `slice_*`, `arrange`, `distinct`, `count`, and
   `add_count` group-aware where semantics are well-defined.
 - Preserve grouping columns during `select` unless explicitly dropped through a
@@ -137,6 +170,9 @@ Acceptance gates:
 
 ## Milestone 5: Scverse-Grade Internals
 
+Status: projection, adapters, ownership, and budgets are complete for v0.3;
+bounded chunked reductions are the focused 1.0 follow-up above.
+
 Refactor storage and namespace handling without changing the accessor name.
 
 Issue-sized tasks:
@@ -145,8 +181,8 @@ Issue-sized tasks:
 - Add an `Axis` abstraction and positional indexer normalization.
 - Add a source registry for `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`,
   `varp`, and controlled `uns` access.
-- Add dense/sparse/backed matrix adapters with column projection, chunked
-  reductions, and explicit densification budgets.
+- Add dense/sparse/backed matrix adapters with column projection and explicit
+  densification budgets.
 - Add copy and materialization policy helpers.
 - Add dtype-preserving assignment helpers.
 
@@ -159,6 +195,8 @@ Acceptance gates:
 - AnnData-aligned containers remain shape-consistent after every tested verb.
 
 ## Milestone 6: Tidyr And Plot Extraction
+
+Status: complete for the safe v0.3 extraction and rectangling surface.
 
 Expand long/wide extraction while protecting users from accidental large
 materializations.
@@ -179,6 +217,14 @@ Acceptance gates:
   notebooks by default.
 
 ## Milestone 7: Scverse Infrastructure And Release
+
+Status: repository-side infrastructure is complete; the milestone closes when
+the v0.3.0 tag, GitHub release, trusted PyPI publication, and clean-install
+smoke are verified.
+
+The incompatible generated template refresh was closed without merge. Its
+security-oriented pieces are tracked separately in
+[#12](https://github.com/mdmanurung/annplyr/issues/12).
 
 Complete the package infrastructure expected from a public scverse-style
 project.

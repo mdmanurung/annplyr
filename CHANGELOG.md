@@ -7,7 +7,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-08-08
+## [0.3.0] - 2026-08-09
 
 ### Added
 
@@ -22,7 +22,7 @@ and this project follows [Semantic Versioning](https://semver.org/).
   budgets across filtering, ordering, mutation, summaries, extraction, and
   grouped counterparts.
 - A mechanically checked public API contract, fixed ASV benchmark manifest,
-  raw-sample evaluator, peak-RSS runner, and v0.3 performance report.
+  raw-result normalizer/evaluator, peak-RSS runner, and v0.3 performance report.
 - Dedicated v0.2-to-v0.3 migration documentation and executable Sphinx
   examples.
 
@@ -52,10 +52,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
   metadata frames for safe expression sequences.
 - Batch proven-independent assignments and skip no-op metadata writes without
   changing sequential mutation semantics.
+- Avoid Python bucket construction for persistent group plans, aggregate
+  grouped counts directly, and restrict filtering joins to their key columns.
+- Build observation-major long tables directly instead of melting and then
+  reordering feature-major output.
 - On the frozen runner, the manifest's best improvements were 99.92% for
   matrix projection, 68.87% for grouped execution, and 39.37% for metadata
-  evaluation. See `docs/development/performance-v0.3.md` for raw-sample ranges,
-  caveats, and the non-primary ASV continuous regressions.
+  evaluation. Targeted post-freeze measurements resolve the documented
+  high-cardinality, filtering-join, and chained-extraction regressions. See
+  `docs/development/performance-v0.3.md` for exact ranges and caveats.
 
 ### Fixed
 
@@ -65,6 +70,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
   grouped results are reconstructed positionally.
 - Reject cumulative and later-source over-budget requests before any adapter
   reads occur.
+- Preserve observation-major ordering in `to_tidy()` and `pivot_longer()`.
+- Reject empty or multi-key `pull()` source mappings with `UnknownSourceError`
+  instead of ignoring keys or leaking `StopIteration`.
+- Align `nest_by()`, join, pipe, and `pull()` documentation with their actual
+  return, ownership, and typed-failure contracts.
 
 ### Documentation
 

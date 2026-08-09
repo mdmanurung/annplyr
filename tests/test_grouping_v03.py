@@ -11,7 +11,6 @@ from anndata import AnnData
 import annplyr as ap
 from annplyr._errors import AnnplyrError, JoinRelationshipError, SelectionError, UnknownColumnError
 from annplyr._grouped import GroupedAnnData
-from annplyr._groups import GroupPlan
 
 
 def _grouped_fixture(*, duplicate_names: bool = False) -> AnnData:
@@ -40,7 +39,6 @@ def test_group_spec_resolves_once_and_rejects_computed_virtual_and_empty_selecti
     adata = _grouped_fixture()
     grouped = adata.ap.group_by(obs=ap.starts_with("gro"))
     assert grouped.group_vars() == ["group"]
-    assert grouped.spec.columns == ("group",)
 
     with pytest.raises(SelectionError, match="computed"):
         adata.ap.group_by(obs=ap.col("group"))
@@ -67,9 +65,33 @@ def test_group_plan_is_first_seen_na_inclusive_observed_and_positional() -> None
     assert grouped.group_data()[".rows"].tolist() == [[0, 2, 5], [1, 4], [3]]
     assert "unused" not in keys["group"].dropna().tolist()
 
-    plan = GroupPlan.build(grouped.ungroup(), grouped.spec)
+    plan = grouped._plan()
     assert plan.group_ids.tolist() == [0, 1, 0, 2, 1, 0]
     assert plan.first_positions.tolist() == [0, 1, 3]
+
+
+def test_group_fast_paths_canonicalize_mixed_object_null_sentinels() -> None:
+    names = ["none", "nan", "pandas-na", "value"]
+    obs = pd.DataFrame(
+        {
+            "group": pd.Series([None, np.nan, pd.NA, "a"], dtype=object, index=names),
+            "weight": [1, 2, 3, 4],
+        },
+        index=names,
+    )
+    adata = AnnData(X=np.zeros((4, 1)), obs=obs, var=pd.DataFrame(index=["g0"]))
+    grouped = adata.ap.group_by(obs="group")
+
+    keys = grouped.group_keys()
+    count = grouped.count()
+    tally = grouped.tally(wt="weight")
+
+    assert len(keys) == 2
+    assert pd.isna(keys.loc[0, "group"])
+    assert keys.loc[1, "group"] == "a"
+    assert grouped.group_data()[".rows"].tolist() == [[0, 1, 2], [3]]
+    assert count["n"].tolist() == [3, 1]
+    assert tally["n"].tolist() == [6, 4]
 
 
 @pytest.mark.filterwarnings("ignore:Observation names are not unique")
@@ -167,6 +189,17 @@ def test_grouped_summary_count_and_tally_share_plan_order_and_key_dtypes() -> No
     assert tally["n"].tolist() == [7, 6, 5]
     assert isinstance(summary["group"].dtype, pd.CategoricalDtype)
     assert isinstance(count["group"].dtype, pd.CategoricalDtype)
+
+
+def test_grouped_weighted_count_does_not_collide_with_internal_column_names() -> None:
+    adata = _grouped_fixture()
+    internal_name = "__annplyr_group_weight__"
+    adata.obs = adata.obs.rename(columns={"group": internal_name})
+
+    result = adata.ap.group_by(obs=internal_name).count(wt="value")
+
+    assert result[internal_name].astype(object).where(result[internal_name].notna(), "NA").tolist() == ["b", "a", "NA"]
+    assert result["n"].tolist() == [7, 6, 5]
 
 
 def test_all_six_grouped_joins_execute_globally_and_update_suffixed_key() -> None:

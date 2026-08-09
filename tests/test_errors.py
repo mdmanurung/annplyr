@@ -29,6 +29,13 @@ def test_pull_requires_single_selected_column(dense_adata: AnnData) -> None:
         dense_adata.ap.pull(obs=["batch", "score"])
 
 
+@pytest.mark.parametrize("source", ["obsm", "varm", "obsp", "varp", "uns"])
+@pytest.mark.parametrize("mapping", [{}, {"first": "0", "second": "0"}])
+def test_pull_requires_exactly_one_mapping_key(dense_adata: AnnData, source: str, mapping: dict[str, str]) -> None:
+    with pytest.raises(ap.UnknownSourceError, match="exactly one source key"):
+        dense_adata.ap.pull(**{source: mapping})
+
+
 def test_missing_metadata_column_raises_typed_error(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="missing"):
         dense_adata.ap.select(obs="missing")

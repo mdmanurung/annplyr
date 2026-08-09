@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TypeVar
 
+import pandas as pd
 from anndata import AnnData
 
 from annplyr._errors import AnnplyrError
@@ -142,9 +143,9 @@ class AnnplyrAccessor:
 
     def left_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         relationship: str = "many-to-one",
         multiple: str = "error",
@@ -168,9 +169,9 @@ class AnnplyrAccessor:
 
     def inner_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         relationship: str = "many-to-one",
         multiple: str = "error",
@@ -194,9 +195,9 @@ class AnnplyrAccessor:
 
     def right_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         relationship: str = "many-to-one",
         multiple: str = "error",
@@ -220,9 +221,9 @@ class AnnplyrAccessor:
 
     def full_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         relationship: str = "many-to-one",
         multiple: str = "error",
@@ -246,9 +247,9 @@ class AnnplyrAccessor:
 
     def semi_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         na_matches: str = "na",
         copy: bool = True,
@@ -257,9 +258,9 @@ class AnnplyrAccessor:
 
     def anti_join(
         self,
-        other,
+        other: pd.DataFrame | Mapping[str, Any],
         *,
-        by: str | list[str] | None = None,
+        by: str | Sequence[str] | None = None,
         axis: str = "obs",
         na_matches: str = "na",
         copy: bool = True,
@@ -391,7 +392,7 @@ class AnnplyrAccessor:
         by: Any = None,
         layer: str | None = None,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.DataFrame:
         return summarize_adata(
             self._obj,
             obs=obs,
@@ -407,10 +408,26 @@ class AnnplyrAccessor:
 
     summarise = summarize
 
-    def count(self, by: Any = None, *, wt: Any = None, sort: bool = False, axis: str = "obs", name: str = "n"):
+    def count(
+        self,
+        by: Any = None,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        axis: str = "obs",
+        name: str = "n",
+    ) -> pd.DataFrame:
         return count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
-    def tally(self, by: Any = None, *, wt: Any = None, sort: bool = False, axis: str = "obs", name: str = "n"):
+    def tally(
+        self,
+        by: Any = None,
+        *,
+        wt: Any = None,
+        sort: bool = False,
+        axis: str = "obs",
+        name: str = "n",
+    ) -> pd.DataFrame:
         return tally_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
     def add_count(
@@ -450,7 +467,7 @@ class AnnplyrAccessor:
         *,
         layer: str | None = None,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.Series:
         return pull_adata(
             self._obj,
             obs=obs,
@@ -476,7 +493,7 @@ class AnnplyrAccessor:
         *,
         layer: str | None = None,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.DataFrame:
         return to_df_adata(
             self._obj,
             obs=obs,
@@ -500,7 +517,7 @@ class AnnplyrAccessor:
         value: str = "value",
         allow_all_features: bool = False,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.DataFrame:
         return to_tidy_adata(
             self._obj,
             obs=obs,
@@ -526,7 +543,7 @@ class AnnplyrAccessor:
         values_to: str = "value",
         allow_all_features: bool = False,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.DataFrame:
         return pivot_longer_adata(
             self._obj,
             obs=obs,
@@ -548,7 +565,7 @@ class AnnplyrAccessor:
         select: Any = None,
         layer: str | None = None,
         max_matrix_values: int | None = None,
-    ):
+    ) -> pd.DataFrame:
         return as_frame_adata(
             self._obj, source=source, key=key, select=select, layer=layer, max_matrix_values=max_matrix_values
         )
@@ -561,7 +578,7 @@ class AnnplyrAccessor:
         var: Any = None,
         axis: str = "obs",
         name: str = "data",
-    ):
+    ) -> pd.DataFrame:
         return nest_by_adata(self._obj, by=by, obs=obs, var=var, axis=axis, name=name)
 
     def pipe(self, func: Callable[..., T] | tuple[Callable[..., T], str], *args: Any, **kwargs: Any) -> T:

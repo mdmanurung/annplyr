@@ -3,9 +3,9 @@
 This report compares annplyr 0.2.0 at
 `c0f0735859a059c3570dfea2ac6f1df322ac582e` with the frozen, unreferenced v0.3
 snapshot `861cafcf9547673d0d7831e8b2af8d64cf09ce4d`. The snapshot procedure did
-not move `HEAD`, update a branch, or use the repository index. All measurements
-ran on `res-hpc-gpu12.researchlumc.nl` with one thread per numerical runtime and
-seed `20260808`.
+not move `HEAD`, update a branch, or use the repository index. All
+frozen-snapshot measurements ran on `res-hpc-gpu12.researchlumc.nl` with one
+thread per numerical runtime and seed `20260808`.
 
 ## Fixed runner and raw evidence
 
@@ -15,7 +15,7 @@ installed without dependency resolution into the same isolated ASV environment
 used for the baseline. Import checks in the benchmark-launch environment
 resolved annplyr 0.2.0 for `c0f07358` and annplyr 0.3.0 for `861cafcf`.
 
-The authoritative raw files are ignored local artifacts:
+The authoritative frozen-snapshot raw files are ignored local artifacts:
 
 - baseline timing: `.asv/results/res-hpc-gpu12.researchlumc.nl/c0f07358-env-fa329217d7752b590c681231009101f6.json`;
 - candidate timing: `.asv/results/res-hpc-gpu12.researchlumc.nl/861cafcf-existing-py_exports_para-lipg-hpc_mdmanurung__hobby_annplyr_.asv_env_1e0106681b6027853d4043d29ee6025a_bin_python.json`;
@@ -111,17 +111,122 @@ primary acceptance cases:
 The same paired screen measured inner join at 348 +/- 30 ms for v0.2 and
 347 +/- 40 ms for v0.3. It also confirmed the intended large improvements,
 including grouped filter at 0.43x, metadata mutate at 0.55x, and sparse smoke
-projection at 0.02x. The six diagnostic slowdowns remain optimization targets;
-they are not relabeled as successes. The frozen acceptance contract assigns
-the primary, noise-aware regression gate to the manifest evaluator, which
-passes.
+projection at 0.02x. At the time of the frozen snapshot, the six diagnostic
+slowdowns remained optimization targets; they are not relabeled as successes
+in this historical screen. The frozen acceptance contract assigns the primary,
+noise-aware regression gate to the manifest evaluator, which passes. The
+release-hardening measurements below reassess the named regressions without
+rewriting this frozen evidence.
+
+## Post-freeze release hardening
+
+The frozen screen drove bounded fixes for high-cardinality grouping, filtering
+joins, and long extraction. The pre-fix source was merged-main commit
+`ef136845cc425eb157530247a626eac4d23a2219`; the release-candidate source was
+commit `a6edfb2c05be3f865fa46d77b2be22db454fec2d`. Direct same-host
+comparisons used the pinned
+Python 3.14.5 ASV interpreter, seed, one numerical thread, warmed fixtures, and
+disabled garbage collection during samples. These targeted measurements are
+separate from, and do not replace, the commit-level ASV continuous screen.
+Times are medians in milliseconds with full sample ranges.
+
+| Diagnostic case | v0.2 | Pre-fix v0.3 | Release candidate | Change from pre-fix |
+|---|---:|---:|---:|---:|
+| 50,000-group keys | 80.457 (79.634-83.200) | 128.027 (125.325-131.691) | 2.570 (2.533-3.144) | 97.99% lower |
+| 50,000-group count | 107.015 (105.639-111.486) | 150.680 (147.928-163.993) | 9.473 (8.430-10.709) | 93.71% lower |
+| Metadata semi-join | 121.249 (120.171-122.949) | 189.276 (187.415-193.312) | 115.059 (104.428-118.742) | 39.21% lower |
+| Metadata anti-join | 130.929 (126.960-167.317) | 190.017 (186.640-198.171) | 118.308 (113.481-131.224) | 37.74% lower |
+| Dense `pivot_longer` | 124.301 (110.650-132.468) | 113.191 (106.781-122.435) | 61.753 (56.149-89.533) | 45.44% lower |
+| Chained extraction | 876.682 (843.969-929.550) | 904.878 (821.129-930.365) | 697.213 (680.012-721.597) | 22.95% lower |
+| CSR `to_tidy` | 20,201.242 (20,054.017-20,563.892) | 80.406 (75.215-81.589) | 70.055 (67.075-72.315) | 12.87% lower |
+| CSC `to_tidy` | 20,496.622 (20,479.783-21,139.518) | 94.671 (90.327-97.267) | 86.847 (83.073-93.042) | 8.26% lower |
+
+The release candidate has a lower median than both the pre-fix v0.3 code and
+v0.2 in all eight targeted cases. The release-candidate and v0.2 anti-join
+ranges overlap, so that comparison is treated as noisy rather than as a
+separated improvement. Group and join measurements used 11 repeats; chained
+extraction used seven. The v0.2 sparse cases used three repeats because each
+sample took about 20 seconds.
+
+Result gates accompanied every comparison. Dense long output was exactly
+observation-major with shape `(1,000,000, 5)`, matching dtypes, and row hash
+`7426557883411314069`. CSR and CSC outputs both had shape `(1,000,000, 3)`,
+preserved `Sparse[float32, 0.0]`, and had hashes `15146737095588008042` and
+`3289997898914792372`. The chained result had shape `(20,000, 53)`, 52
+`float32` columns plus one object column, and hash `10322975911543133315`.
+Independent grouping and join oracles additionally covered categorical and
+mixed-null keys, multiple keys, duplicate indexes, weighted counts, both axes,
+and both null-matching policies.
+
+### Release-candidate commit-level rerun
+
+A complete ASV 0.6.6 comparison on
+`res-hpc-exe050.researchlumc.nl` then compared the v0.2 commit with
+`a6edfb2c05be3f865fa46d77b2be22db454fec2d`:
+
+```text
+asv continuous c0f0735859a059c3570dfea2ac6f1df322ac582e \
+  a6edfb2c05be3f865fa46d77b2be22db454fec2d \
+  --factor 1.10 --show-stderr
+```
+
+It completed all 34 benchmark methods and 47 parameter series over two rounds,
+exited zero, reported `PERFORMANCE INCREASED`, and reported no statistically
+classified decreases. The same raw timing files and fresh-process RSS samples
+also passed the normalized manifest: zero sample errors, zero primary
+regressions outside noise, and best improvements of 99.93% for matrix
+projection, 90.24% for grouped execution, and 47.02% for metadata evaluation.
+
+Representative continuous-screen results were:
+
+| Diagnostic case | v0.2 | Release candidate | Ratio or status |
+|---|---:|---:|---:|
+| 50,000-group count | 104 +/- 1 ms | 10.7 +/- 0.7 ms | 0.10x |
+| 50,000-group keys | 92.1 +/- 1 ms | 2.78 +/- 0.09 ms | 0.03x |
+| Metadata semi-join | 120 +/- 1 ms | 113 +/- 2 ms | lower candidate median |
+| Metadata anti-join | 122 +/- 1 ms | 113 +/- 100 ms | noisy, not separated |
+| Chained extraction | 885 +/- 10 ms | 785 +/- 30 ms | 0.89x |
+| Smoke grouped summarize | 8.03 +/- 0.03 ms | 9.61 +/- 0.01 ms | statistically inconclusive |
+
+The small-workload grouped-summarize median remains 19.7% higher. Its ASV 99%
+confidence intervals, 4.59-11.46 ms for v0.2 and 8.96-10.27 ms for the release
+candidate, overlap; the continuous screen therefore did not classify the
+two-sample diagnostic as a regression. It remains an unresolved small-workload
+overhead rather than a resolved improvement. In contrast, the representative
+20-group summarize case improved from 238 +/- 2 ms to 165 +/- 0.9 ms.
+
+Fresh-process peak RSS, including fixture allocation, was:
+
+| Case | v0.2 raw samples (KiB) | Release candidate raw samples (KiB) | Median change |
+|---|---:|---:|---:|
+| Dense projection | 572940, 573192, 573588 | 558020, 558308, 557896 | 2.65% lower |
+| Grouped mutate | 302160, 302664, 301768 | 312528, 330816, 312392 | 3.43% higher |
+| Metadata mutate | 792300, 792216, 792552 | 599956, 480164, 600052 | 24.28% lower |
+
+One metadata candidate sample is substantially lower and one grouped candidate
+sample is elevated, so only the three-process medians feed the manifest gate.
+The exact current-host timing, RSS, normalized, and verdict files are retained
+as ignored local artifacts under
+`.asv/results/res-hpc-exe050.researchlumc.nl/`. Commits after `a6edfb2c` in the
+release branch change documentation or repository configuration only; the
+benchmarked `src/annplyr` tree is unchanged.
+
+The raw ASV and RSS JSON can now be converted reproducibly before evaluation:
+
+```text
+python benchmarks/normalize_results.py --timing RAW_ASV.json \
+  --peak-rss RAW_RSS.json --output NORMALIZED.json
+python benchmarks/evaluate_manifest.py --baseline BASELINE.json \
+  --candidate NORMALIZED.json --output VERDICT.json
+```
 
 ## Correctness and measurement caveats
 
-Every timed method runs an independent expected-result or structural oracle in
-setup. Realization benchmarks force data access. `copy=False` call-cost cases
-check shape and ordering without requiring a view, because v0.3 permits either
-a view or a materialized object; view-realization cases are separate where an
+Timed methods contain lightweight realization, cardinality, or schema checks;
+the primary benchmark gates and `test_v03_structural_invariance.py` provide the
+stronger independent result comparison. `copy=False` call-cost cases check
+shape and ordering without requiring a view, because v0.3 permits either a
+view or a materialized object; view-realization cases are separate where an
 operation actually yields a view. The v0.2 sparse filter uses the same
 three-feature Boolean predicate as v0.3, avoiding a pandas 2.3.3 sparse-float
 arithmetic defect. For backed v0.2 CSR/CSC cases that cannot project through

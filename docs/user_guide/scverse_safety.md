@@ -1,7 +1,13 @@
-# Scverse Safety
+# Scverse safety
 
-`annplyr` preserves AnnData storage relationships; it does not replace AnnData
-storage semantics.
+`annplyr` works with AnnData storage relationships rather than replacing them.
+The practical safety rules are concise:
+
+1. keep transformations as AnnData until a table is actually needed;
+2. select matrix features explicitly;
+3. use a finite budget for potentially large projections;
+4. call `.to_memory()` before mutating backed objects;
+5. use `inplace=True` only when shared mutation is intentional.
 
 ## Ownership and alignment
 
@@ -37,8 +43,8 @@ memory = backed.to_memory()
 memory.ap.mutate(obs={"new": ap.col("old")}, inplace=True)
 ```
 
-Backed benchmarks are warm-cache measurements unless the caller controls the
-filesystem cache.
+This makes the transition from disk-backed analysis to in-memory mutation
+visible in the workflow.
 
 ## Raw and pairwise sources
 

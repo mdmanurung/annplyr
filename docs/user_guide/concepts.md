@@ -1,100 +1,167 @@
-# Core Concepts
+# Core concepts
 
-`annplyr` treats AnnData as an aligned object rather than a loose collection of
-pandas tables. Verbs that return AnnData must preserve alignment across
-coordinated containers.
+`annplyr` treats AnnData as one aligned data structure. `obs` and `var` are
+convenient metadata tables, but their rows are coordinated with `X`, layers,
+`raw`, embeddings, loadings, and pairwise matrices. Every verb is designed
+around that relationship.
 
-## Axes
+## Read a pipeline by its return type
 
-`obs` is the observation axis, usually cells. `var` is the feature axis, usually
-genes or measurements.
+Most annplyr workflows alternate between two kinds of result:
 
-Most row-like operations default to the `obs` axis:
+| Operation | Typical result | Use it for |
+|---|---|---|
+| filter, select, mutate, arrange, slice, join | AnnData | Continue analysis or call `.ap` again |
+| grouped AnnData verbs | `GroupedAnnData` | Reuse group-local semantics across steps |
+| summarize, count, extraction | pandas object | Plot, report, model, or export |
+
+That distinction makes materialization visible. A cell filter remains AnnData;
+a long expression table is deliberately pandas.
+
+## Axes are explicit
+
+`obs` is the observation axis, usually cells. `var` is the feature axis,
+usually genes, proteins, peaks, or other measurements. Row-like operations
+default to cells:
 
 ```python
-adata.ap.slice_head(n=5)
+first_cells = adata.ap.slice_head(n=100)
 ```
 
-Pass `axis="var"` for feature-axis operations:
+Use `axis="var"` when the same verb should operate on features:
 
 ```python
-adata.ap.slice_head(n=10, axis="var")
+top_features = adata.ap.slice_max(ap.col("highly_variable_rank"), n=2_000, axis="var")
 ```
 
-## Ownership
+Arguments also name their source. This call filters cells by `obs`, retains
+feature annotations from `var`, and projects genes from `X`:
 
-Axis-changing and ordering verbs default to `copy=True`, returning an
-independent AnnData object. `copy=False` is a performance request, not a promise
-of `is_view=True`: implementations may return a view or a materialized result.
-Same-shape metadata operations use `inplace=False`; an explicit in-place call
-validates first and returns the identical input object. `transmute()` is always
-independent.
+```python
+subset = adata.ap.filter(obs=ap.col("qc_pass")).ap.select(
+    var=["gene_symbol", "highly_variable"],
+    x=["MS4A1", "CD79A", "CD3D"],
+)
+```
 
-All axis operations track integer positions. Duplicate `obs_names` or
-`var_names` therefore remain distinct and every aligned AnnData container keeps
-the same positional identity.
-
-## Sources and planning
+## Sources stay attached to AnnData
 
 Expressions can read from:
 
-- `obs` metadata
-- `var` metadata
-- selected `X` or layer columns through `x=`
-- `raw` through `raw=`
-- `obsm` and `varm` matrices through keyed mappings
+- `obs` and `var` metadata;
+- selected features in `X` or a named layer through `x=`;
+- the immutable raw snapshot through `raw=`;
+- keyed `obsm` and `varm` matrices.
 
-Controlled extraction also supports `obsp`, `varp`, and tabular `uns` values
-through `as_frame()`.
+Controlled extraction through `as_frame()` also covers `obsp`, `varp`, and
+tabular `uns` values. The source is always explicit, which prevents a gene name
+from being confused with an `obs` column of the same name.
 
-The v0.3 planner resolves every requested source and its projected rows/columns
-before the first adapter read. `max_matrix_values=` is cumulative across
-matrix sources. A raw Narwhals expression has opaque dependencies and is
-charged against its full source; an annplyr expression exposes conservative
-dependency metadata for narrower projection.
+```python
+annotated = adata.ap.mutate(
+    obs={"high_quality": ap.col("pct_counts_mt") < 10},
+    x={
+        "B_markers_detected": (ap.col("MS4A1") > 0)
+        & (ap.col("CD79A") > 0),
+    },
+    obsm={"X_pca": {"PC1": ap.col("0")}},
+)
+```
 
-Canonical scalar summaries (`n`, `sum`, `mean`, `sd`, `min`, `max`, `first`,
-`last`, `median`, `n_distinct`, and direct expression `all`/`any`/`len`
-methods) use the same validated request as a deterministic chunk plan. The
-internal target is 25,165,824 logical values: complete reduction vectors are
-packed into feature batches when possible, and taller inputs use row chunks.
-No public chunk-size flag is exposed. Dense, CSR/CSC, and backed adapters use
-the same plan, and grouped summaries reuse one positional group plan.
+The matrix-like inputs above are read-only. `mutate()` writes the three derived
+values to metadata and leaves each source matrix unchanged.
 
-## Expressions
+## Ownership is predictable
 
-Helpers such as `col`, `lit`, `if_else`, selectors, and virtual axis names
-return `AnnplyrExpr` wrappers. Operators and method chains preserve the wrapper.
-Call `to_narwhals()` only when another API explicitly requires a raw
-`narwhals.Expr`. The `where()` selector receives a zero-length typed Series and
-must inspect schema/dtype rather than data values.
+Axis-changing and ordering verbs return independent AnnData objects by
+default. `copy=False` asks annplyr to avoid a guaranteed copy, but the result
+may be either an AnnData view or a materialized object depending on what is
+safe. Do not branch logic on `is_view` after `copy=False`.
 
-## Alignment
+Same-shape metadata operations use `inplace=True` when exact input identity is
+required:
 
-AnnData-returning verbs use AnnData-native slicing so `X`, layers, `obsm`,
-`varm`, `obsp`, and `varp` remain aligned after subsetting or reordering.
+```python
+adata.ap.mutate(obs={"qc_pass": ap.col("pct_counts_mt") < 10}, inplace=True)
+```
 
-## Typed failures
+Validation completes before the first write. Without `inplace=True`, the
+original AnnData remains unchanged.
 
-`annplyr` raises typed package errors for invalid selectors, missing sources,
-unsafe joins, duplicate names, and incompatible axis operations. See
-{doc}`../api` for the full error reference.
+## Positional identity protects duplicate names
 
-- `SelectionError`, `UnknownColumnError`, and `UnknownSourceError` identify
-  invalid selection or expression requests.
-- `DuplicateNameError` and `NameRepairError` identify ambiguous output schemas.
-- `IncompatibleAxisError` and `SizeMismatchError` identify invalid axis or
-  length relationships.
-- `JoinRelationshipError` identifies a join that would duplicate or add AnnData
-  axis records.
-- `AnnplyrError` covers ownership, backed mutation, and budget violations that
-  do not have a narrower subclass.
+Real objects can contain repeated `obs_names` after concatenation or repeated
+feature labels in alternate identifier columns. annplyr tracks integer
+positions for filtering, ordering, joins, and grouped operations, so duplicate
+labels do not collapse distinct cells or features. All aligned containers use
+the same positional subset.
+
+## Expressions and selectors compose
+
+`col()`, `lit()`, rank helpers, null helpers, and selectors return
+`AnnplyrExpr` objects. Operators preserve those objects, so a domain rule can
+be built once and reused:
+
+```python
+qc_rule = (ap.col("total_counts") >= 1_000) & (ap.col("pct_counts_mt") < 10)
+marker_genes = ap.any_of(["MS4A1", "CD79A", "CD3D"])
+
+analysis = adata.ap.filter(obs=qc_rule).ap.select(x=marker_genes)
+```
+
+`where()` is a schema selector: its predicate receives a zero-length typed
+Series and should inspect dtype, not values. Call `to_narwhals()` only when an
+external API explicitly needs a raw Narwhals expression.
+
+## Grouping can persist
+
+Use `by=` for one summary and `group_by()` when several operations share the
+same groups:
+
+```python
+top_cells = (
+    adata.ap.group_by(obs="sample_id")
+    .mutate(obs={"within_sample_rank": ap.min_rank("total_counts", descending=True)})
+    .filter(obs=ap.col("within_sample_rank") <= 10)
+    .ungroup()
+)
+```
+
+The wrapper records group keys, not a detached copy of the data. See
+{doc}`grouping` for group order, missing values, categorical keys, and key
+updates.
+
+## Projection and budgets make reads deliberate
+
+annplyr resolves selected rows and columns before reading matrix sources. Pass
+`max_matrix_values=` when a workflow needs a hard cumulative bound:
+
+```python
+plot_data = adata.ap.to_tidy(
+    obs=["sample_id", "cell_type"],
+    x=["MS4A1", "CD79A"],
+    max_matrix_values=2 * adata.n_obs,
+)
+```
+
+The complete request is rejected before the first matrix read if it exceeds the
+budget. Canonical scalar summaries use deterministic internal chunks for dense,
+CSR, CSC, and backed sources; users specify the scientific projection, not an
+implementation-specific chunk size.
+
+## Typed errors expose invalid assumptions
+
+Invalid selectors, missing sources, incompatible axes, unsafe joins, duplicate
+outputs, and over-budget reads raise annplyr-specific exceptions. Catch a
+specific error when the workflow can recover; otherwise let the message expose
+the failed assumption.
+
+The complete error list is in {doc}`../api`.
 
 ## Design lineage
 
-`annplyr` draws direct inspiration from
+`annplyr` is inspired by
 [annsel](https://github.com/srivarra/annsel), which introduced
-predicate-based selection on AnnData objects. `annplyr` extends that idea to
-the full `dplyr`/`tidyr` verb set (`mutate`, `summarize`, `group_by`, joins,
-and tidy extraction) for R tidyverse users moving to Python single-cell
-analysis.
+predicate-based selection for AnnData. annplyr extends that idea with
+tidyverse-style mutation, summaries, grouping, joins, and rectangling for users
+who want a familiar dataframe grammar inside Python single-cell workflows.

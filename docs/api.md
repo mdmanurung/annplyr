@@ -1,5 +1,17 @@
 # API
 
+Use this page for exact signatures and return types. For task-led examples,
+start with {doc}`quickstart` or {doc}`tutorials`.
+
+| If you want to... | Start with... |
+|---|---|
+| subset or reorder AnnData | `filter`, `select`, `arrange`, `slice*` |
+| derive aligned metadata | `mutate`, `transmute`, `add_count` |
+| reuse group-local operations | `group_by` and `GroupedAnnData` |
+| attach sample or feature tables | the six join methods |
+| produce a pandas table | `summarize`, `to_df`, `to_tidy`, `as_frame` |
+| construct expressions or selectors | `col`, `all_of`, `any_of`, `across` |
+
 ## Accessor
 
 The `adata.ap` accessor is registered when `annplyr` is imported. AnnData-returning
@@ -32,9 +44,8 @@ call `.to_memory()` before same-shape mutation.
 | single-cell utilities | Readers return tables/reports; writers are independent unless `inplace=True` | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
 
 All cumulative `max_matrix_values=` checks plan every source before the first
-adapter read. See {doc}`migration-v0.3` for changed defaults and signatures and
-{doc}`development/api-contract-v0.3` for the mechanically checked callable-level
-contract.
+adapter read. The mechanically checked callable-level contract is recorded in
+{doc}`development/api-contract-v0.3`.
 
 The reduction chunk target is an internal implementation detail, currently
 25,165,824 logical values. It is deliberately not a public tuning flag.

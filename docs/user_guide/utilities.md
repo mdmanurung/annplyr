@@ -1,14 +1,18 @@
-# Single-Cell Utilities
+# Single-cell utilities
 
 `annplyr` includes small AnnData utility helpers for metadata workflows. These
 helpers are intentionally narrow; they are not a biological QC or annotation
 toolkit.
 
-## Sample Metadata
+## Build and attach sample metadata
 
 ```python
 meta = ap.sample_meta(adata, sample="sample_id", include=["batch", "condition"])
-summary = ap.sample_summary(adata, sample="sample_id")
+summary = ap.sample_summary(
+    adata,
+    sample="sample_id",
+    obs={"cells": ap.n(), "mean_counts": ap.mean("total_counts")},
+)
 adata = ap.add_sample_meta(adata, sample="sample_id", meta=sample_table)
 ```
 
@@ -16,14 +20,17 @@ adata = ap.add_sample_meta(adata, sample="sample_id", meta=sample_table)
 explicit in-place call validates the sample relationship before writing and
 returns the identical AnnData.
 
-## Feature Presence
+## Validate marker panels
 
 ```python
 presence = ap.feature_present(adata, ["MS4A1", "CD79A", "missing_gene"])
 presence.to_frame()
 ```
 
-## Safe Names
+The report separates present, absent, and wrong-case features so a configurable
+marker panel can fail or degrade explicitly before matrix projection.
+
+## Edit and audit axis names
 
 ```python
 adata = ap.rename_obs_names(adata, lambda name: f"cell_{name}")
@@ -31,10 +38,10 @@ adata = ap.add_name_prefix(adata, "sample1", axis="obs")
 duplicates = ap.name_duplicates(adata, axis="obs")
 ```
 
-Name and palette writers also use `inplace=False`; they do not accept the v0.2
-`copy=` argument.
+Name and palette writers return independent objects unless `inplace=True` is
+explicit.
 
-## Palettes
+## Store plotting palettes
 
 Palettes are stored using Scanpy-compatible `uns` keys.
 

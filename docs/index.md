@@ -1,58 +1,72 @@
 # annplyr
 
-`annplyr` provides tidy, dataframe-style wrangling for AnnData objects through
-an `adata.ap` accessor. It is built for single-cell workflows where metadata,
-expression matrices, layers, embeddings, and loadings need to be queried
-together without losing AnnData alignment.
+`annplyr` provides tidy, dataframe-style wrangling for AnnData through the
+`adata.ap` accessor. Use it to express cell and feature selection, metadata
+integration, group-wise calculations, and table extraction as readable Python
+pipelines while AnnData remains the aligned source of truth.
 
 ```python
 import annplyr as ap
 
-filtered = (
-    adata.ap.group_by(obs="batch").filter(x=ap.col("MS4A1") > 0).mutate(obs={"within_batch": ap.row_number()}).ungroup()
+analysis = (
+    adata.ap.filter(obs=ap.col("qc_pass"))
+    .ap.left_join(sample_sheet, by="sample_id", relationship="many-to-one")
+    .ap.mutate(
+        x={
+            "B_markers_detected": (ap.col("MS4A1") > 0)
+            & (ap.col("CD79A") > 0),
+        }
+    )
 )
 
-plot_data = filtered.ap.to_tidy(obs=["cell_type"], x=["MS4A1", "CD79A"])
+summary = analysis.ap.summarize(
+    obs={
+        "cells": ap.n(),
+        "fraction_B_markers": ap.mean("B_markers_detected"),
+    },
+    x={"mean_MS4A1": ap.mean("MS4A1")},
+    by=["condition", "cell_type"],
+)
 ```
 
-## Start Here
+AnnData-returning verbs preserve axis alignment. Table-producing verbs make
+the transition to pandas explicit, so the same workflow can end in a report,
+plot, model matrix, or ordinary Python function.
+
+## Start with a task
 
 ::::{grid} 1 1 2 2
 :gutter: 2
 
-:::{grid-item-card} Install annplyr
-:link: installation
-:link-type: doc
-
-Set up the package and development environment.
-:::
-
-:::{grid-item-card} Quickstart
+:::{grid-item-card} Analyze a small cohort
 :link: quickstart
 :link-type: doc
 
-Run the first AnnData wrangling examples.
+Filter cells, attach sample metadata, derive a marker score, summarize groups,
+and extract a plot-ready table.
 :::
 
-:::{grid-item-card} Tutorials
+:::{grid-item-card} Follow a complete workflow
 :link: tutorials
 :link-type: doc
 
-Work through the notebooks, including the full tour.
+Work through self-contained notebooks for cohort wrangling, the broader verb
+surface, and plotting-table preparation.
 :::
 
-:::{grid-item-card} API Reference
+:::{grid-item-card} Work safely with AnnData
+:link: user_guide/scverse_safety
+:link-type: doc
+
+Understand ownership, sparse and backed sources, alignment, and bounded
+materialization.
+:::
+
+:::{grid-item-card} Look up an operation
 :link: api
 :link-type: doc
 
-Look up accessor methods, expressions, selectors, helpers, and errors.
-:::
-
-:::{grid-item-card} Migrate to v0.3
-:link: migration-v0.3
-:link-type: doc
-
-Review changed ownership defaults, persistent grouping, budgets, and join rules.
+Find accessor methods, expressions, selectors, return types, and typed errors.
 :::
 
 ::::
@@ -63,7 +77,6 @@ Review changed ownership defaults, persistent grouping, budgets, and join rules.
 
 installation
 quickstart
-migration-v0.3
 tutorials
 ```
 
@@ -81,23 +94,19 @@ user_guide/utilities
 ```
 
 ```{toctree}
-:caption: API Reference
+:caption: Reference
 :maxdepth: 1
 
 api
 ```
 
 ```{toctree}
-:caption: Development
+:caption: Contributing and Maintenance
 :maxdepth: 1
 
-development/skills
-development/api-contract-v0.3
-development/public-typing-contract
-development/ci-security
-development/performance-v0.3
-development/performance-issue-10
 contributing
+development/skills
+development/ci-security
 template_usage
 ```
 
@@ -108,4 +117,13 @@ template_usage
 roadmap
 changelog
 references
+```
+
+```{toctree}
+:hidden:
+
+development/api-contract-v0.3
+development/public-typing-contract
+development/performance-v0.3
+development/performance-issue-10
 ```

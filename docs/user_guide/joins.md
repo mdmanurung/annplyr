@@ -1,10 +1,11 @@
-# AnnData-Safe Joins
+# AnnData-safe joins
 
-Joins enrich or subset `obs` or `var` metadata without manufacturing aligned
-matrix rows. They track the AnnData axis by integer position, so duplicate axis
-labels remain distinct.
+Use joins to attach a sample sheet, donor covariates, clinical annotations, or
+feature metadata to AnnData. annplyr enriches or subsets `obs` or `var` without
+manufacturing aligned matrix rows. It tracks the axis by integer position, so
+duplicate labels remain distinct.
 
-## Enrich metadata
+## Attach a sample sheet
 
 ```{testcode}
 sample_table = pd.DataFrame(
@@ -17,13 +18,15 @@ assert joined.obs["condition"].tolist() == ["treated", "control", "treated", "co
 assert "condition" not in adata.obs
 ```
 
-Joins return independent AnnData by default. Pass `copy=False` only when either
-a view or a materialized result is acceptable.
+Joins return independent AnnData by default. The left axis order is stable, and
+the original object is unchanged. Pass `copy=False` only when either a view or
+a materialized result is acceptable.
 
-## Filter an axis
+## Restrict an analysis cohort
 
 Inner, semi, and anti joins may subset an axis while preserving original
-left-side order.
+left-side order. A semi join is especially useful when an external table
+defines the samples eligible for one analysis.
 
 ```{testcode}
 allowed = pd.DataFrame({"batch": ["A"]})
@@ -34,7 +37,7 @@ assert list(subset.obs_names) == ["cell_0", "cell_2"]
 assert list(removed.obs_names) == ["cell_1", "cell_3"]
 ```
 
-## Cardinality and right-only records
+## Make cardinality assumptions executable
 
 Use `relationship`, `multiple`, `unmatched`, `na_matches`, and `suffixes` to
 make join assumptions explicit. The default relationship is `many-to-one`.
@@ -55,6 +58,7 @@ A right or full join cannot add a right-only cell or feature because no aligned
 Duplicate right keys, unmatched policies, invalid suffixes, and cross-axis
 requests also fail with typed package errors.
 
+The same rules apply to feature annotations joined through `axis="var"`.
 Grouped joins execute globally and return a grouped wrapper when the resulting
 metadata still contains valid grouping keys. Suffixing a key updates the stored
 group specification deterministically.

@@ -48,6 +48,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   three-process peak RSS by 40.57% (985076 KiB to 585388 KiB), with identical
   result hashes. See `docs/development/performance-issue-10.md`.
 
+### Documentation
+
+- Rebuilt the public documentation as a task-led first-release experience,
+  with an executable sample-aware cohort vignette, expanded self-contained
+  notebooks, and realistic QC, marker, join, grouping, and extraction examples
+  throughout the user guide.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added
@@ -64,8 +71,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
   grouped counterparts.
 - A mechanically checked public API contract, fixed ASV benchmark manifest,
   raw-result normalizer/evaluator, peak-RSS runner, and v0.3 performance report.
-- Dedicated v0.2-to-v0.3 migration documentation and executable Sphinx
-  examples.
+- Executable Sphinx examples for ownership, grouping, matrix projection,
+  extraction, and typed errors.
 
 ### Changed
 

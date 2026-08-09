@@ -40,12 +40,57 @@ The reduction chunk target is an internal implementation detail, currently
 25,165,824 logical values. It is deliberately not a public tuning flag.
 
 ```{eval-rst}
-.. autoclass:: annplyr._accessor.AnnplyrAccessor
+.. autoclass:: annplyr.AnnplyrAccessor
    :members:
 
-.. autoclass:: annplyr._grouped.GroupedAnnData
+.. autoclass:: annplyr.GroupedAnnData
    :members:
 ```
+
+## Consumer Typing
+
+`AnnplyrAccessor`, `GroupedAnnData`, and `AnnplyrExpr` are exported from the
+package root for annotations. Construct expressions with helpers such as
+`col()`, and obtain grouped objects through `group_by()`; the exported classes
+are types, not alternative public constructors.
+
+AnnData namespaces are registered dynamically, so a static checker cannot
+discover `AnnData.ap` from the upstream class definition. Cast once at a typed
+boundary, after importing annplyr, and all AnnData-returning accessor methods
+remain chainable:
+
+```python
+from typing import cast
+
+from anndata import AnnData
+import annplyr as ap
+from annplyr.typing import AnnDataWithAnnplyr
+
+
+def select_markers(adata: AnnData) -> AnnDataWithAnnplyr:
+    typed = cast(AnnDataWithAnnplyr, adata)
+    return typed.ap.filter(obs=ap.col("qc_pass")).ap.select(x=["MS4A1", "CD79A"])
+```
+
+`AnnDataWithAnnplyr` is a typing-only AnnData subtype and an exact alias of
+`AnnData` at runtime; the cast does not copy or wrap the object. This avoids a
+mypy plugin and preserves normal `isinstance` behavior. `group_by()` overloads
+return `GroupedAnnData` whenever `obs=` or `var=` is supplied, and return the
+unchanged typed AnnData only when both are omitted.
+
+The supported aliases live in `annplyr.typing`:
+
+| Alias | Contract |
+|---|---|
+| `Selector` | strings, annplyr selectors/expressions, raw Narwhals expressions, or sequences of those values |
+| `Expression` | a column name, `AnnplyrExpr`, or raw Narwhals expression |
+| `Source` | the exact `as_frame()` source literals |
+| `SourceSelectors` | keyed selectors for aligned mapping sources |
+| `JoinInput`, `JoinBy`, and join-option aliases | the exact dataframe/mapping and validated literal choices accepted by joins |
+| `GroupedReturn` | typed AnnData or `GroupedAnnData` |
+
+The generated {doc}`development/public-typing-contract` inventories every root
+symbol, public method signature, overload, return annotation, and alias.
 
 ## Expressions And Selectors
 
@@ -55,7 +100,7 @@ chains propagate conservative dependency/cardinality metadata; call
 schema/dtype selector and must not inspect values.
 
 ```{eval-rst}
-.. autoclass:: annplyr._expr.AnnplyrExpr
+.. autoclass:: annplyr.AnnplyrExpr
    :members: to_narwhals
 ```
 

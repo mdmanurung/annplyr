@@ -7,6 +7,10 @@ This inventory is normative. The first column is a machine-readable identifier;
 grouped method/introspection operation, and exported public symbol. No cell may
 be empty or contain a placeholder.
 
+Exact signatures, overloads, return annotations, and the public
+`annplyr.typing` aliases are generated in {doc}`public-typing-contract`; both
+inventories must remain current.
+
 ## Contract vocabulary
 
 - **shape-copy**: `copy=True` is the default and returns independent mutable
@@ -141,9 +145,12 @@ accepted as isolated full-source opaque inputs.
 
 | ID | Axes | Accepted sources | Return | Grouping | Ordering | Ownership | Sparse/backed | Budget | Typed failures |
 |---|---|---|---|---|---|---|---|---|---|
+| `export.AnnplyrAccessor` | both | one AnnData instance | registered accessor instance | ungrouped entry point | delegates to each verb | cached by AnnData namespace registration | delegates to each verb | delegates to each verb | constructor signature and delegated typed failures |
 | `export.AnnplyrError` | n/a | message | exception instance | n/a | n/a | independent | n/a | n/a | base typed package error |
+| `export.AnnplyrExpr` | schema-dependent | wrapped Narwhals expression and dependency metadata | immutable expression wrapper | caller-defined | expression-defined | independent helper | adapter chosen by caller | caller projected budget | expression, selection, and size failures |
 | `export.DuplicateNameError` | n/a | message | exception instance | n/a | n/a | independent | n/a | n/a | duplicate output names |
 | `export.FeaturePresence` | n/a | found and missing collections | report object with mutable list fields | n/a | input order | independent | n/a | n/a | constructor validation |
+| `export.GroupedAnnData` | obs or var | AnnData and one resolved grouping selector | persistent grouped wrapper | retains positional GroupSpec | stable group plan order | wrapper owns the referenced AnnData result | delegates to grouped verbs | delegates to grouped verbs | selection, axis, join, size, and budget failures |
 | `export.IncompatibleAxisError` | n/a | message | exception instance | n/a | n/a | independent | n/a | n/a | incompatible axes |
 | `export.JoinRelationshipError` | n/a | message | exception instance | n/a | n/a | independent | n/a | n/a | join cardinality/unmatched/right-only |
 | `export.NameRepairError` | n/a | message | exception instance | n/a | n/a | independent | n/a | n/a | unsafe name repair |

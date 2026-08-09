@@ -13,6 +13,7 @@ from annplyr._errors import (
     UnknownSourceError,
 )
 from annplyr._expr import (
+    AnnplyrExpr,
     across,
     all_of,
     any_of,
@@ -71,6 +72,8 @@ from annplyr._expr import (
     var_names,
     where,
 )
+from annplyr._grouped import GroupedAnnData
+from annplyr._public_docs import install_public_docstrings as _install_public_docstrings
 from annplyr._utils import (
     FeaturePresence,
     add_name_prefix,
@@ -105,11 +108,15 @@ from annplyr._verbs import (
 )
 
 __version__ = "0.3.0"
+AnnplyrAccessor = _accessor.AnnplyrAccessor
 
 __all__ = [
+    "AnnplyrAccessor",
     "AnnplyrError",
+    "AnnplyrExpr",
     "DuplicateNameError",
     "FeaturePresence",
+    "GroupedAnnData",
     "IncompatibleAxisError",
     "JoinRelationshipError",
     "NameRepairError",
@@ -203,8 +210,5 @@ __all__ = [
     "where",
 ]
 
-from annplyr._grouped import GroupedAnnData as _GroupedAnnData
-from annplyr._public_docs import install_public_docstrings as _install_public_docstrings
-
-_install_public_docstrings(_accessor.AnnplyrAccessor, _GroupedAnnData, globals(), __all__)
-del _GroupedAnnData, _install_public_docstrings
+_install_public_docstrings(AnnplyrAccessor, GroupedAnnData, globals(), __all__)
+del _install_public_docstrings

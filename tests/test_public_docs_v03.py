@@ -5,8 +5,7 @@ import tomllib
 from pathlib import Path
 
 import annplyr as ap
-from annplyr._accessor import AnnplyrAccessor
-from annplyr._grouped import GroupedAnnData
+from annplyr import AnnplyrAccessor, GroupedAnnData
 
 
 def _parameters(obj: object) -> dict[str, inspect.Parameter]:

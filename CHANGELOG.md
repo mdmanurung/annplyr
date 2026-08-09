@@ -15,6 +15,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - One internal dense/sparse/backed chunk plan for canonical matrix summaries,
   with deterministic row and feature batching, exact eager-equivalent scalar
   results, and shared positional group plans.
+- Exported `AnnplyrAccessor`, `GroupedAnnData`, and `AnnplyrExpr` types, plus a
+  typing-only `AnnDataWithAnnplyr` façade and exact consumer aliases under
+  `annplyr.typing`.
+- A clean downstream mypy fixture covering accessor chaining, grouping,
+  expressions, joins, extraction, and generic `pipe()` returns.
 
 ### Changed
 
@@ -24,6 +29,9 @@ and this project follows [Semantic Versioning](https://semver.org/).
   read.
 - Group keys from categorical and nullable metadata retain their pandas dtypes
   in matrix summaries.
+- `group_by()` now has overloads that distinguish its no-group typed AnnData
+  return from `GroupedAnnData`; public selector, source, expression, join, and
+  grouped-return annotations are frozen by a generated contract.
 
 ### Performance
 

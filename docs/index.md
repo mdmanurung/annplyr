@@ -94,6 +94,7 @@ api
 development/skills
 development/api-contract-v0.3
 development/public-typing-contract
+development/ci-security
 development/performance-v0.3
 development/performance-issue-10
 contributing

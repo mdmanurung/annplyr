@@ -24,12 +24,13 @@ jobs:
       matrix:
         python: ["3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           filter: blob:none
           fetch-depth: 0
+          persist-credentials: false
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: ${{ matrix.python }}
       - name: Run downstream integration tests
@@ -38,7 +39,7 @@ jobs:
         run: uvx hatch run integration:run --junitxml=integration-results.xml
       - name: Upload compact failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: integration-failure-python-${{ matrix.python }}
           path: integration-results.xml
@@ -52,12 +53,13 @@ jobs:
     env:
       UV_PRERELEASE: allow
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           filter: blob:none
           fetch-depth: 0
+          persist-credentials: false
       - name: Install uv and Python 3.14
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.14"
       - name: Run against prerelease dependencies
@@ -66,7 +68,7 @@ jobs:
         run: uvx hatch run integration:run --junitxml=integration-prerelease-results.xml
       - name: Upload compact failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: integration-prerelease-failure
           path: integration-prerelease-results.xml

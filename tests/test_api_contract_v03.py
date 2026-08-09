@@ -5,8 +5,7 @@ import re
 from pathlib import Path
 
 import annplyr
-from annplyr._accessor import AnnplyrAccessor
-from annplyr._grouped import GroupedAnnData
+from annplyr import AnnplyrAccessor, GroupedAnnData
 
 CONTRACT = Path(__file__).parents[1] / "docs" / "development" / "api-contract-v0.3.md"
 ROW = re.compile(r"^\| `(?P<section>accessor|grouped|export)\.(?P<name>[^`]+)` \|(?P<body>.*)\|$")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast, overload
 
 import pandas as pd
 from anndata import AnnData
@@ -9,6 +9,20 @@ from anndata import AnnData
 from annplyr._errors import AnnplyrError
 from annplyr._extensions import register_anndata_accessor
 from annplyr._grouped import GroupedAnnData
+from annplyr._typing import (
+    AnnDataWithAnnplyr,
+    Axis,
+    Expression,
+    JoinBy,
+    JoinInput,
+    JoinMultiple,
+    JoinRelationship,
+    JoinUnmatched,
+    NaMatches,
+    Selector,
+    Source,
+    SourceSelectors,
+)
 from annplyr._verbs import (
     add_count_adata,
     add_tally_adata,
@@ -47,44 +61,57 @@ from annplyr._verbs import (
 T = TypeVar("T")
 
 
+def _with_annplyr_accessor(adata: AnnData) -> AnnDataWithAnnplyr:
+    """Narrow an AnnData result after the namespace has been registered."""
+    return cast(AnnDataWithAnnplyr, adata)
+
+
 @register_anndata_accessor("ap")
 class AnnplyrAccessor:
     """Dataframe-style AnnData wrangling accessor."""
 
     def __init__(self, adata: AnnData):
-        self._obj = adata
+        self._obj = cast(AnnDataWithAnnplyr, adata)
 
     def filter(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obs_names: Any = None,
-        var_names: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        varm: Mapping[str, Any] | None = None,
+        obs: Expression | Sequence[Expression] | None = None,
+        var: Expression | Sequence[Expression] | None = None,
+        x: Expression | Sequence[Expression] | None = None,
+        raw: Expression | Sequence[Expression] | None = None,
+        obs_names: Expression | Sequence[Expression] | None = None,
+        var_names: Expression | Sequence[Expression] | None = None,
+        obsm: SourceSelectors | None = None,
+        varm: SourceSelectors | None = None,
         layer: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
-    ) -> AnnData:
-        return filter_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obs_names=obs_names,
-            var_names=var_names,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
-            copy=copy,
-            max_matrix_values=max_matrix_values,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            filter_adata(
+                self._obj,
+                obs=obs,
+                var=var,
+                x=x,
+                raw=raw,
+                obs_names=obs_names,
+                var_names=var_names,
+                obsm=obsm,
+                varm=varm,
+                layer=layer,
+                copy=copy,
+                max_matrix_values=max_matrix_values,
+            )
         )
 
-    def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> AnnData:
-        return select_adata(self._obj, obs=obs, var=var, x=x, copy=copy)
+    def select(
+        self,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
+        copy: bool = True,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(select_adata(self._obj, obs=obs, var=var, x=x, copy=copy))
 
     def rename(
         self,
@@ -93,219 +120,237 @@ class AnnplyrAccessor:
         x: Mapping[str, str] | None = None,
         *,
         inplace: bool = False,
-    ) -> AnnData:
-        return rename_adata(self._obj, obs=obs, var=var, x=x, inplace=inplace)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(rename_adata(self._obj, obs=obs, var=var, x=x, inplace=inplace))
 
     def rename_with(
         self,
         func: Callable[[str], str],
         *,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         inplace: bool = False,
-    ) -> AnnData:
-        return rename_with_adata(self._obj, func, obs=obs, var=var, x=x, inplace=inplace)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(rename_with_adata(self._obj, func, obs=obs, var=var, x=x, inplace=inplace))
 
     def relocate(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         *,
         before: str | None = None,
         after: str | None = None,
         inplace: bool = False,
-    ) -> AnnData:
-        return relocate_adata(self._obj, obs=obs, var=var, x=x, before=before, after=after, inplace=inplace)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            relocate_adata(self._obj, obs=obs, var=var, x=x, before=before, after=after, inplace=inplace)
+        )
 
     def distinct(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         *,
-        axis: str = "obs",
+        axis: Axis = "obs",
         keep_all: bool = False,
         copy: bool = True,
         max_matrix_values: int | None = None,
-    ) -> AnnData:
-        return distinct_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            axis=axis,
-            keep_all=keep_all,
-            copy=copy,
-            max_matrix_values=max_matrix_values,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            distinct_adata(
+                self._obj,
+                obs=obs,
+                var=var,
+                x=x,
+                axis=axis,
+                keep_all=keep_all,
+                copy=copy,
+                max_matrix_values=max_matrix_values,
+            )
         )
 
     def left_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "drop",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "drop",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
-    ) -> AnnData:
-        return left_join_adata(
-            self._obj,
-            other,
-            by=by,
-            axis=axis,
-            relationship=relationship,
-            multiple=multiple,
-            unmatched=unmatched,
-            na_matches=na_matches,
-            suffixes=suffixes,
-            copy=copy,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            left_join_adata(
+                self._obj,
+                other,
+                by=by,
+                axis=axis,
+                relationship=relationship,
+                multiple=multiple,
+                unmatched=unmatched,
+                na_matches=na_matches,
+                suffixes=suffixes,
+                copy=copy,
+            )
         )
 
     def inner_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "drop",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "drop",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
-    ) -> AnnData:
-        return inner_join_adata(
-            self._obj,
-            other,
-            by=by,
-            axis=axis,
-            relationship=relationship,
-            multiple=multiple,
-            unmatched=unmatched,
-            na_matches=na_matches,
-            suffixes=suffixes,
-            copy=copy,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            inner_join_adata(
+                self._obj,
+                other,
+                by=by,
+                axis=axis,
+                relationship=relationship,
+                multiple=multiple,
+                unmatched=unmatched,
+                na_matches=na_matches,
+                suffixes=suffixes,
+                copy=copy,
+            )
         )
 
     def right_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "error",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "error",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
-    ) -> AnnData:
-        return right_join_adata(
-            self._obj,
-            other,
-            by=by,
-            axis=axis,
-            relationship=relationship,
-            multiple=multiple,
-            unmatched=unmatched,
-            na_matches=na_matches,
-            suffixes=suffixes,
-            copy=copy,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            right_join_adata(
+                self._obj,
+                other,
+                by=by,
+                axis=axis,
+                relationship=relationship,
+                multiple=multiple,
+                unmatched=unmatched,
+                na_matches=na_matches,
+                suffixes=suffixes,
+                copy=copy,
+            )
         )
 
     def full_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "error",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "error",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
-    ) -> AnnData:
-        return full_join_adata(
-            self._obj,
-            other,
-            by=by,
-            axis=axis,
-            relationship=relationship,
-            multiple=multiple,
-            unmatched=unmatched,
-            na_matches=na_matches,
-            suffixes=suffixes,
-            copy=copy,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            full_join_adata(
+                self._obj,
+                other,
+                by=by,
+                axis=axis,
+                relationship=relationship,
+                multiple=multiple,
+                unmatched=unmatched,
+                na_matches=na_matches,
+                suffixes=suffixes,
+                copy=copy,
+            )
         )
 
     def semi_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        na_matches: NaMatches = "na",
         copy: bool = True,
-    ) -> AnnData:
-        return semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+        )
 
     def anti_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        na_matches: NaMatches = "na",
         copy: bool = True,
-    ) -> AnnData:
-        return anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+        )
 
     def arrange(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        varm: Mapping[str, Any] | None = None,
+        obs: Expression | Sequence[Expression] | None = None,
+        var: Expression | Sequence[Expression] | None = None,
+        x: Expression | Sequence[Expression] | None = None,
+        raw: Expression | Sequence[Expression] | None = None,
+        obsm: SourceSelectors | None = None,
+        varm: SourceSelectors | None = None,
         layer: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
-    ) -> AnnData:
-        return arrange_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
-            copy=copy,
-            max_matrix_values=max_matrix_values,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            arrange_adata(
+                self._obj,
+                obs=obs,
+                var=var,
+                x=x,
+                raw=raw,
+                obsm=obsm,
+                varm=varm,
+                layer=layer,
+                copy=copy,
+                max_matrix_values=max_matrix_values,
+            )
         )
 
-    def slice(self, *indices: Any, axis: str = "obs", copy: bool = True) -> AnnData:
-        return slice_adata(self._obj, *indices, axis=axis, copy=copy)
+    def slice(self, *indices: Any, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_adata(self._obj, *indices, axis=axis, copy=copy))
 
-    def slice_head(self, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
-        return slice_head_adata(self._obj, n=n, axis=axis, copy=copy)
+    def slice_head(self, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis, copy=copy))
 
-    def slice_tail(self, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
-        return slice_tail_adata(self._obj, n=n, axis=axis, copy=copy)
+    def slice_tail(self, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis, copy=copy))
 
-    def slice_min(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
-        return slice_min_adata(self._obj, by=by, n=n, axis=axis, copy=copy)
+    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis, copy=copy))
 
-    def slice_max(self, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
-        return slice_max_adata(self._obj, by=by, n=n, axis=axis, copy=copy)
+    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis, copy=copy))
 
     def slice_sample(
         self,
@@ -314,17 +359,19 @@ class AnnplyrAccessor:
         prop: float | None = None,
         replace: bool = False,
         random_state: int | None = None,
-        axis: str = "obs",
+        axis: Axis = "obs",
         copy: bool = True,
-    ) -> AnnData:
-        return slice_sample_adata(
-            self._obj,
-            n=n,
-            prop=prop,
-            replace=replace,
-            random_state=random_state,
-            axis=axis,
-            copy=copy,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            slice_sample_adata(
+                self._obj,
+                n=n,
+                prop=prop,
+                replace=replace,
+                random_state=random_state,
+                axis=axis,
+                copy=copy,
+            )
         )
 
     def mutate(
@@ -338,18 +385,20 @@ class AnnplyrAccessor:
         layer: str | None = None,
         inplace: bool = False,
         max_matrix_values: int | None = None,
-    ) -> AnnData:
-        return mutate_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
-            inplace=inplace,
-            max_matrix_values=max_matrix_values,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            mutate_adata(
+                self._obj,
+                obs=obs,
+                var=var,
+                x=x,
+                raw=raw,
+                obsm=obsm,
+                varm=varm,
+                layer=layer,
+                inplace=inplace,
+                max_matrix_values=max_matrix_values,
+            )
         )
 
     def transmute(
@@ -362,20 +411,31 @@ class AnnplyrAccessor:
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         layer: str | None = None,
         max_matrix_values: int | None = None,
-    ) -> AnnData:
-        return transmute_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
-            max_matrix_values=max_matrix_values,
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            transmute_adata(
+                self._obj,
+                obs=obs,
+                var=var,
+                x=x,
+                raw=raw,
+                obsm=obsm,
+                varm=varm,
+                layer=layer,
+                max_matrix_values=max_matrix_values,
+            )
         )
 
-    def group_by(self, obs: Any = None, var: Any = None) -> AnnData | GroupedAnnData:
+    @overload
+    def group_by(self, obs: None = None, var: None = None) -> AnnDataWithAnnplyr: ...
+
+    @overload
+    def group_by(self, obs: Selector, var: None = None) -> GroupedAnnData: ...
+
+    @overload
+    def group_by(self, obs: None = None, var: Selector = ...) -> GroupedAnnData: ...
+
+    def group_by(self, obs: Selector | None = None, var: Selector | None = None) -> AnnDataWithAnnplyr | GroupedAnnData:
         if obs is None and var is None:
             return self._obj
         return GroupedAnnData(self._obj, obs=obs, var=var)
@@ -389,7 +449,7 @@ class AnnplyrAccessor:
         obsm: Mapping[str, Mapping[str, Any]] | None = None,
         varm: Mapping[str, Mapping[str, Any]] | None = None,
         *,
-        by: Any = None,
+        by: Selector | None = None,
         layer: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
@@ -410,60 +470,64 @@ class AnnplyrAccessor:
 
     def count(
         self,
-        by: Any = None,
+        by: Selector | None = None,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
-        axis: str = "obs",
+        axis: Axis = "obs",
         name: str = "n",
     ) -> pd.DataFrame:
         return count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
     def tally(
         self,
-        by: Any = None,
+        by: Selector | None = None,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
-        axis: str = "obs",
+        axis: Axis = "obs",
         name: str = "n",
     ) -> pd.DataFrame:
         return tally_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
 
     def add_count(
         self,
-        by: Any = None,
+        by: Selector | None = None,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
-        axis: str = "obs",
+        axis: Axis = "obs",
         name: str = "n",
         inplace: bool = False,
-    ) -> AnnData:
-        return add_count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            add_count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+        )
 
     def add_tally(
         self,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
-        axis: str = "obs",
+        axis: Axis = "obs",
         name: str = "n",
         inplace: bool = False,
-    ) -> AnnData:
-        return add_tally_adata(self._obj, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+    ) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(
+            add_tally_adata(self._obj, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+        )
 
     def pull(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        varm: Mapping[str, Any] | None = None,
-        obsp: Mapping[str, Any] | None = None,
-        varp: Mapping[str, Any] | None = None,
-        uns: Mapping[str, Any] | None = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
+        raw: Selector | None = None,
+        obsm: SourceSelectors | None = None,
+        varm: SourceSelectors | None = None,
+        obsp: SourceSelectors | None = None,
+        varp: SourceSelectors | None = None,
+        uns: SourceSelectors | None = None,
         *,
         layer: str | None = None,
         max_matrix_values: int | None = None,
@@ -485,11 +549,11 @@ class AnnplyrAccessor:
 
     def to_df(
         self,
-        obs: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        obsp: Mapping[str, Any] | None = None,
+        obs: Selector | None = None,
+        x: Selector | None = None,
+        raw: Selector | None = None,
+        obsm: SourceSelectors | None = None,
+        obsp: SourceSelectors | None = None,
         *,
         layer: str | None = None,
         max_matrix_values: int | None = None,
@@ -507,9 +571,9 @@ class AnnplyrAccessor:
 
     def to_tidy(
         self,
-        obs: Any = None,
-        x: Any = None,
-        raw: Any = None,
+        obs: Selector | None = None,
+        x: Selector | None = None,
+        raw: Selector | None = None,
         *,
         layer: str | None = None,
         obs_name: str = "obs_name",
@@ -533,9 +597,9 @@ class AnnplyrAccessor:
 
     def pivot_longer(
         self,
-        obs: Any = None,
-        x: Any = None,
-        raw: Any = None,
+        obs: Selector | None = None,
+        x: Selector | None = None,
+        raw: Selector | None = None,
         *,
         layer: str | None = None,
         obs_name: str = "obs_name",
@@ -559,10 +623,10 @@ class AnnplyrAccessor:
 
     def as_frame(
         self,
-        source: str,
+        source: Source,
         *,
         key: str | None = None,
-        select: Any = None,
+        select: Selector | None = None,
         layer: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
@@ -573,10 +637,10 @@ class AnnplyrAccessor:
     def nest_by(
         self,
         *,
-        by: Any,
-        obs: Any = None,
-        var: Any = None,
-        axis: str = "obs",
+        by: Selector,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        axis: Axis = "obs",
         name: str = "data",
     ) -> pd.DataFrame:
         return nest_by_adata(self._obj, by=by, obs=obs, var=var, axis=axis, name=name)

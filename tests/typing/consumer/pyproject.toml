@@ -1,0 +1,14 @@
+[project]
+name = "annplyr-typing-consumer"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = ["annplyr"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["anndata", "anndata.*"]
+ignore_missing_imports = true

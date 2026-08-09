@@ -11,6 +11,19 @@ from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
 from annplyr._expr import col
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
 from annplyr._groups import GroupPlan, GroupSpec
+from annplyr._typing import (
+    AnnDataWithAnnplyr,
+    Axis,
+    Expression,
+    JoinBy,
+    JoinInput,
+    JoinMultiple,
+    JoinRelationship,
+    JoinUnmatched,
+    NaMatches,
+    Selector,
+    SourceSelectors,
+)
 from annplyr._verbs import (
     _axis_positions,
     _desc_order_by,
@@ -47,16 +60,16 @@ class GroupedAnnData:
         self,
         adata: AnnData,
         *,
-        obs: Any = None,
-        var: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
         spec: GroupSpec | None = None,
     ):
-        self._adata = adata
+        self._adata = cast(AnnDataWithAnnplyr, adata)
         self._spec = spec if spec is not None else GroupSpec.resolve(adata, obs=obs, var=var)
         self._spec.validate(adata)
 
     @property
-    def _axis(self) -> str:
+    def _axis(self) -> Axis:
         return self._spec.axis
 
     @property
@@ -84,7 +97,7 @@ class GroupedAnnData:
             return self
         return self._wrap(adata, spec=updated)
 
-    def __iter__(self) -> Iterator[tuple[dict[str, Any], AnnData]]:
+    def __iter__(self) -> Iterator[tuple[dict[str, Any], AnnDataWithAnnplyr]]:
         plan = self._plan()
         for row, positions in zip(range(len(plan.keys)), plan.positions, strict=True):
             key = {column: plan.keys.iloc[row][column] for column in self._spec.columns}
@@ -92,7 +105,7 @@ class GroupedAnnData:
                 group = _subset_positions(self._adata, positions, None, copy=False)
             else:
                 group = _subset_positions(self._adata, None, positions, copy=False)
-            yield key, group
+            yield key, cast(AnnDataWithAnnplyr, group)
 
     def group_vars(self) -> list[str]:
         self._spec.validate(self._adata)
@@ -104,19 +117,19 @@ class GroupedAnnData:
     def group_data(self) -> pd.DataFrame:
         return self._plan().group_data()
 
-    def ungroup(self) -> AnnData:
+    def ungroup(self) -> AnnDataWithAnnplyr:
         return self._adata
 
     def filter(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obs_names: Any = None,
-        var_names: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        varm: Mapping[str, Any] | None = None,
+        obs: Expression | Sequence[Expression] | None = None,
+        var: Expression | Sequence[Expression] | None = None,
+        x: Expression | Sequence[Expression] | None = None,
+        raw: Expression | Sequence[Expression] | None = None,
+        obs_names: Expression | Sequence[Expression] | None = None,
+        var_names: Expression | Sequence[Expression] | None = None,
+        obsm: SourceSelectors | None = None,
+        varm: SourceSelectors | None = None,
         layer: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
@@ -140,7 +153,13 @@ class GroupedAnnData:
         )
         return self._wrap(result)
 
-    def select(self, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> GroupedAnnData:
+    def select(
+        self,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
+        copy: bool = True,
+    ) -> GroupedAnnData:
         self._spec.validate(self._adata)
         if self._axis == "obs" and obs is not None:
             obs = self._retain_group_keys(obs, axis="obs")
@@ -149,7 +168,7 @@ class GroupedAnnData:
         result = select_adata(self._adata, obs=obs, var=var, x=x, copy=copy)
         return self._wrap(result)
 
-    def _retain_group_keys(self, selector: Any, *, axis: str) -> list[str]:
+    def _retain_group_keys(self, selector: Selector, *, axis: Axis) -> list[str]:
         frame = obs_frame(self._adata) if axis == "obs" else var_frame(self._adata)
         selected = [str(column) for column in evaluate_select(frame, selector).columns]
         omitted = [column for column in self._spec.columns if column not in selected]
@@ -173,9 +192,9 @@ class GroupedAnnData:
         self,
         func: Callable[[str], str],
         *,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         inplace: bool = False,
     ) -> GroupedAnnData:
         before = list(cast(pd.DataFrame, self._adata.obs if self._axis == "obs" else self._adata.var).columns)
@@ -193,9 +212,9 @@ class GroupedAnnData:
 
     def relocate(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         *,
         before: str | None = None,
         after: str | None = None,
@@ -308,7 +327,7 @@ class GroupedAnnData:
 
     summarise = summarize
 
-    def count(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
+    def count(self, *, wt: Expression | None = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
         weights = None
         if wt is not None:
             frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
@@ -318,13 +337,13 @@ class GroupedAnnData:
             result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
         return result
 
-    def tally(self, *, wt: Any = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
+    def tally(self, *, wt: Expression | None = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
         return self.count(wt=wt, sort=sort, name=name)
 
     def add_count(
         self,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
         name: str = "n",
         inplace: bool = False,
@@ -344,7 +363,7 @@ class GroupedAnnData:
     def add_tally(
         self,
         *,
-        wt: Any = None,
+        wt: Expression | None = None,
         sort: bool = False,
         name: str = "n",
         inplace: bool = False,
@@ -353,12 +372,12 @@ class GroupedAnnData:
 
     def arrange(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
-        raw: Any = None,
-        obsm: Mapping[str, Any] | None = None,
-        varm: Mapping[str, Any] | None = None,
+        obs: Expression | Sequence[Expression] | None = None,
+        var: Expression | Sequence[Expression] | None = None,
+        x: Expression | Sequence[Expression] | None = None,
+        raw: Expression | Sequence[Expression] | None = None,
+        obsm: SourceSelectors | None = None,
+        varm: SourceSelectors | None = None,
         layer: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
@@ -382,9 +401,9 @@ class GroupedAnnData:
 
     def distinct(
         self,
-        obs: Any = None,
-        var: Any = None,
-        x: Any = None,
+        obs: Selector | None = None,
+        var: Selector | None = None,
+        x: Selector | None = None,
         *,
         keep_all: bool = False,
         copy: bool = True,
@@ -439,13 +458,13 @@ class GroupedAnnData:
         _validate_slice_n(n)
         return self.slice(slice(0, 0) if n == 0 else slice(-n, None), copy=copy)
 
-    def slice_min(self, by: Any, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+    def slice_min(self, by: Expression, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
         return self._slice_ordered(by, n=n, descending=False, copy=copy)
 
-    def slice_max(self, by: Any, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+    def slice_max(self, by: Expression, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
         return self._slice_ordered(by, n=n, descending=True, copy=copy)
 
-    def _slice_ordered(self, by: Any, *, n: int, descending: bool, copy: bool) -> GroupedAnnData:
+    def _slice_ordered(self, by: Expression, *, n: int, descending: bool, copy: bool) -> GroupedAnnData:
         _validate_slice_n(n)
         plan = self._plan()
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
@@ -493,14 +512,14 @@ class GroupedAnnData:
 
     def left_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "drop",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "drop",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
     ) -> GroupedAnnData:
@@ -519,14 +538,14 @@ class GroupedAnnData:
 
     def inner_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "drop",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "drop",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
     ) -> GroupedAnnData:
@@ -545,14 +564,14 @@ class GroupedAnnData:
 
     def right_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "error",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "error",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
     ) -> GroupedAnnData:
@@ -571,14 +590,14 @@ class GroupedAnnData:
 
     def full_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str = "error",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched = "error",
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
     ) -> GroupedAnnData:
@@ -597,22 +616,22 @@ class GroupedAnnData:
 
     def semi_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        na_matches: NaMatches = "na",
         copy: bool = True,
     ) -> GroupedAnnData:
         return self._join("semi", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
 
     def anti_join(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        na_matches: NaMatches = "na",
         copy: bool = True,
     ) -> GroupedAnnData:
         return self._join("anti", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
@@ -620,14 +639,14 @@ class GroupedAnnData:
     def _join(
         self,
         kind: str,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None = None,
-        axis: str = "obs",
-        relationship: str = "many-to-one",
-        multiple: str = "error",
-        unmatched: str | None = None,
-        na_matches: str = "na",
+        by: JoinBy = None,
+        axis: Axis = "obs",
+        relationship: JoinRelationship = "many-to-one",
+        multiple: JoinMultiple = "error",
+        unmatched: JoinUnmatched | None = None,
+        na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
         copy: bool = True,
     ) -> GroupedAnnData:
@@ -659,10 +678,10 @@ class GroupedAnnData:
 
     def _join_spec(
         self,
-        other: pd.DataFrame | Mapping[str, Any],
+        other: JoinInput,
         *,
-        by: str | Sequence[str] | None,
-        axis: str,
+        by: JoinBy,
+        axis: Axis,
         suffixes: tuple[str, str],
         result: AnnData,
     ) -> GroupSpec:

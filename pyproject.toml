@@ -100,6 +100,7 @@ envs.hatch-test.matrix = [
 envs.hatch-test.overrides.matrix.deps.env-vars = [ { value = "allow", if = [ "pre" ], key = "UV_PRERELEASE" } ]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
 envs.type.scripts.check = "mypy src/annplyr {args}"
+envs.type.scripts.consumer = "mypy --config-file tests/typing/consumer/pyproject.toml tests/typing/consumer/workflow.py {args}"
 envs.type.dependency-groups = [ "type" ]
 envs.integration.scripts.run = "pytest -m integration {args:tests/integration}"
 envs.integration.dependency-groups = [ "dev", "test", "integration" ]

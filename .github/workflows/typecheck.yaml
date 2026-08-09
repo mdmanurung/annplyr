@@ -20,5 +20,7 @@ jobs:
           fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v7
-      - name: Run mypy
+      - name: Run internal mypy
         run: uvx hatch run type:check
+      - name: Run external consumer mypy
+        run: uvx hatch run type:consumer

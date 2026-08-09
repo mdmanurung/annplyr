@@ -58,11 +58,9 @@ weekly update after a seven-day cooldown, with at most five open update pull
 requests. It does not monitor Python or pre-commit dependencies, so it does not
 overlap the repository's existing dependency-update mechanisms.
 
-## Deliberately excluded template changes
+## Release invariants
 
-Closed PR #8 was reviewed only as source material. This focused replacement
-does not adopt its package-version and dependency resets, one-percent Codecov
-target, documentation/template churn, pre-commit auto-fix hook, or removal of
-strict Twine validation. The 0.3.0 package metadata, 85% branch-coverage floor,
-release-on-published trigger, Pages deployment, and PyPI OIDC flow remain
-unchanged.
+Security maintenance must preserve the package's tested Python range, runtime
+dependency policy, branch-coverage floor, release-on-published trigger, Pages
+deployment, strict distribution validation, and PyPI OIDC flow. Template
+refreshes are reviewed as individual changes rather than merged wholesale.

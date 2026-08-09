@@ -1,103 +1,132 @@
-# Quickstart
+# Quickstart: from AnnData to a cohort summary
 
-`annplyr` exposes dataframe-style verbs through `adata.ap`. The examples on
-this page run against a four-cell AnnData fixture during the documentation
-doctest build.
+This page follows a small but realistic single-cell task: retain QC-passing
+cells, attach experimental metadata, derive a marker score, summarize the
+cohort, and prepare a long table for plotting. The examples execute during the
+documentation build against a four-cell PBMC-like AnnData fixture.
 
-## Filter observations
+## 1. Filter cells with metadata predicates
 
-Importing annplyr registers the accessor. Axis-changing verbs return an
-independent AnnData object by default.
+Importing `annplyr` registers the accessor. Multiple predicates in a tuple are
+combined with `AND`, so the filtering criteria read like the QC rule itself.
 
 ```{testcode}
 import annplyr as ap
 
-filtered = adata.ap.filter(
-    obs=ap.col("batch") == "A",
-    x=ap.col("MS4A1") > 0,
+qc = adata.ap.filter(
+    obs=(
+        ap.col("n_counts") >= 1_000,
+        ap.col("pct_counts_mt") < 10,
+    )
 )
 
-assert filtered.n_obs == 2
-assert filtered.n_vars == 3
-assert not filtered.is_view
+assert list(qc.obs_names) == ["cell_0", "cell_2", "cell_3"]
+assert not qc.is_view
 ```
 
-Pass `copy=False` only when either a view or a materialized result is acceptable.
+Axis-changing verbs return an independent AnnData by default. The original
+object is still available for alternative QC thresholds or diagnostics.
 
-## Select metadata and features
+## 2. Attach a sample sheet
+
+AnnData-safe joins enrich metadata without manufacturing matrix rows. Declaring
+the expected relationship turns a duplicated sample-sheet key into a clear
+error instead of duplicated cells.
 
 ```{testcode}
-selected = adata.ap.select(
-    obs=["batch", "cell_type"],
+sample_sheet = pd.DataFrame(
+    {
+        "batch": ["A", "B"],
+        "condition": ["control", "stimulated"],
+    }
+)
+
+annotated = qc.ap.left_join(
+    sample_sheet,
+    by="batch",
+    relationship="many-to-one",
+)
+
+assert annotated.obs["condition"].tolist() == [
+    "control",
+    "control",
+    "stimulated",
+]
+```
+
+## 3. Derive metadata from expression values
+
+`mutate()` writes metadata while matrix arguments remain read-only sources.
+Here the two-gene score becomes an `obs` column; `X` itself is unchanged.
+
+```{testcode}
+scored = annotated.ap.mutate(
+    x={"B_cell_score": (ap.col("MS4A1") + ap.col("CD79A")) / 2},
+)
+
+assert scored.obs["B_cell_score"].tolist() == [1.0, 3.0, 2.0]
+assert "B_cell_score" not in annotated.obs
+```
+
+The same pattern works with a named layer by passing `layer="counts"`, or with
+`raw`, `obsm`, and `varm` as explicit expression sources.
+
+## 4. Summarize biological and experimental groups
+
+One-off summaries accept `by=` directly. Metadata and matrix reductions can be
+evaluated in the same call.
+
+```{testcode}
+cohort_summary = scored.ap.summarize(
+    obs={
+        "cells": ap.n(),
+        "mean_counts": ap.mean("n_counts"),
+    },
+    x={"mean_MS4A1": ap.mean("MS4A1")},
+    by=["condition", "cell_type"],
+)
+
+assert cohort_summary["cells"].tolist() == [2, 1]
+assert cohort_summary["condition"].tolist() == ["control", "stimulated"]
+```
+
+Use persistent grouping when several steps share the same groups:
+
+```{testcode}
+ranked = (
+    scored.ap.group_by(obs="condition")
+    .mutate(obs={"within_condition": ap.min_rank("n_counts", descending=True)})
+    .ungroup()
+)
+
+assert ranked.obs["within_condition"].tolist() == [2, 1, 1]
+```
+
+## 5. Prepare a plot-ready expression table
+
+Select only the features required by the figure. `max_matrix_values=` bounds
+the cumulative matrix projection before any source is read.
+
+```{testcode}
+plot_data = scored.ap.to_tidy(
+    obs=["condition", "cell_type"],
     x=["MS4A1", "CD79A"],
+    max_matrix_values=2 * scored.n_obs,
 )
 
-assert selected.shape == (4, 2)
-assert list(selected.obs.columns) == ["batch", "cell_type"]
-assert list(selected.var_names) == ["MS4A1", "CD79A"]
+assert plot_data.shape == (6, 5)
+assert list(plot_data.columns) == [
+    "obs_name",
+    "feature",
+    "value",
+    "condition",
+    "cell_type",
+]
 ```
 
-## Add metadata from matrix sources
+`plot_data` is an ordinary pandas DataFrame ready for seaborn, plotnine,
+Altair, statistical modelling, or export. `scored` remains a fully aligned
+AnnData object for the rest of the analysis.
 
-`mutate()` writes only metadata columns. Matrix arguments provide read-only
-expression sources. Same-shape operations return an independent object unless
-`inplace=True` is explicit.
-
-```{testcode}
-annotated = adata.ap.mutate(
-    obs={"high_counts": ap.col("n_counts") > 1_000},
-    x={"MS4A1_value": ap.col("MS4A1")},
-)
-
-assert "high_counts" in annotated.obs
-assert "MS4A1_value" in annotated.obs
-assert "high_counts" not in adata.obs
-```
-
-## Keep grouping through a pipeline
-
-AnnData-returning grouped verbs preserve grouping. Call `ungroup()` at the
-boundary where an ordinary AnnData object is required.
-
-```{testcode}
-grouped = (
-    adata.ap.group_by(obs="batch")
-    .filter(obs=ap.col("n_counts") >= 1_000)
-    .mutate(obs={"within_batch": ap.row_number()})
-)
-
-assert grouped.group_vars() == ["batch"]
-assert grouped.ungroup().n_obs == 3
-
-summary = grouped.summarize(obs={"cells": ap.n()})
-assert summary.to_dict("list") == {"batch": ["A", "B"], "cells": [2, 1]}
-```
-
-Groups use first-seen order, include NA keys, observe only categorical values
-that occur, and expose zero-based integer positions through
-`group_data()[".rows"]`.
-
-## Export bounded tables
-
-Matrix-backed exports project selected features before conversion. The budget
-is cumulative across matrix sources and is checked before the first read.
-
-```{testcode}
-wide = adata.ap.to_df(
-    obs=["cell_type"],
-    x=["MS4A1", "CD79A"],
-    max_matrix_values=8,
-)
-long = adata.ap.to_tidy(
-    obs=["cell_type"],
-    x=["MS4A1", "CD79A"],
-    max_matrix_values=8,
-)
-
-assert wide.shape == (4, 3)
-assert long.shape == (8, 4)
-assert list(long.columns) == ["obs_name", "feature", "value", "cell_type"]
-```
-
-Continue with {doc}`user_guide/concepts`, review the breaking changes in
-{doc}`migration-v0.3`, or look up exact signatures in {doc}`api`.
+Next, follow the {doc}`tutorials`, learn the storage model in
+{doc}`user_guide/concepts`, or look up an exact signature in {doc}`api`.

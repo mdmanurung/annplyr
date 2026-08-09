@@ -1,12 +1,52 @@
 # Installation
 
-Install `annplyr` from PyPI:
+`annplyr` supports Python 3.12 and newer.
+
+## Install from PyPI
+
+Choose the package manager already used by your project:
 
 ```bash
 pip install annplyr
 ```
 
-For development from the GitHub repository:
+or:
+
+```bash
+uv add annplyr
+```
+
+`annplyr` has no plotting framework or Scanpy dependency. It works with the
+AnnData object already produced by your scverse workflow.
+
+## Register the accessor
+
+Import the package once before using `.ap`:
+
+```python
+import anndata as ad
+import annplyr as ap
+
+adata = ad.read_h5ad("analysis.h5ad")
+filtered = adata.ap.filter(obs=ap.col("qc_pass"))
+```
+
+The import registers the accessor on `AnnData`; it does not modify `adata` or
+read its matrices.
+
+## Check the installation
+
+```python
+import annplyr
+
+print(annplyr.__version__)
+```
+
+Continue with the {doc}`quickstart` for a complete, small cohort workflow.
+
+## Install for development
+
+Contributors can create the complete local environment from a clone:
 
 ```bash
 git clone https://github.com/mdmanurung/annplyr
@@ -14,26 +54,5 @@ cd annplyr
 uv sync --all-extras
 ```
 
-Importing the package registers the AnnData accessor:
-
-```python
-import annplyr as ap
-
-adata.ap
-```
-
-## Development Checks
-
-The common local checks are:
-
-```bash
-pytest -q
-ruff check src tests
-ruff format src tests --check
-python -m mypy src/annplyr
-uvx hatch run docs:build
-uvx hatch run docs:doctest
-```
-
-Use `UV_CACHE_DIR=/tmp/uv-cache` in restricted environments where the default
-uv cache location is read-only.
+The contributor workflow and verification commands are documented in
+{doc}`contributing`.

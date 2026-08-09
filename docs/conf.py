@@ -21,7 +21,7 @@ try:
 except PackageNotFoundError:
     project = "annplyr"
     author = "annplyr developers"
-    version = "0.3.0"
+    version = "0.4.0"
     repository_url = "https://github.com/mdmanurung/annplyr"
 
 copyright = f"{datetime.now():%Y}, {author}."
@@ -100,8 +100,10 @@ adata = AnnData(
     obs=pd.DataFrame(
         {
             "batch": pd.Categorical(["A", "B", "A", "B"], categories=["A", "B", "unused"]),
+            "donor_id": ["donor_1", "donor_2", "donor_1", "donor_2"],
             "cell_type": ["B cell", "T cell", "B cell", "T cell"],
             "n_counts": pd.array([1200, 900, 1500, 1100], dtype="Int64"),
+            "pct_counts_mt": np.array([4.0, 12.0, 3.0, 7.5], dtype=np.float32),
         },
         index=["cell_0", "cell_1", "cell_2", "cell_3"],
     ),

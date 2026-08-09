@@ -107,7 +107,7 @@ from annplyr._verbs import (
     unpack,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 AnnplyrAccessor = _accessor.AnnplyrAccessor
 
 __all__ = [

@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Expressions that combine two matrix columns now work for every sparse
+  subtype. pandas ships sparse binary kernels for `float64`, `int64`, and
+  `bool` only, so a two-gene score over a `float32` `X`, layer, or `raw` — the
+  usual single-cell case — previously failed with an opaque
+  `sparse_add_float32` error in `mutate()`, `filter()`, `arrange()`, and
+  `summarize()`. Evaluation now densifies only the affected projected columns,
+  so results match the dense path exactly and exported frames keep their
+  sparse columns and subtype.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added

@@ -9,7 +9,7 @@ import pandas as pd
 
 from annplyr._errors import DuplicateNameError, SelectionError
 from annplyr._expr import _ReductionSpec, reduction_spec
-from annplyr._frames import evaluate_select, expand_assignments, with_row_number
+from annplyr._frames import evaluate_select, expand_assignments, prepare_sparse_for_arithmetic, with_row_number
 from annplyr._groups import GroupPlan
 from annplyr._sources import ChunkPlan
 
@@ -465,7 +465,9 @@ def _summarize_dense_column_chunks(
         if groups.internal_columns:
             piece = nw.from_native(work).group_by(*groups.internal_columns).agg(*expressions).to_native()
         else:
-            piece = nw.from_native(with_row_number(work)).select(*expressions).to_native()
+            piece = (
+                nw.from_native(with_row_number(prepare_sparse_for_arithmetic(work))).select(*expressions).to_native()
+            )
         pieces.append(piece)
 
     if not pieces:
@@ -518,7 +520,8 @@ def _evaluate_inputs(
         derived.append((position, name, spec.input_expr.alias(name)))
     if derived:
         try:
-            evaluated = nw.from_native(with_row_number(frame)).select(*(expr for _, _, expr in derived)).to_native()
+            work_frame = with_row_number(prepare_sparse_for_arithmetic(frame))
+            evaluated = nw.from_native(work_frame).select(*(expr for _, _, expr in derived)).to_native()
         except Exception as exc:
             raise SelectionError(f"Chunked reduction input evaluation failed: {exc}") from exc
         for position, name, _ in derived:

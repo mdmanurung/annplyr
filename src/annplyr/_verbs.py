@@ -31,6 +31,7 @@ from annplyr._frames import (
     intersect_ordered,
     obs_frame,
     obsm_frame,
+    prepare_sparse_for_arithmetic,
     raw_frame,
     source_frame,
     var_frame,
@@ -686,7 +687,7 @@ def _sort_values_for_frame(frame: pd.DataFrame, by: Any) -> pd.Index:
     if not keys:
         return frame.index
 
-    work = with_row_number(frame)
+    work = with_row_number(prepare_sparse_for_arithmetic(frame))
     sort_columns: list[str] = []
     ascending: list[bool] = []
     for i, (expr, is_descending) in enumerate(keys):
@@ -805,7 +806,8 @@ def _sort_values_for_frames(base_index: pd.Index, frame_by_iter: Any) -> pd.Inde
         frame = frame.loc[base_index]
         for expr, is_descending in _sort_keys(by):
             name = f"__annplyr_sort_{len(sort_columns)}__"
-            selected = nw.from_native(with_row_number(frame)).select(_sort_expr(expr).alias(name)).to_native()
+            work_frame = with_row_number(prepare_sparse_for_arithmetic(frame))
+            selected = nw.from_native(work_frame).select(_sort_expr(expr).alias(name)).to_native()
             work[name] = selected[name].to_numpy()
             sort_columns.append(name)
             ascending.append(not is_descending)
@@ -1227,6 +1229,7 @@ def _merge_summary_pieces(pieces: list[pd.DataFrame], by_columns: list[str]) -> 
 
 def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, by: Any = None) -> pd.DataFrame:
     work, by_columns = prepare_by_frame(frame, by)
+    work = prepare_sparse_for_arithmetic(work)
     assignments = expand_assignments(work, assignments)
     exprs = [
         to_narwhals(expr.alias(name)) if hasattr(expr, "alias") else nw.col(expr).alias(name)

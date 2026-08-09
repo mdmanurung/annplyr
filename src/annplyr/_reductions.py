@@ -180,7 +180,7 @@ class _Accumulator:
             self.dtype = series.dtype
             dtype = series.dtype.subtype if isinstance(series.dtype, pd.SparseDtype) else series.dtype
             try:
-                numpy_dtype = np.dtype(dtype)
+                numpy_dtype = np.dtype(cast(Any, dtype))
             except TypeError:
                 return
             if (
@@ -553,7 +553,7 @@ def _local_sum(series: pd.Series, *, preserve_eager: bool = False) -> Any:
         return series.sum(skipna=True)
     dtype = series.dtype.subtype if isinstance(series.dtype, pd.SparseDtype) else series.dtype
     try:
-        numpy_dtype = np.dtype(dtype)
+        numpy_dtype = np.dtype(cast(Any, dtype))
     except TypeError:
         return series.sum(skipna=True)
     if numpy_dtype.kind == "f":

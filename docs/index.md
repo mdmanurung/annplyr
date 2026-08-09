@@ -5,33 +5,37 @@
 integration, group-wise calculations, and table extraction as readable Python
 pipelines while AnnData remains the aligned source of truth.
 
-```python
-import annplyr as ap
+Every example in this documentation runs against Scanpy's PBMC3K during the
+build, so the numbers you read are the numbers the code produces:
 
-analysis = (
-    adata.ap.filter(obs=ap.col("qc_pass"))
-    .ap.left_join(sample_sheet, by="sample_id", relationship="many-to-one")
-    .ap.mutate(
-        x={
-            "B_markers_detected": (ap.col("MS4A1") > 0)
-            & (ap.col("CD79A") > 0),
-        }
-    )
+```{testcode}
+summary = adata.ap.summarize(
+    obs={"cells": ap.n(), "median_genes": ap.median("n_genes")},
+    raw={"mean_MS4A1": ap.mean("MS4A1"), "mean_LYZ": ap.mean("LYZ")},
+    by="louvain",
 )
 
-summary = analysis.ap.summarize(
-    obs={
-        "cells": ap.n(),
-        "fraction_B_markers": ap.mean("B_markers_detected"),
-    },
-    x={"mean_MS4A1": ap.mean("MS4A1")},
-    by=["condition", "cell_type"],
-)
+print(summary.round(2))
 ```
 
-AnnData-returning verbs preserve axis alignment. Table-producing verbs make
-the transition to pandas explicit, so the same workflow can end in a report,
-plot, model matrix, or ordinary Python function.
+```{testoutput}
+             louvain  cells  median_genes  mean_MS4A1  mean_LYZ
+0        CD4 T cells   1144         809.0        0.03      0.43
+1            B cells    342         677.0        0.99      0.39
+2    CD14+ Monocytes    480         859.0        0.04      3.55
+3           NK cells    154         890.0        0.04      0.35
+4        CD8 T cells    316         824.5        0.04      0.36
+5  FCGR3A+ Monocytes    150        1272.0        0.06      2.24
+6    Dendritic cells     37        1544.0        0.06      3.91
+7     Megakaryocytes     15         364.0        0.05      0.60
+```
+
+Cell counts and depth come from `obs`, marker means from the 13,714 genes in
+`.raw`, one grouping, one call — and only the two requested genes are read.
+
+AnnData-returning verbs preserve axis alignment. Table-producing verbs make the
+transition to pandas explicit, so the same workflow can end in a report, plot,
+model matrix, or ordinary Python function.
 
 ## Start with a task
 

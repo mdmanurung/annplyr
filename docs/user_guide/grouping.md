@@ -1,87 +1,175 @@
 # Persistent grouping
 
-Use `group_by()` when several steps should use the same sample, condition, cell
-type, or feature groups. It resolves existing metadata keys for one AnnData
+Use `group_by()` when several steps should share the same sample, condition,
+cell type, or feature groups. It resolves existing metadata keys for one AnnData
 axis and returns a `GroupedAnnData` wrapper.
 
 For a single summary, `summarize(..., by=...)` is shorter. Persistent grouping
-becomes useful for a sequence such as rank within sample, retain the top cells,
-then compute sample-level counts.
+earns its keep for a sequence such as *rank cells within each type, keep the
+top ones, then summarize what is left*.
+
+All examples run against Scanpy's PBMC3K, grouped by its Louvain cell-type
+labels.
 
 ```{testcode}
-grouped = adata.ap.group_by(obs="batch")
+by_type = adata.ap.group_by(obs="louvain")
 
-assert grouped.group_vars() == ["batch"]
-assert grouped.group_keys().to_dict("list") == {"batch": ["A", "B"]}
-assert grouped.group_data().to_dict("list") == {
-    "batch": ["A", "B"],
-    ".rows": [[0, 2], [1, 3]],
-}
+print(by_type.group_vars())
+print(by_type.group_keys())
 ```
 
-The `.rows` entries are zero-based integer positions, not axis labels. Groups
-follow first-seen order, include NA values, preserve categorical dtype and
-order, and omit unobserved categories such as the fixture's `unused` level.
+```{testoutput}
+['louvain']
+             louvain
+0        CD4 T cells
+1            B cells
+2    CD14+ Monocytes
+3           NK cells
+4        CD8 T cells
+5  FCGR3A+ Monocytes
+6    Dendritic cells
+7     Megakaryocytes
+```
+
+Groups follow **first-seen** order — `CD4 T cells` and `B cells` lead because
+those are the first two cells in the object, not because of an alphabetical or
+frequency rule. Grouping also includes NA values, preserves categorical dtype
+and order, and omits unobserved categories.
+
+`group_data()` adds a `.rows` column of zero-based integer positions, not axis
+labels, so duplicate `obs_names` never collapse two distinct cells.
 
 ## Inspect groups before transforming
 
 Iteration yields each key and an aligned AnnData subset:
 
 ```{testcode}
-observed = [(key, group.n_obs) for key, group in grouped]
-assert observed == [({"batch": "A"}, 2), ({"batch": "B"}, 2)]
+sizes = [(key["louvain"], group.n_obs) for key, group in by_type]
+
+print(sizes[:3])
 ```
 
-Iteration is useful for handing each aligned subset to project code. Most
-workflows can remain vectorized through grouped verbs: AnnData-returning methods
-return another grouped wrapper, while summary and count methods return pandas
-tables.
-
-```{testcode}
-ranked = grouped.mutate(obs={"within_batch": ap.row_number()})
-top = ranked.slice_max(ap.col("n_counts"), n=1)
-
-assert top.group_vars() == ["batch"]
-assert top.ungroup().n_obs == 2
-assert ranked.summarize(obs={"cells": ap.n()})["cells"].tolist() == [2, 2]
+```{testoutput}
+[('CD4 T cells', 1144), ('B cells', 342), ('CD14+ Monocytes', 480)]
 ```
 
-Call `ungroup()` at the point where an ordinary AnnData object is needed by
-Scanpy, serialization, or another accessor pipeline.
+Iteration is useful for handing an aligned subset to project code. Most
+workflows can stay vectorized instead: AnnData-returning grouped methods return
+another grouped wrapper, while summary and count methods return pandas tables.
 
-## A sample-level ranking pattern
+## Rank within group, then select
 
-The pattern below keeps the highest-count cell from each donor while retaining
-grouping until the selection is complete:
+This is the pattern persistent grouping exists for — the ranking and the
+selection share one grouping, and the result is only ungrouped at the end.
+
+::::{tab-set}
+
+:::{tab-item} annplyr
 
 ```{testcode}
-top_per_donor = (
-    adata.ap.group_by(obs="donor_id")
-    .mutate(obs={"within_donor_rank": ap.min_rank("n_counts", descending=True)})
-    .filter(obs=ap.col("within_donor_rank") == 1)
+deepest = (
+    adata.ap.group_by(obs="louvain")
+    .mutate(obs={"depth_rank": ap.min_rank("n_counts", descending=True)})
+    .slice_max(ap.col("n_counts"), n=1)
     .ungroup()
 )
 
-assert list(top_per_donor.obs_names) == ["cell_2", "cell_3"]
+print(deepest.obs[["louvain", "n_counts", "depth_rank"]])
 ```
+
+```{testoutput}
+                            louvain  n_counts  depth_rank
+index                                                    
+CATACTTGGGTTAC-1        CD4 T cells    7167.0         1.0
+CAGGTTGAGGATCT-1            B cells    8011.0         1.0
+AACCTACTGTGAGG-1    CD14+ Monocytes    5682.0         1.0
+CAGTTTACACACGT-1           NK cells    5343.0         1.0
+GCCTCAACTCTTTG-1        CD8 T cells    5981.0         1.0
+ATTTAGGAACCATG-1  FCGR3A+ Monocytes    5677.0         1.0
+GGGCCAACCTTGGA-1    Dendritic cells    8415.0         1.0
+ACGAACTGGCTATG-1     Megakaryocytes    8875.0         1.0
+```
+
+:::
+
+:::{tab-item} scanpy + pandas
+
+```{testcode}
+positions = adata.obs.groupby("louvain", sort=False, observed=True)["n_counts"].idxmax()
+deepest_ref = adata[positions].copy()
+
+print(deepest_ref.obs[["louvain", "n_counts"]])
+```
+
+```{testoutput}
+                            louvain  n_counts
+index                                        
+CATACTTGGGTTAC-1        CD4 T cells    7167.0
+CAGGTTGAGGATCT-1            B cells    8011.0
+AACCTACTGTGAGG-1    CD14+ Monocytes    5682.0
+CAGTTTACACACGT-1           NK cells    5343.0
+GCCTCAACTCTTTG-1        CD8 T cells    5981.0
+ATTTAGGAACCATG-1  FCGR3A+ Monocytes    5677.0
+GGGCCAACCTTGGA-1    Dendritic cells    8415.0
+ACGAACTGGCTATG-1     Megakaryocytes    8875.0
+```
+
+:::
+
+::::
+
+The baseline works for "one row per group" but stops there. It cannot express
+"keep the top 10 per type", "keep everything above the group median", or "rank
+now and filter two steps later" without leaving the AnnData object behind and
+reindexing by hand. The grouped wrapper keeps the ranking column *and* the
+aligned matrices through every step.
+
+## Summarize the groups
+
+```{testcode}
+print(by_type.summarize(obs={"cells": ap.n(), "mean_genes": ap.mean("n_genes")}).round(1))
+```
+
+```{testoutput}
+             louvain  cells  mean_genes
+0        CD4 T cells   1144       810.3
+1            B cells    342       725.4
+2    CD14+ Monocytes    480       866.7
+3           NK cells    154       905.5
+4        CD8 T cells    316       837.6
+5  FCGR3A+ Monocytes    150      1228.8
+6    Dendritic cells     37      1466.9
+7     Megakaryocytes     15       577.3
+```
+
+Group keys always travel with their own aggregates, including when a single
+call mixes metadata and matrix sources. Call `ungroup()` at the point where an
+ordinary AnnData object is needed by Scanpy, serialization, or another accessor
+pipeline.
 
 ## Keep group keys valid
 
 Grouped `select`, `relocate`, and `transmute` retain grouping keys
-automatically. `rename` and `rename_with` update the group specification.
+automatically, so a selection cannot silently destroy the grouping. `rename`
+and `rename_with` update the group specification instead.
 
 ```{testcode}
-selected = grouped.select(obs=["cell_type"])
-assert list(selected.ungroup().obs.columns) == ["batch", "cell_type"]
-
-renamed = grouped.rename(obs={"sample": "batch"})
-assert renamed.group_vars() == ["sample"]
+print(by_type.select(obs=["n_genes"]).ungroup().obs.columns.tolist())
+print(by_type.rename(obs={"cell_type": "louvain"}).group_vars())
 ```
 
-If grouped `mutate()` changes a key, expressions in that call use the groups
-established at its start. The returned wrapper resolves subsequent verbs from
-the final key values. All six grouped joins run once globally and update
-suffixed key names when necessary.
+```{testoutput}
+['louvain', 'n_genes']
+['cell_type']
+```
+
+`n_genes` was the only column requested; `louvain` was retained because it is a
+key, and placed first.
+
+If a grouped `mutate()` changes a key, expressions in that call use the groups
+established at its start, and the returned wrapper resolves later verbs from the
+final key values. All six grouped joins run once globally and update suffixed
+key names when necessary.
 
 Grouping is axis-specific. Pass `var=` for feature groups such as chromosome or
 feature type. Computed, virtual-name, cross-axis, and empty grouping

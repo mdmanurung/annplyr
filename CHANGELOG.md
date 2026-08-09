@@ -7,6 +7,36 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Documentation
+
+- Every executable example now runs against Scanpy's PBMC3K instead of a
+  four-cell synthetic fixture, and prints the values it produces. The
+  quickstart, user guide, and cohort vignette contrast each annplyr call with
+  the scanpy + pandas assembly it replaces, and both sides execute during the
+  documentation build. The three notebooks are re-authored on the same dataset
+  and committed with executed outputs.
+- `scanpy` joins the `doc` dependency group, `docs/_pbmc.py` caches the shared
+  fixture, and the Docs workflow caches the downloaded dataset.
+
+### Fixed
+
+- `summarize()` no longer attaches group keys to the wrong aggregates. When a
+  request combined a metadata source with a matrix source, the pieces were
+  joined with an outer merge, which sorts its join keys, and the key column was
+  then rewritten in first-seen order — so every group whose first-seen position
+  differed from its sorted position reported another group's numbers. Summary
+  sources are now keyed by an internal group id and keys are attached per row,
+  which makes the misalignment unrepresentable.
+
+- Expressions that combine two matrix columns now work for every sparse
+  subtype. pandas ships sparse binary kernels for `float64`, `int64`, and
+  `bool` only, so a two-gene score over a `float32` `X`, layer, or `raw` — the
+  usual single-cell case — previously failed with an opaque
+  `sparse_add_float32` error in `mutate()`, `filter()`, `arrange()`, and
+  `summarize()`. Evaluation now densifies only the affected projected columns,
+  so results match the dense path exactly and exported frames keep their
+  sparse columns and subtype.
+
 ## [0.4.0] - 2026-08-09
 
 ### Added

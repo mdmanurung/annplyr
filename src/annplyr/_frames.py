@@ -141,6 +141,38 @@ def matrix_frame(matrix: Any, index: pd.Index, *, columns: pd.Index | Sequence[s
     return pd.DataFrame(values, index=index, columns=[str(column) for column in columns])
 
 
+#: pandas only ships sparse binary kernels for these subtypes.
+SPARSE_ARITHMETIC_SUBTYPES = frozenset({np.dtype(np.float64), np.dtype(np.int64), np.dtype(bool)})
+
+
+def _needs_dense_evaluation(dtype: Any) -> bool:
+    return isinstance(dtype, pd.SparseDtype) and np.dtype(dtype.subtype) not in SPARSE_ARITHMETIC_SUBTYPES
+
+
+def prepare_sparse_for_arithmetic(frame: pd.DataFrame) -> pd.DataFrame:
+    """Densify sparse columns pandas cannot compute with.
+
+    Single-cell matrices are almost always `float32`, but pandas implements
+    sparse binary operations for `float64`, `int64`, and `bool` only. Without
+    this step, combining two projected matrix columns in one expression fails
+    with an opaque ``sparse_add_float32`` attribute error.
+
+    Densifying preserves the subtype, so a sparse source yields exactly the
+    dtype its dense equivalent would. Only evaluation scratch frames are
+    converted, so exported frames keep their sparse columns, and only the
+    already-projected columns are materialized.
+    """
+    positions = [position for position, dtype in enumerate(frame.dtypes) if _needs_dense_evaluation(dtype)]
+    if not positions:
+        return frame
+    # Positional assignment keeps duplicate axis names addressable.
+    prepared = frame.copy(deep=False)
+    for position in positions:
+        column = cast(Any, frame.iloc[:, position])
+        prepared.isetitem(position, column.sparse.to_dense())
+    return prepared
+
+
 def with_row_number(frame: pd.DataFrame) -> pd.DataFrame:
     # Evaluation only adds or replaces whole columns, so a shallow scratch
     # frame avoids copying every metadata block without exposing source writes.
@@ -229,7 +261,7 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
     exprs = [_predicate_expr(frame, predicate) for predicate in as_list(predicates)]
     if not exprs:
         return frame.index
-    work = with_row_number(frame)
+    work = with_row_number(prepare_sparse_for_arithmetic(frame))
     try:
         filtered = nw.from_native(work).filter(*exprs).to_native()
     except ColumnNotFoundError as exc:
@@ -273,7 +305,7 @@ def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | A
     assignments = expand_assignments(frame, assignments)
     if not assignments:
         return pd.DataFrame(index=frame.index)
-    work = with_row_number(frame)
+    work = with_row_number(prepare_sparse_for_arithmetic(frame))
     assigned = pd.DataFrame(index=frame.index)
     for batch in _assignment_batches(assignments):
         try:

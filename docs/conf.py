@@ -10,6 +10,7 @@ from sphinxcontrib import katex
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "extensions"))
+sys.path.insert(0, str(HERE))
 
 try:
     info = metadata("annplyr")
@@ -84,33 +85,16 @@ always_use_bars_union = True
 doctest_global_setup = """
 import numpy as np
 import pandas as pd
+import scanpy as sc
 from anndata import AnnData
 import annplyr as ap
 
-adata = AnnData(
-    X=np.array(
-        [
-            [2.0, 0.0, 1.0],
-            [0.0, 1.0, 3.0],
-            [4.0, 2.0, 0.0],
-            [1.0, 3.0, 2.0],
-        ],
-        dtype=np.float32,
-    ),
-    obs=pd.DataFrame(
-        {
-            "batch": pd.Categorical(["A", "B", "A", "B"], categories=["A", "B", "unused"]),
-            "donor_id": ["donor_1", "donor_2", "donor_1", "donor_2"],
-            "cell_type": ["B cell", "T cell", "B cell", "T cell"],
-            "n_counts": pd.array([1200, 900, 1500, 1100], dtype="Int64"),
-            "pct_counts_mt": np.array([4.0, 12.0, 3.0, 7.5], dtype=np.float32),
-        },
-        index=["cell_0", "cell_1", "cell_2", "cell_3"],
-    ),
-    var=pd.DataFrame(index=["MS4A1", "CD79A", "NKG7"]),
-)
-adata.layers["counts"] = adata.X.copy()
-adata.raw = adata
+from _pbmc import pbmc3k
+
+pd.set_option("display.width", 88)
+pd.set_option("display.max_columns", 12)
+
+adata = pbmc3k()
 """
 
 source_suffix = {

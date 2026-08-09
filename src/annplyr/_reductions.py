@@ -9,11 +9,14 @@ import pandas as pd
 
 from annplyr._errors import DuplicateNameError, SelectionError
 from annplyr._expr import _ReductionSpec, reduction_spec
-from annplyr._frames import evaluate_select, expand_assignments, with_row_number
+from annplyr._frames import evaluate_select, expand_assignments, prepare_sparse_for_arithmetic, with_row_number
 from annplyr._groups import GroupPlan
 from annplyr._sources import ChunkPlan
 
 _MISSING_UNIQUE = object()
+
+#: Internal per-row group identity carried through every summary source.
+GROUP_ID = "__annplyr_group_id__"
 
 
 @dataclass(frozen=True)
@@ -35,10 +38,7 @@ class SummaryGroupPlan:
     ) -> SummaryGroupPlan:
         if grouped is not None:
             columns = tuple(str(column) for column in grouped.keys.columns)
-            internal = tuple(f"__annplyr_by_{position}__" for position in range(len(columns)))
-            keys = grouped.keys.copy()
-            keys.columns = list(internal)
-            return cls(grouped.group_ids, keys, columns, internal)
+            return cls(grouped.group_ids, grouped.keys.copy(), columns, cls._internal_for(columns))
         if by is None:
             return cls(
                 np.zeros(len(by_source), dtype=np.intp),
@@ -49,11 +49,9 @@ class SummaryGroupPlan:
 
         by_values = evaluate_select(by_source, by).reset_index(drop=True)
         columns = tuple(str(column) for column in by_values.columns)
-        internal = tuple(f"__annplyr_by_{position}__" for position in range(len(columns)))
+        internal = cls._internal_for(columns)
         if by_values.empty:
-            keys = by_values.copy()
-            keys.columns = list(internal)
-            return cls(np.empty(0, dtype=np.intp), keys, columns, internal)
+            return cls(np.empty(0, dtype=np.intp), by_values.copy(), columns, internal)
 
         grouped_values = by_values.groupby(list(by_values.columns), sort=False, observed=True, dropna=False)
         raw_ids = grouped_values.ngroup().to_numpy(dtype=np.intp)
@@ -66,28 +64,40 @@ class SummaryGroupPlan:
         dense_by_raw_group[raw_group_order] = np.arange(raw_group_count, dtype=np.intp)
         group_ids = dense_by_raw_group[raw_ids]
         keys = by_values.iloc[first_by_raw_group[raw_group_order], :].reset_index(drop=True).copy()
-        keys.columns = list(internal)
         return cls(group_ids, keys, columns, internal)
+
+    @staticmethod
+    def _internal_for(columns: tuple[str, ...]) -> tuple[str, ...]:
+        return (GROUP_ID,) if columns else ()
 
     @property
     def count(self) -> int:
         return len(self.keys)
 
     def add_to_frame(self, frame: pd.DataFrame, row_positions: np.ndarray) -> pd.DataFrame:
+        # Sources are keyed by integer group id rather than by key values, so a
+        # reordering merge or group_by cannot detach a row from its group.
         work = frame.copy(deep=False)
-        for position, internal in enumerate(self.internal_columns):
-            values = self.keys.iloc[self.group_ids[row_positions], position]
-            work[internal] = pd.Series(values.array, index=work.index)
+        if self.internal_columns:
+            work[GROUP_ID] = self.group_ids[row_positions]
         return work
 
+    def group_frame(self) -> pd.DataFrame:
+        """One row per group, in group order, carrying the id when grouping."""
+        if not self.internal_columns:
+            return pd.DataFrame(index=pd.RangeIndex(self.count))
+        return pd.DataFrame({GROUP_ID: np.arange(self.count, dtype=np.intp)})
+
     def restore_keys(self, result: pd.DataFrame) -> pd.DataFrame:
-        renamed = result.rename(columns=dict(zip(self.internal_columns, self.columns, strict=True)))
-        if len(renamed) != self.count:
-            return renamed
-        for source, target in zip(self.internal_columns, self.columns, strict=True):
-            if target in renamed.columns:
-                renamed[target] = pd.Series(self.keys[source].array, index=renamed.index)
-        return renamed
+        if not self.internal_columns or GROUP_ID not in result.columns:
+            return result
+        ids = result[GROUP_ID].to_numpy(dtype=np.intp)
+        order = np.argsort(ids, kind="stable")
+        ordered = result.iloc[order]
+        keys = self.keys.iloc[ids[order], :].reset_index(drop=True)
+        keys.columns = list(self.columns)
+        values = ordered.drop(columns=[GROUP_ID]).reset_index(drop=True)
+        return pd.concat([keys, values], axis=1)
 
 
 @dataclass(frozen=True)
@@ -341,7 +351,7 @@ def summarize_chunked(
         for accumulator, series in zip(accumulators, inputs, strict=True):
             accumulator.update(series, group_ids)
 
-    result = groups.keys.copy()
+    result = groups.group_frame()
     for (name, _), accumulator in zip(reductions.assignments, accumulators, strict=True):
         result[name] = accumulator.finish().array
     return result
@@ -427,7 +437,7 @@ def _summarize_column_chunks(
             finished[position] = accumulator.finish()
             accumulators[position] = None
 
-    result = groups.keys.copy()
+    result = groups.group_frame()
     for (name, _), values in zip(reductions.assignments, finished, strict=True):
         if values is None:  # pragma: no cover - guarded by reduction/source planning
             raise RuntimeError(f"reduction {name!r} was not evaluated")
@@ -465,7 +475,9 @@ def _summarize_dense_column_chunks(
         if groups.internal_columns:
             piece = nw.from_native(work).group_by(*groups.internal_columns).agg(*expressions).to_native()
         else:
-            piece = nw.from_native(with_row_number(work)).select(*expressions).to_native()
+            piece = (
+                nw.from_native(with_row_number(prepare_sparse_for_arithmetic(work))).select(*expressions).to_native()
+            )
         pieces.append(piece)
 
     if not pieces:
@@ -477,9 +489,6 @@ def _summarize_dense_column_chunks(
             result = result.merge(piece, on=list(groups.internal_columns), how="outer", sort=False)
         else:
             result = pd.concat([result, piece], axis=1)
-    if len(result) == groups.count:
-        for internal in groups.internal_columns:
-            result[internal] = pd.Series(groups.keys[internal].array, index=result.index)
     ordered = [*groups.internal_columns, *(name for name, _ in reductions.assignments)]
     return result.loc[:, ordered]
 
@@ -518,7 +527,8 @@ def _evaluate_inputs(
         derived.append((position, name, spec.input_expr.alias(name)))
     if derived:
         try:
-            evaluated = nw.from_native(with_row_number(frame)).select(*(expr for _, _, expr in derived)).to_native()
+            work_frame = with_row_number(prepare_sparse_for_arithmetic(frame))
+            evaluated = nw.from_native(work_frame).select(*(expr for _, _, expr in derived)).to_native()
         except Exception as exc:
             raise SelectionError(f"Chunked reduction input evaluation failed: {exc}") from exc
         for position, name, _ in derived:

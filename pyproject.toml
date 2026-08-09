@@ -75,6 +75,10 @@ doc = [
   "sphinxcontrib-katex",
   "sphinxext-opengraph",
 ]
+integration = [
+  "scanpy>=1.12",
+  "zarr>=3.1",
+]
 
 [tool.hatch]
 build.targets.wheel.packages = [ "src/annplyr" ]
@@ -97,6 +101,8 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [ { value = "allow", if = [ "pr
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
 envs.type.scripts.check = "mypy src/annplyr {args}"
 envs.type.dependency-groups = [ "type" ]
+envs.integration.scripts.run = "pytest -m integration {args:tests/integration}"
+envs.integration.dependency-groups = [ "dev", "test", "integration" ]
 
 [tool.ruff]
 line-length = 120
@@ -146,7 +152,10 @@ warn_unused_configs = true
 [tool.pytest]
 ini_options.testpaths = [ "tests" ]
 ini_options.pythonpath = [ "src" ]
-ini_options.addopts = [ "--import-mode=importlib" ]
+ini_options.addopts = [ "--import-mode=importlib", "-m", "not integration" ]
+ini_options.markers = [
+  "integration: optional downstream and serialization integration tests",
+]
 ini_options.xfail_strict = true
 
 [tool.coverage]

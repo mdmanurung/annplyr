@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- A deterministic, redistributable downstream AnnData fixture with exact H5AD,
+  Zarr, concatenation, positional-identity, ownership, grouping, and optional
+  Scanpy integration checks across stable Python 3.12-3.14 CI jobs.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added

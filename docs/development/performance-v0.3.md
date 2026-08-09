@@ -238,6 +238,27 @@ warm-cache results because filesystem caches were not controlled. Peak RSS
 runs use fresh processes, but setup allocation can still affect process RSS.
 The correctness gate includes a chained fixture-level structural comparison of
 values, extension dtypes, duplicate indexes, sparse formats, aligned shapes,
-ownership, and grouping state. This repository contains no representative
-downstream dataset, so fixture-level invariance is the strongest available
-downstream safeguard.
+ownership, and grouping state. That was the strongest downstream safeguard for
+the frozen v0.3 candidate; the post-v0.3 integration evidence below supersedes
+that limitation without changing the historical benchmark results.
+
+## Post-v0.3 downstream integration evidence
+
+Issue #13 adds a wholly synthetic, redistributable 8-cell by 6-feature AnnData
+fixture generated from explicit values. No generated H5AD or Zarr dataset is
+committed. Five tests cover the in-memory fixture, H5AD and Zarr v2 round trips,
+split-and-reconstruct concatenation, and a Scanpy normalization/log1p/PCA
+handoff. Every annplyr path compares exact matrix values and dtypes, pandas
+extension dtypes and categorical metadata, axis order, CSR/CSC formats, aligned
+container shapes, independent ownership, duplicate observation-name positional
+identity, and retained grouping state.
+
+The fixed-stack acceptance run passed all five tests on Python 3.14.5 with
+AnnData 0.12.19 and Scanpy 1.12.2. Isolated stable runs then passed 5/5 on
+Python 3.12.13, 3.13.13, and 3.14.5 with AnnData 0.13.2, Scanpy 1.12.3, NumPy
+2.4.6, pandas 3.0.5, SciPy 1.18.0, and Zarr 3.3.0 writing the current
+AnnData-default Zarr v2 representation. The advisory Python 3.14 prerelease
+run also passed 5/5 with Scanpy 1.13.0a1 and NumPy 2.5.1; its remaining stack
+matched the stable run. Dedicated mandatory CI repeats the stable matrix. The
+prerelease-dependency consumer job remains advisory so an identified external
+prerelease incompatibility cannot mask stable-environment status.

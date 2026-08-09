@@ -38,17 +38,21 @@ def _load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("manifest.json"))
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+def _evaluate(
+    manifest: dict[str, Any],
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    improvement_families: set[str] | None = None,
+) -> dict[str, Any]:
+    """Evaluate regressions globally and improvement gates for selected families."""
 
-    manifest = _load(args.manifest)
-    baseline = _load(args.baseline)
-    candidate = _load(args.candidate)
+    configured_families = set(manifest["families"])
+    required_families = configured_families if improvement_families is None else improvement_families
+    if unknown := required_families - configured_families:
+        names = ", ".join(sorted(unknown))
+        raise ValueError(f"unknown improvement families: {names}")
+
     minimum = int(manifest["measurement"]["timing_repeats_minimum"])
     improvement_gate = float(manifest["gates"]["family_improvement_fraction"])
     regression_gate = float(manifest["gates"]["primary_regression_fraction"])
@@ -115,18 +119,54 @@ def main() -> None:
                 }
             )
         best = max((item["improvement_fraction"] for item in improvements), default=float("-inf"))
-        families[family] = {"pass": best >= improvement_gate, "best_improvement_fraction": best, "cases": improvements}
+        improvement_required = family in required_families
+        families[family] = {
+            "pass": not improvement_required or best >= improvement_gate,
+            "improvement_required": improvement_required,
+            "best_improvement_fraction": best,
+            "cases": improvements,
+        }
 
     verdict = not sample_errors and not regressions and all(item["pass"] for item in families.values())
-    report = {
+    return {
         "pass": verdict,
+        "improvement_families": sorted(required_families),
         "sample_errors": sample_errors,
         "primary_regressions_outside_noise": regressions,
         "families": families,
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("manifest.json"))
+    parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--improvement-family",
+        action="append",
+        dest="improvement_families",
+        help="Require the >=20%% improvement gate only for this family; repeat as needed (default: all)",
+    )
+    args = parser.parse_args()
+
+    manifest = _load(args.manifest)
+    baseline = _load(args.baseline)
+    candidate = _load(args.candidate)
+    try:
+        report = _evaluate(
+            manifest,
+            baseline,
+            candidate,
+            improvement_families=set(args.improvement_families) if args.improvement_families else None,
+        )
+    except ValueError as error:
+        parser.error(str(error))
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    if not verdict:
+    if not report["pass"]:
         raise SystemExit(1)
 
 

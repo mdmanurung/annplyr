@@ -168,7 +168,8 @@ def prepare_sparse_for_arithmetic(frame: pd.DataFrame) -> pd.DataFrame:
     # Positional assignment keeps duplicate axis names addressable.
     prepared = frame.copy(deep=False)
     for position in positions:
-        prepared.isetitem(position, frame.iloc[:, position].sparse.to_dense())
+        column = cast(Any, frame.iloc[:, position])
+        prepared.isetitem(position, column.sparse.to_dense())
     return prepared
 
 

@@ -9,6 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `summarize()` no longer attaches group keys to the wrong aggregates. When a
+  request combined a metadata source with a matrix source, the pieces were
+  joined with an outer merge, which sorts its join keys, and the key column was
+  then rewritten in first-seen order — so every group whose first-seen position
+  differed from its sorted position reported another group's numbers. Summary
+  sources are now keyed by an internal group id and keys are attached per row,
+  which makes the misalignment unrepresentable.
+
 - Expressions that combine two matrix columns now work for every sparse
   subtype. pandas ships sparse binary kernels for `float64`, `int64`, and
   `bool` only, so a two-gene score over a `float32` `X`, layer, or `raw` — the

@@ -13,8 +13,8 @@ The practical rules are short:
 
 Axis-changing verbs return independent objects by default and subset every
 aligned container by integer position. PBMC3K carries `X`, `raw`, four
-embeddings, PCA loadings, and two pairwise graphs — one filter keeps all of
-them consistent:
+embeddings, PCA loadings, and two pairwise graphs. One filter keeps all of them
+consistent:
 
 ```{testcode}
 subset = adata.ap.filter(obs=ap.col("louvain") == "B cells")

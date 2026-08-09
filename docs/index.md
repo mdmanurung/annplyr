@@ -5,8 +5,8 @@
 integration, group-wise calculations, and table extraction as readable Python
 pipelines while AnnData remains the aligned source of truth.
 
-Every example in this documentation runs against Scanpy's PBMC3K during the
-build, so the numbers you read are the numbers the code produces:
+Every example on these pages runs against Scanpy's PBMC3K during the
+documentation build, so the numbers you read are the numbers the code produces:
 
 ```{testcode}
 summary = adata.ap.summarize(
@@ -31,7 +31,7 @@ print(summary.round(2))
 ```
 
 Cell counts and depth come from `obs`, marker means from the 13,714 genes in
-`.raw`, one grouping, one call — and only the two requested genes are read.
+`.raw`. One grouping, one call, and only the two requested genes are read.
 
 AnnData-returning verbs preserve axis alignment. Table-producing verbs make the
 transition to pandas explicit, so the same workflow can end in a report, plot,

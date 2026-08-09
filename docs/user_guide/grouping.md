@@ -31,7 +31,7 @@ print(by_type.group_keys())
 7     Megakaryocytes
 ```
 
-Groups follow **first-seen** order — `CD4 T cells` and `B cells` lead because
+Groups follow **first-seen** order. `CD4 T cells` and `B cells` lead because
 those are the first two cells in the object, not because of an alphabetical or
 frequency rule. Grouping also includes NA values, preserves categorical dtype
 and order, and omits unobserved categories.
@@ -59,7 +59,7 @@ another grouped wrapper, while summary and count methods return pandas tables.
 
 ## Rank within group, then select
 
-This is the pattern persistent grouping exists for — the ranking and the
+This is the pattern persistent grouping exists for. The ranking and the
 selection share one grouping, and the result is only ungrouped at the end.
 
 ::::{tab-set}
@@ -118,11 +118,11 @@ ACGAACTGGCTATG-1     Megakaryocytes    8875.0
 
 ::::
 
-The baseline works for "one row per group" but stops there. It cannot express
-"keep the top 10 per type", "keep everything above the group median", or "rank
-now and filter two steps later" without leaving the AnnData object behind and
-reindexing by hand. The grouped wrapper keeps the ranking column *and* the
-aligned matrices through every step.
+The baseline works for "one row per group" but stops there. Keep the top 10 per
+type, keep everything above the group median, or rank now and filter two steps
+later, and it has to leave the AnnData object behind and reindex by hand. The
+grouped wrapper keeps the ranking column *and* the aligned matrices through
+every step.
 
 ## Summarize the groups
 

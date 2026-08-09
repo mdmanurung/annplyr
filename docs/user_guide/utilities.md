@@ -1,7 +1,7 @@
 # Single-cell utilities
 
 `annplyr` ships a few narrow AnnData helpers for metadata workflows. They are
-deliberately small — this is not a biological QC or annotation toolkit.
+deliberately small. This is not a biological QC or annotation toolkit.
 
 ## Validate marker panels before you project
 

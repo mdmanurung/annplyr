@@ -5,7 +5,7 @@ feature metadata to AnnData. annplyr enriches or subsets `obs` or `var` without
 manufacturing aligned matrix rows, and tracks each axis by integer position, so
 duplicate labels stay distinct.
 
-The examples attach a lineage annotation to PBMC3K's Louvain labels — the
+The examples attach a lineage annotation to PBMC3K's Louvain labels, the
 everyday case of mapping fine-grained cluster names onto a coarser level.
 
 ## Attach an annotation table
@@ -80,7 +80,7 @@ print(merged["lineage"].value_counts().rename_axis("lineage").reset_index(name="
 The pandas merge produces the right column, but it produces a **detached
 DataFrame**: its index is a fresh `RangeIndex`, so assigning it back with
 `adata.obs = merged` silently breaks the link to `obs_names` unless you restore
-the index yourself. That is the class of mistake the join verb removes — the
+the index yourself. That is the class of mistake the join verb removes. The
 result is an AnnData whose every aligned container still matches.
 
 Joins return an independent AnnData by default, the left axis order is stable,
@@ -114,8 +114,7 @@ Neither adds a column: a semi join filters, an anti join takes the complement.
 ## Annotate features
 
 The same verbs work on the feature axis. Axis names are labels rather than
-columns, so promote them into `var` first — which is itself an ordinary
-`mutate()`:
+columns, so promote them into `var` first with an ordinary `mutate()`:
 
 ```{testcode}
 panel = pd.DataFrame(
@@ -140,8 +139,8 @@ CD79A      426  CD79A   B cells
 ```
 
 `LYZ` is not in the 1,838 highly variable genes, so only three of the four
-panel rows find a match — and the unmatched one is dropped rather than
-inventing a feature.
+panel rows find a match. The unmatched one is dropped rather than inventing a
+feature.
 
 ## Make cardinality assumptions executable
 

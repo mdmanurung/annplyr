@@ -4,10 +4,10 @@
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
 
-`annplyr` brings tidy, dataframe-style verbs to AnnData. It lets you filter
-cells, select genes, join sample metadata, derive annotations, summarize
-groups, and build plot-ready tables without separating `obs` from the matrices
-and aligned containers that give it meaning.
+`annplyr` brings tidy, dataframe-style verbs to AnnData. Filter cells, select
+genes, join sample metadata, derive annotations, summarize groups, and build
+plot-ready tables. `obs` stays attached to the matrices and aligned containers
+that give it meaning.
 
 ```bash
 pip install annplyr
@@ -45,10 +45,10 @@ print(summary.round(2))
 7     Megakaryocytes     15         364.0        0.05      0.60
 ```
 
-One call, one grouping, two sources: cell counts and depth come from `obs`,
-marker means come from the 13,714 genes in `.raw`, and only the two requested
-genes are ever read. `MS4A1` (CD20) marks the B cells and `LYZ` the monocytes
-and dendritic cells, so the table reports biology rather than plumbing.
+One call, one grouping, two sources. Cell counts and depth come from `obs`,
+marker means from the 13,714 genes in `.raw`, and only the two requested genes
+are ever read. `MS4A1` (CD20) marks the B cells and `LYZ` the monocytes and
+dendritic cells, which is the expected answer.
 
 QC and extraction chain the same way:
 
@@ -64,7 +64,7 @@ The AnnData-returning steps preserve aligned `X`, layers, `raw`, embeddings,
 loadings, and pairwise matrices. The boundary to pandas is explicit: summary and
 extraction methods return DataFrames, everything else returns AnnData.
 
-## Why use annplyr?
+## What you get
 
 - **Work across AnnData sources.** Expressions can read metadata, selected
   features in `X` or a layer, `raw`, embeddings, and loadings.

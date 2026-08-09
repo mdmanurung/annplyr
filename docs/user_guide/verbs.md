@@ -4,7 +4,7 @@ The core verbs map familiar dataframe operations onto AnnData axes. Each call
 does one recognizable transformation, and its return type tells you whether the
 pipeline continues as AnnData, grouped AnnData, or pandas.
 
-Every example runs against Scanpy's PBMC3K — 2,638 cells, 1,838 highly variable
+Every example runs against Scanpy's PBMC3K: 2,638 cells, 1,838 highly variable
 genes in `X`, and 13,714 log-normalised genes in `.raw`.
 
 ## Choose the verb that matches the task
@@ -25,7 +25,7 @@ objects by default.
 ## Filter across several sources at once
 
 Predicates in one tuple are combined with `AND`, and different sources can be
-mixed in the same call — here metadata and expression together:
+mixed in the same call. Here metadata and expression are combined:
 
 ::::{tab-set}
 
@@ -67,10 +67,9 @@ print(b_cells_ref.shape)
 
 ::::
 
-The baseline has to remember that one mask is a pandas Series indexed by
-`obs_names` and the other is too, but that combining them and indexing an
-AnnData wants a numpy array. Mixing metadata and expression criteria is exactly
-where hand-written masks go wrong.
+Both baseline masks are pandas Series indexed by `obs_names`, but indexing an
+AnnData with their conjunction wants a numpy array. Mixing metadata and
+expression criteria is where hand-written masks go wrong.
 
 Feature predicates use `var=`; pass `layer="counts"` when `x=` expressions
 should read a named layer instead of `X`.
@@ -126,7 +125,7 @@ print(annotated.ap.count(by=["louvain", "b_markers"], sort=True).head())
 ```
 
 277 of 342 B cells co-express both markers, and essentially no other cell type
-does — a two-line sanity check on the annotation.
+does. That is a two-line sanity check on the annotation.
 
 Assignments are sequential, so a later expression may read a column created
 earlier in the same call. `across()` applies one transformation to a selected
@@ -274,8 +273,7 @@ print(summary_ref.round(3))
 
 ::::
 
-NK and CD8 T cells carrying `NKG7` is the cytotoxic signature, so the table is
-reporting biology rather than an artifact of the fixture.
+`NKG7` concentrates in NK and CD8 T cells, which is the cytotoxic signature.
 
 `count()` and `tally()` cover frequency tables; `add_count()` and `add_tally()`
 write aligned counts back to metadata:

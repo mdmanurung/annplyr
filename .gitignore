@@ -25,6 +25,7 @@ __pycache__/
 /node_modules/
 /.coverage*
 /coverage.xml
+/tests/integration/generated/
 
 # ASV runtime state and raw machine results
 /.asv/env/

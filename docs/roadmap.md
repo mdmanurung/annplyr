@@ -45,6 +45,10 @@ tidy extraction, and release-infrastructure work described by Milestones 1-7:
 - Public accessor methods carry explicit return annotations, documentation
   examples are executable, and package metadata is ready for trusted
   publishing.
+- A deterministic 8-cell by 6-feature downstream fixture covers nullable and
+  categorical metadata, duplicate observation names, CSR data/layers/raw,
+  dense axis embeddings, CSR/CSC pairwise containers, H5AD and Zarr round
+  trips, concatenation, and a Scanpy preprocessing handoff.
 
 ## Remaining Work Before 1.0
 
@@ -55,18 +59,24 @@ backlog:
    ([#10](https://github.com/mdmanurung/annplyr/issues/10)). They
    must match eager known-answer fixtures, respect cumulative budgets, and
    demonstrate bounded peak RSS on a fixed runner.
-2. Add representative downstream integration fixtures covering serialization,
-   concatenation, and at least one optional scverse consumer without making
-   optional packages runtime dependencies
-   ([#13](https://github.com/mdmanurung/annplyr/issues/13)).
-3. Stabilize consumer-facing typing for the dynamically registered
+2. Stabilize consumer-facing typing for the dynamically registered
    `AnnData.ap` namespace and the grouped/expression return types. Internal
    mypy success alone is not sufficient; a downstream type-check fixture must
    pass ([#11](https://github.com/mdmanurung/annplyr/issues/11)).
+3. Adopt only the vetted security hardening from the closed template update,
+   with traceable action pins, minimal permissions, scoped dependency updates,
+   and a clean zizmor audit
+   ([#12](https://github.com/mdmanurung/annplyr/issues/12)).
 
 Each item should be implemented through a focused issue with exact fixtures,
 baselines, and acceptance commands. New verbs are not a 1.0 prerequisite
 unless they close a demonstrated workflow gap.
+
+Issue [#13](https://github.com/mdmanurung/annplyr/issues/13) completed the
+downstream integration gate without adding a runtime dependency. Its generated
+fixture is documented in `tests/integration/README.md`; mandatory CI runs the
+five exact invariance/consumer cases on Python 3.12, 3.13, and 3.14, with a
+separate advisory prerelease-consumer lane.
 
 ## Milestone 1: Public Contract And Errors
 

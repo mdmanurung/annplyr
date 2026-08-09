@@ -1,0 +1,74 @@
+name: Downstream Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "30 5 1,15 * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stable:
+    name: Stable Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          filter: blob:none
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run downstream integration tests
+        env:
+          MPLBACKEND: agg
+        run: uvx hatch run integration:run --junitxml=integration-results.xml
+      - name: Upload compact failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-failure-python-${{ matrix.python }}
+          path: integration-results.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  prerelease-consumer:
+    name: Advisory prerelease consumer
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      UV_PRERELEASE: allow
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          filter: blob:none
+          fetch-depth: 0
+      - name: Install uv and Python 3.14
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+      - name: Run against prerelease dependencies
+        env:
+          MPLBACKEND: agg
+        run: uvx hatch run integration:run --junitxml=integration-prerelease-results.xml
+      - name: Upload compact failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-prerelease-failure
+          path: integration-prerelease-results.xml
+          if-no-files-found: error
+          retention-days: 7

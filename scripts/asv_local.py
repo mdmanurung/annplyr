@@ -6,7 +6,6 @@ from pathlib import Path
 
 from asv.machine import MachineCollection
 
-
 MachineCollection.get_machine_file_path = staticmethod(lambda: str(Path.cwd() / ".asv-machine.json"))
 
 

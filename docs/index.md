@@ -9,10 +9,7 @@ together without losing AnnData alignment.
 import annplyr as ap
 
 filtered = (
-    adata.ap.group_by(obs="batch")
-    .filter(x=ap.col("MS4A1") > 0)
-    .mutate(obs={"within_batch": ap.row_number()})
-    .ungroup()
+    adata.ap.group_by(obs="batch").filter(x=ap.col("MS4A1") > 0).mutate(obs={"within_batch": ap.row_number()}).ungroup()
 )
 
 plot_data = filtered.ap.to_tidy(obs=["cell_type"], x=["MS4A1", "CD79A"])

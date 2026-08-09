@@ -55,7 +55,7 @@ type = [
 benchmark = [
   "anndata==0.12.19",
   "asv==0.6.6",
-  "narwhals[pandas]==2.23.0",
+  "narwhals[pandas]==2.23",
   "numpy==2.4.6",
   "pandas==2.3.3",
   "psutil>=6",

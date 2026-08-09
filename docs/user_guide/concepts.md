@@ -53,6 +53,14 @@ matrix sources. A raw Narwhals expression has opaque dependencies and is
 charged against its full source; an annplyr expression exposes conservative
 dependency metadata for narrower projection.
 
+Canonical scalar summaries (`n`, `sum`, `mean`, `sd`, `min`, `max`, `first`,
+`last`, `median`, `n_distinct`, and direct expression `all`/`any`/`len`
+methods) use the same validated request as a deterministic chunk plan. The
+internal target is 25,165,824 logical values: complete reduction vectors are
+packed into feature batches when possible, and taller inputs use row chunks.
+No public chunk-size flag is exposed. Dense, CSR/CSC, and backed adapters use
+the same plan, and grouped summaries reuse one positional group plan.
+
 ## Expressions
 
 Helpers such as `col`, `lit`, `if_else`, selectors, and virtual axis names

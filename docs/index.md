@@ -94,6 +94,7 @@ api
 development/skills
 development/api-contract-v0.3
 development/performance-v0.3
+development/performance-issue-10
 contributing
 template_usage
 ```

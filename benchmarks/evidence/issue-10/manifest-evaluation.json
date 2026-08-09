@@ -1,0 +1,199 @@
+{
+  "families": {
+    "bounded_reductions": {
+      "best_improvement_fraction": 0.4057433132062907,
+      "cases": [
+        {
+          "baseline_median": 0.6703150933608413,
+          "candidate_median": 0.6607300811447203,
+          "improvement_fraction": 0.014299263601634573,
+          "metric": "time",
+          "name": "bench_reductions.DenseReductions.time_mean_all_features"
+        },
+        {
+          "baseline_median": 985076.0,
+          "candidate_median": 585388.0,
+          "improvement_fraction": 0.4057433132062907,
+          "metric": "peak_rss",
+          "name": "dense_reduction"
+        }
+      ],
+      "improvement_required": true,
+      "pass": true
+    },
+    "grouped_execution": {
+      "best_improvement_fraction": 0.10575362043533454,
+      "cases": [
+        {
+          "baseline_median": 0.6788185813929886,
+          "candidate_median": 0.6961110634729266,
+          "improvement_fraction": -0.025474379390812395,
+          "metric": "time",
+          "name": "bench_grouped.GroupedTwenty.time_filter"
+        },
+        {
+          "baseline_median": 0.4046197319403291,
+          "candidate_median": 0.39492351608350873,
+          "improvement_fraction": 0.023963774110379484,
+          "metric": "time",
+          "name": "bench_grouped.GroupedTwenty.time_mutate"
+        },
+        {
+          "baseline_median": 0.22317522997036576,
+          "candidate_median": 0.22354052541777492,
+          "improvement_fraction": -0.0016368099966006916,
+          "metric": "time",
+          "name": "bench_grouped.GroupedTwenty.time_summarize"
+        },
+        {
+          "baseline_median": 1.1424360803794116,
+          "candidate_median": 1.021619328763336,
+          "improvement_fraction": 0.10575362043533454,
+          "metric": "time",
+          "name": "bench_grouped.GroupedTwenty.time_arrange"
+        },
+        {
+          "baseline_median": 0.26735648955218494,
+          "candidate_median": 0.2688837228342891,
+          "improvement_fraction": -0.0057123479017180765,
+          "metric": "time",
+          "name": "bench_grouped.GroupedTwenty.time_slice_head"
+        },
+        {
+          "baseline_median": 378216.0,
+          "candidate_median": 378460.0,
+          "improvement_fraction": -0.0006451339975040717,
+          "metric": "peak_rss",
+          "name": "grouped_mutate"
+        }
+      ],
+      "improvement_required": false,
+      "pass": true
+    },
+    "matrix_projection": {
+      "best_improvement_fraction": 0.04278895281857275,
+      "cases": [
+        {
+          "baseline_median": 0.4291019544471055,
+          "candidate_median": 0.43151433346793056,
+          "improvement_fraction": -0.005621925036285047,
+          "metric": "time",
+          "name": "bench_projection.DenseProjection.time_filter_three_features"
+        },
+        {
+          "baseline_median": 0.15789395244792104,
+          "candidate_median": 0.15570625802502036,
+          "improvement_fraction": 0.013855466843305827,
+          "metric": "time",
+          "name": "bench_projection.DenseProjection.time_export_ten_features"
+        },
+        {
+          "baseline_median": 21.565676062600687,
+          "candidate_median": 20.642903367057443,
+          "improvement_fraction": 0.04278895281857275,
+          "metric": "time",
+          "name": "bench_projection.SparseProjection.time_filter_three_features('csc')"
+        },
+        {
+          "baseline_median": 21.694197474746034,
+          "candidate_median": 21.431013158988208,
+          "improvement_fraction": 0.012131553428708105,
+          "metric": "time",
+          "name": "bench_projection.SparseProjection.time_filter_three_features('csr')"
+        },
+        {
+          "baseline_median": 20.109811384463683,
+          "candidate_median": 19.61444771918468,
+          "improvement_fraction": 0.024632934432279464,
+          "metric": "time",
+          "name": "bench_projection.SparseProjection.time_to_df_ten_features('csc')"
+        },
+        {
+          "baseline_median": 20.049579490209,
+          "candidate_median": 19.981265338370577,
+          "improvement_fraction": 0.0034072610785569005,
+          "metric": "time",
+          "name": "bench_projection.SparseProjection.time_to_df_ten_features('csr')"
+        },
+        {
+          "baseline_median": 20.49249331932515,
+          "candidate_median": 20.067472480004653,
+          "improvement_fraction": 0.02074031854970454,
+          "metric": "time",
+          "name": "bench_projection.BackedProjection.time_selected_read('csc')"
+        },
+        {
+          "baseline_median": 20.00970781594515,
+          "candidate_median": 20.02506109350361,
+          "improvement_fraction": -0.0007672914417184171,
+          "metric": "time",
+          "name": "bench_projection.BackedProjection.time_selected_read('csr')"
+        },
+        {
+          "baseline_median": 0.20738653023727238,
+          "candidate_median": 0.20627844147384167,
+          "improvement_fraction": 0.0053431086491631955,
+          "metric": "time",
+          "name": "bench_projection.BackedProjection.time_selected_read('dense')"
+        },
+        {
+          "baseline_median": 624496.0,
+          "candidate_median": 618500.0,
+          "improvement_fraction": 0.009601342522610233,
+          "metric": "peak_rss",
+          "name": "dense_projection"
+        }
+      ],
+      "improvement_required": false,
+      "pass": true
+    },
+    "metadata_evaluation": {
+      "best_improvement_fraction": 0.4168463522870617,
+      "cases": [
+        {
+          "baseline_median": 0.2528387028723955,
+          "candidate_median": 0.23680012463591993,
+          "improvement_fraction": 0.0634340314764629,
+          "metric": "time",
+          "name": "bench_metadata.WideMetadata.time_select_twenty"
+        },
+        {
+          "baseline_median": 0.4058721400797367,
+          "candidate_median": 0.23668581899255514,
+          "improvement_fraction": 0.4168463522870617,
+          "metric": "time",
+          "name": "bench_metadata.WideMetadata.time_mutate_ten_independent"
+        },
+        {
+          "baseline_median": 1.1237148297950625,
+          "candidate_median": 0.9144121033605188,
+          "improvement_fraction": 0.18625964602844594,
+          "metric": "time",
+          "name": "bench_metadata.WideMetadata.time_left_join"
+        },
+        {
+          "baseline_median": 0.6507866927422583,
+          "candidate_median": 0.6042993508744985,
+          "improvement_fraction": 0.07143253294235838,
+          "metric": "time",
+          "name": "bench_metadata.WideMetadata.time_inner_join"
+        },
+        {
+          "baseline_median": 546252.0,
+          "candidate_median": 547180.0,
+          "improvement_fraction": -0.0016988496151959169,
+          "metric": "peak_rss",
+          "name": "metadata_mutate"
+        }
+      ],
+      "improvement_required": false,
+      "pass": true
+    }
+  },
+  "improvement_families": [
+    "bounded_reductions"
+  ],
+  "pass": true,
+  "primary_regressions_outside_noise": [],
+  "sample_errors": []
+}

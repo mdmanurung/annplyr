@@ -58,6 +58,14 @@ summaries, extraction, and grouped counterparts. The planner charges projected
 cells cumulatively across sources and rejects the complete request before its
 first adapter read.
 
+Canonical matrix summaries then read deterministic row or feature chunks rather
+than the complete selected source. Sparse chunks remain pandas sparse columns;
+there is no whole-source dense fallback. Exact `median` and `n_distinct`
+summaries may retain state proportional to one reduction vector, but feature
+batches are finalized before the next batch is read. Opaque raw Narwhals or
+cross-row custom summary expressions retain their eager compatibility path, so
+use a finite `max_matrix_values=` budget for those expressions.
+
 ```{testcode}
 bounded = adata.ap.to_tidy(
     x=["MS4A1", "CD79A"],

@@ -299,6 +299,7 @@ class GroupedAnnData:
             by=list(self._spec.columns),
             layer=layer,
             max_matrix_values=max_matrix_values,
+            _group_plan=plan,
         ).reset_index(drop=True)
         if len(result) == len(plan.keys):
             for column in self._spec.columns:

@@ -10,6 +10,8 @@ Axis-changing verbs default to independent AnnData. `copy=False` permits either 
 
 Sparse matrices and backed arrays can be large. Predicates over selected matrix columns are fine; whole-matrix pandas exports should be explicit. For long exports, pass selected features unless the user intentionally accepts all-feature materialization. Use cumulative `max_matrix_values=` on matrix-reading verbs; annplyr plans every source and rejects over-budget requests before the first read.
 
+Canonical scalar matrix summaries automatically use deterministic feature or row chunks across dense, CSR/CSC, and backed sources. There is no public chunk-size flag. Exact median and distinct-count reducers can retain one reduction vector's state; use a finite cumulative budget for opaque or cross-row custom summary expressions that require the eager compatibility path.
+
 ## Mutation
 
 `mutate()` and `transmute()` write metadata columns in `obs` or `var`. They may read from `x`, layers, `raw`, `obsm`, and `varm`, but they should not modify those matrices.

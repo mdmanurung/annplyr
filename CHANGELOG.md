@@ -12,6 +12,28 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - A deterministic, redistributable downstream AnnData fixture with exact H5AD,
   Zarr, concatenation, positional-identity, ownership, grouping, and optional
   Scanpy integration checks across stable Python 3.12-3.14 CI jobs.
+- One internal dense/sparse/backed chunk plan for canonical matrix summaries,
+  with deterministic row and feature batching, exact eager-equivalent scalar
+  results, and shared positional group plans.
+
+### Changed
+
+- Matrix-backed `summarize()` now evaluates canonical scalar reducers in bounded
+  batches without adding a public tuning flag. Cumulative `max_matrix_values`
+  validation still covers the complete multi-source request before its first
+  read.
+- Group keys from categorical and nullable metadata retain their pandas dtypes
+  in matrix summaries.
+
+### Performance
+
+- Canonical wide reductions avoid materializing the complete selected matrix
+  source. The internal target is 25,165,824 logical values per batch; exact
+  rank and distinct reducers retain at most one reduction vector's state.
+- On the fixed runner, a 100,000 by 500 dense mean summary retained effectively
+  neutral timing (0.670315 s to 0.660730 s median) while reducing median
+  three-process peak RSS by 40.57% (985076 KiB to 585388 KiB), with identical
+  result hashes. See `docs/development/performance-issue-10.md`.
 
 ## [0.3.0] - 2026-08-09
 

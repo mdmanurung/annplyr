@@ -25,7 +25,7 @@ call `.to_memory()` before same-shape mutation.
 | `rename`, `rename_with`, `relocate`, `mutate`, `add_count`, `add_tally` | Independent by default; `inplace=True` returns exact input identity | Metadata-only writes; matrix sources are read-only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `AnnplyrError` |
 | `transmute` | Always independent; no ownership argument | Replaces metadata columns while reading projected sources | selection/source/size/budget errors |
 | grouped AnnData verbs | New grouped wrapper, or identical wrapper for explicit in-place calls; `ungroup()` returns AnnData | One shared positional group plan; keys retained or updated | selection, axis, join, size, and budget errors |
-| summaries, count/tally, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Reads only planned columns/sources | selection/source/axis/budget errors |
+| summaries, count/tally, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Canonical matrix reducers use deterministic bounded chunks; metadata and opaque expressions read their planned sources | selection/source/axis/budget errors |
 | `pull`, `to_df`, `to_tidy`, `pivot_longer`, `as_frame`, `nest_by` | pandas/Series or nested extraction result; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
 | expressions, selectors, and aggregators | `AnnplyrExpr`, selector, or expansion metadata; input unchanged | Lazy until evaluated; raw Narwhals is opaque and fully charged | `SelectionError`, `UnknownColumnError`, `UnknownSourceError` |
 | dataframe rectangling helpers | New pandas objects; input unchanged | Operates after explicit tabular extraction | `SelectionError`, `DuplicateNameError`, `SizeMismatchError` |
@@ -35,6 +35,9 @@ All cumulative `max_matrix_values=` checks plan every source before the first
 adapter read. See {doc}`migration-v0.3` for changed defaults and signatures and
 {doc}`development/api-contract-v0.3` for the mechanically checked callable-level
 contract.
+
+The reduction chunk target is an internal implementation detail, currently
+25,165,824 logical values. It is deliberately not a public tuning flag.
 
 ```{eval-rst}
 .. autoclass:: annplyr._accessor.AnnplyrAccessor

@@ -42,6 +42,13 @@ axis/source combinations; `SizeMismatchError` for invalid result sizes;
 `JoinRelationshipError` for join cardinality/right-only/unmatched violations;
 and `AnnplyrError` for backed writes or invalid pipe targets.
 
+Post-v0.3 readiness addendum: canonical scalar matrix summaries retain this
+public contract while executing through deterministic feature/row chunks.
+Their complete cumulative budget is still validated before the first adapter
+read; result values, dtypes, key order, and positional identity match the eager
+contract. Opaque and cross-row custom expressions keep their documented
+full-source conservative charge.
+
 ## AnnData accessor inventory
 
 | ID | Axes | Accepted sources | Return | Grouping | Ordering | Ownership | Sparse/backed | Budget | Typed failures |

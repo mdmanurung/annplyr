@@ -73,6 +73,10 @@ adata.ap.summarize(
 adata.ap.count("cell_type", sort=True)
 ```
 
+Canonical scalar matrix summaries are automatically chunked across features or
+rows. Chunking is internal and preserves assignment order, result dtype, NA
+semantics, and first-seen grouping order; there is no public tuning argument.
+
 Add `max_matrix_values=` whenever a verb reads matrix-backed expressions and a
 hard cumulative projection limit is needed. Invalid selectors, sources, axes,
 sizes, budgets, and joins raise the typed errors listed in {doc}`../api` before

@@ -55,15 +55,11 @@ tidy extraction, and release-infrastructure work described by Milestones 1-7:
 The remaining work is deliberately narrower than the completed milestone
 backlog:
 
-1. Add bounded chunked reductions for dense, sparse, and backed adapters
-   ([#10](https://github.com/mdmanurung/annplyr/issues/10)). They
-   must match eager known-answer fixtures, respect cumulative budgets, and
-   demonstrate bounded peak RSS on a fixed runner.
-2. Stabilize consumer-facing typing for the dynamically registered
+1. Stabilize consumer-facing typing for the dynamically registered
    `AnnData.ap` namespace and the grouped/expression return types. Internal
    mypy success alone is not sufficient; a downstream type-check fixture must
    pass ([#11](https://github.com/mdmanurung/annplyr/issues/11)).
-3. Adopt only the vetted security hardening from the closed template update,
+2. Adopt only the vetted security hardening from the closed template update,
    with traceable action pins, minimal permissions, scoped dependency updates,
    and a clean zizmor audit
    ([#12](https://github.com/mdmanurung/annplyr/issues/12)).
@@ -77,6 +73,13 @@ downstream integration gate without adding a runtime dependency. Its generated
 fixture is documented in `tests/integration/README.md`; mandatory CI runs the
 five exact invariance/consumer cases on Python 3.12, 3.13, and 3.14, with a
 separate advisory prerelease-consumer lane.
+
+Issue [#10](https://github.com/mdmanurung/annplyr/issues/10) added one
+deterministic chunk plan for canonical dense, CSR/CSC, and backed reductions.
+It preserves exact one-chunk results, validates cumulative budgets before
+reads, reuses grouped positional plans, and records fixed-runner timing and
+three-process peak-RSS evidence in
+{doc}`development/performance-issue-10`.
 
 ## Milestone 1: Public Contract And Errors
 

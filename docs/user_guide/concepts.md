@@ -108,7 +108,7 @@ True True
 Validation completes before the first write, so a failing `inplace=True` call
 leaves the object as it was. `copy=False` asks annplyr to avoid a guaranteed
 copy, but the result may be a view or a materialized object depending on what
-is safe — do not branch on `is_view` after it.
+is safe. Do not branch on `is_view` after it.
 
 ## Positional identity protects duplicate names
 
@@ -137,7 +137,7 @@ raised. All aligned containers use the same positional subset.
 ## Expressions and selectors compose
 
 `col()`, `lit()`, rank helpers, null helpers, and selectors return
-`AnnplyrExpr` objects, and operators preserve them — so a domain rule can be
+`AnnplyrExpr` objects, and operators preserve them, so a domain rule can be
 built once and reused:
 
 ```{testcode}
@@ -154,7 +154,7 @@ print(analysis.shape, analysis.var_names.tolist())
 ```
 
 `any_of()` tolerated the absent gene; `all_of()` would have raised. `where()` is
-a schema selector — its predicate receives a zero-length typed Series and should
+a schema selector. Its predicate receives a zero-length typed Series and should
 inspect dtype, not values. Call `to_narwhals()` only when an external API needs
 a raw Narwhals expression.
 

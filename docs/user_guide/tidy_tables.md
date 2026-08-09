@@ -1,8 +1,8 @@
 # Tidy tables
 
-Use extraction helpers at a deliberate boundary — where the next step is
-pandas, a plotting library, statistical modelling, reporting, or inspection
-outside AnnData. Until that boundary, keeping transformations on AnnData
+Use extraction helpers at a deliberate boundary, where the next step is pandas,
+a plotting library, statistical modelling, reporting, or inspection outside
+AnnData. Until that boundary, keeping transformations on AnnData
 preserves alignment and avoids copying matrix values nobody asked for.
 
 The examples extract from Scanpy's PBMC3K. Its `X` holds scaled values, so the
@@ -64,10 +64,10 @@ AAACCGTGTATGCG-1         NK cells      522  0.00000  0.000000
 
 ::::
 
-Two differences worth noticing. annplyr prefixes matrix columns with their
+Two differences. annplyr prefixes matrix columns with their
 source (`raw_MS4A1`), so a gene can never be confused with an `obs` column of
 the same name. And its columns stay pandas *sparse*, which is why the zeros
-print as `0.0` — a wide export of many genes stays cheap.
+print as `0.0`. A wide export of many genes stays cheap.
 
 Embeddings come from the same call through a keyed mapping:
 
@@ -142,7 +142,7 @@ planned source(s) (to_tidy) would materialize 5276 matrix values, which exceeds 
 ```
 
 The error arrives with the arithmetic already done, so the number is a real
-count of what the request would have cost — not an estimate discovered halfway
+count of what the request would have cost, not an estimate discovered halfway
 through.
 
 Whole-matrix long exports need an explicit opt-in *and* survive the same
@@ -160,13 +160,13 @@ except ap.AnnplyrError as error:
 planned source(s) (to_tidy) would materialize 4848644 matrix values, which exceeds max_matrix_values=10000
 ```
 
-That is the number the opt-in exists to make visible. For ordinary single-cell
-matrices, select the genes the figure actually shows.
+That number is what the opt-in exists to surface. For ordinary single-cell
+matrices, select the genes the figure shows.
 
 ## Grouped tables for cohort figures
 
 When the figure wants one row per group rather than one row per cell,
-summarize before leaving AnnData — no cell-by-gene intermediate is built:
+summarize before leaving AnnData. No cell-by-gene intermediate is built:
 
 ```{testcode}
 print(
@@ -192,8 +192,8 @@ print(
 
 ## Extract other AnnData containers
 
-`as_frame()` gives controlled access to any container — including the ones
-that have no verb-level shortcut, such as PCA loadings in `varm`:
+`as_frame()` gives controlled access to any container, including the ones that
+have no verb-level shortcut, such as PCA loadings in `varm`:
 
 ```{testcode}
 loadings = adata.ap.as_frame("varm", key="PCs", select=["0", "1"])

@@ -9,9 +9,9 @@ object until the very last step.
 ```{note}
 PBMC3K is a **single donor**. To demonstrate sample-aware wrangling, this page
 assigns three synthetic donor labels by cell position and treats two of them as
-stimulated. Those two columns — `donor_id` and `condition` — are the only
-invented values on the page; every count, expression value, and cell-type label
-below is real.
+stimulated. Those two columns, `donor_id` and `condition`, are the only invented
+values on the page. Every count, expression value, and cell-type label below is
+real.
 ```
 
 ## Start by validating the panel
@@ -35,9 +35,9 @@ print(ap.feature_present(adata, markers).to_frame())
 4     CD4  False             <NA>
 ```
 
-Two of five markers are missing — because `feature_present()` checks
-`var_names`, and PBMC3K's `X` holds only the 1,838 highly variable genes.
-Validate against the source you actually intend to read:
+Two of five markers are missing. `feature_present()` checks `var_names`, and
+PBMC3K's `X` holds only the 1,838 highly variable genes. Validate against the
+source you intend to read:
 
 ```{testcode}
 print(ap.feature_present(adata.raw.to_adata(), markers).to_frame())
@@ -112,8 +112,8 @@ print(qc.shape, qc.is_view)
 ```
 
 `filter()` returns an independent AnnData and subsets every aligned container
-through the same integer positions, so `cohort` still represents the unfiltered
-data while `qc` moves to the next stage.
+through the same integer positions. `cohort` still holds the unfiltered data
+while `qc` moves to the next stage.
 
 ## Derive a marker score without rewriting the matrix
 
@@ -197,10 +197,10 @@ print(summary.round(3).head(8))
 7  stimulated    CD14+ Monocytes    231         0.038     3.755
 ```
 
-The B-cell score and monocyte `LYZ` track cell type, not condition — exactly
-what should happen when the condition labels are arbitrary. A real contrast
-would show up as a difference between the `control` and `stimulated` rows of the
-same cell type.
+The B-cell score and monocyte `LYZ` track cell type, not condition. That is what
+should happen when the condition labels are arbitrary. A real contrast would
+show up as a difference between the `control` and `stimulated` rows of the same
+cell type.
 
 ## Build the analysis object and the plotting table
 
@@ -254,7 +254,7 @@ and fails an oversized request before the first matrix read.
 
 ## Keep domain-specific steps composable
 
-`pipe()` is the escape hatch for project-specific functions — take AnnData, use
+`pipe()` is the escape hatch for project-specific functions. Take AnnData, use
 ordinary Python or another scverse package, return whatever the next step needs:
 
 ```{testcode}
@@ -301,6 +301,6 @@ analysis = (
 )
 ```
 
-Each call stays an ordinary, inspectable operation, but the pipeline states the
+Each call stays an ordinary, inspectable operation. Together they state the
 analysis more directly than a sequence of boolean masks, `.obs` assignments,
 pandas merges, and hand-synchronized AnnData slices.

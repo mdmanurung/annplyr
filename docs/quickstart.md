@@ -1,14 +1,14 @@
-# Quickstart: PBMC3K from raw object to plot-ready table
+# Quickstart
 
-This page runs a complete wrangling pass over a real dataset: Scanpy's
-PBMC3K — 2,638 peripheral blood mononuclear cells, 1,838 highly variable genes,
-Louvain cell-type labels, and a `.raw` attribute holding log-normalised counts
-for all 13,714 detected genes.
+This page runs a complete wrangling pass over a real dataset: Scanpy's PBMC3K,
+holding 2,638 peripheral blood mononuclear cells, 1,838 highly variable genes,
+Louvain cell-type labels, and a `.raw` attribute with log-normalised counts for
+all 13,714 detected genes.
 
-Every example below executes during the documentation build, and every number
-on this page is the number that code produces. Each step is shown twice: once
-with annplyr, once the way the same result is usually assembled today. Read the
-second tab whenever you want to know what annplyr is actually saving you.
+Every example below executes during the documentation build, so every number on
+this page is the number that code produces. Each step appears twice: once with
+annplyr, once the way the same result is usually assembled today. Read the
+second tab when you want to see what annplyr is saving you.
 
 ```{testcode}
 import scanpy as sc
@@ -33,10 +33,10 @@ Name: count, dtype: int64
 ```
 
 ```{note}
-`pbmc3k_processed()` ships **scaled** values in `X` — the z-scores Scanpy's
-PCA was run on. The interpretable log-normalised values live in `.raw`, so
-every expression example on this page reads `raw=` rather than `x=`. That is a
-real distinction annplyr makes you state, not a quirk of the tutorial.
+`pbmc3k_processed()` ships **scaled** values in `X`, the z-scores Scanpy's PCA
+was run on. The interpretable log-normalised values live in `.raw`, so every
+expression example on this page reads `raw=` rather than `x=`. annplyr makes you
+state which one you mean.
 ```
 
 ## 1. Filter cells on QC metrics
@@ -142,9 +142,8 @@ other annplyr verb takes.
 ## 3. Score a marker pair into `obs`
 
 This is where the gap widens. The score is a function of expression, but it
-belongs in `obs` — so the baseline has to pull a frame out of the matrix, do
-the arithmetic, and write the column back, keeping the cell order intact
-throughout.
+belongs in `obs`. The baseline has to pull a frame out of the matrix, do the
+arithmetic, and write the column back with the cell order intact.
 
 ::::{tab-set}
 
@@ -193,13 +192,13 @@ Name: b_score, dtype: float32
 
 The baseline mutates `qc_ref` in place; annplyr returns a new object and leaves
 `qc` untouched. Only the two requested genes are read out of the 13,714 in
-`.raw` — the matrix itself is a read-only source and is never densified.
+`.raw`. The matrix is a read-only source and is never densified.
 
 ## 4. Summarize metadata and expression together
 
 One call, two sources, one grouping. The baseline needs a `groupby`, a separate
 expression pull, a second `groupby` on the aligned series, and a manual
-assembly — and every one of those steps is a chance to misalign a group.
+assembly. Every one of those steps is a chance to misalign a group.
 
 ::::{tab-set}
 
@@ -269,8 +268,8 @@ print(summary_ref.round(3))
 
 ::::
 
-The numbers read the way the biology should: B cells carry the marker score,
-`CD14+` monocytes and dendritic cells carry `LYZ`.
+B cells carry the marker score; `CD14+` monocytes and dendritic cells carry
+`LYZ`.
 
 When several steps share the same groups, group once and keep the grouping:
 
@@ -292,8 +291,8 @@ print(by_type.summarize(raw={"mean_MS4A1": ap.mean("MS4A1")}).round(3))
 7     Megakaryocytes       0.000
 ```
 
-`MS4A1` is CD20, so B cells separating by an order of magnitude is the expected
-answer, not a coincidence of this fixture.
+`MS4A1` is CD20, so an order of magnitude between B cells and everything else
+is the expected answer.
 
 ## 5. Build the plot-ready long table
 
@@ -356,7 +355,7 @@ whatever comes next in the analysis.
 
 ```{note}
 The `value` column comes back as a pandas sparse column, which keeps a large
-export cheap but does not support every pandas method — `.round()` among them.
+export cheap but does not support every pandas method, `.round()` among them.
 Call `tidy["value"] = tidy["value"].sparse.to_dense()` if you need a plain
 float column.
 ```

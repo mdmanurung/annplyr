@@ -14,6 +14,7 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 2. Inspect `adata.n_obs`, `adata.n_vars`, `adata.obs.columns`, `adata.var.columns`, relevant `layers`, `raw`, `obsm`, `varm`, `obsp`, `varp`, and `uns` keys before writing expressions.
 3. Prefer accessor verbs for AnnData-preserving operations and pandas extraction helpers only when tabular materialization is intended.
 4. Keep axis semantics explicit: `obs` operations act on cells/observations, `var` operations act on features/genes.
+5. For mypy, cast an incoming `AnnData` once to `annplyr.typing.AnnDataWithAnnplyr`; accessor results then retain typed `.ap` chaining.
 
 ## Core Rules
 
@@ -39,6 +40,7 @@ For package changes, run the most focused relevant tests first, then at least:
 ```bash
 pytest -q
 uvx hatch run type:check
+uvx hatch run type:consumer
 ```
 
 For docs or skill changes, also check the Sphinx build when practical:

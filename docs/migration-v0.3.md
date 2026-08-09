@@ -170,3 +170,34 @@ Public contract violations use package errors:
 
 The complete mechanically checked contract is recorded in
 {doc}`development/api-contract-v0.3`.
+
+## Typing before 1.0
+
+The pre-1.0 typing surface now exports `AnnplyrAccessor`, `GroupedAnnData`, and
+`AnnplyrExpr`. Code that imported those names from private modules should move
+to the package root:
+
+```python
+# old, unsupported private import
+from annplyr._grouped import GroupedAnnData
+
+# supported
+from annplyr import AnnplyrAccessor, AnnplyrExpr, GroupedAnnData
+```
+
+Static checkers do not see dynamically registered attributes on the upstream
+`AnnData` class. Use one explicit typing-only cast at the boundary where an
+AnnData enters an annplyr pipeline:
+
+```python
+from typing import cast
+
+from annplyr.typing import AnnDataWithAnnplyr
+
+typed = cast(AnnDataWithAnnplyr, adata)
+result = typed.ap.group_by(obs="batch").filter(obs=ap.col("qc_pass")).ungroup()
+```
+
+The cast is a no-op: `AnnDataWithAnnplyr` is `AnnData` at runtime. The public
+selector, expression, source, join-input, and grouped-return aliases are in
+`annplyr.typing`. No runtime call forms were added or widened.

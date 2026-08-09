@@ -55,11 +55,7 @@ tidy extraction, and release-infrastructure work described by Milestones 1-7:
 The remaining work is deliberately narrower than the completed milestone
 backlog:
 
-1. Stabilize consumer-facing typing for the dynamically registered
-   `AnnData.ap` namespace and the grouped/expression return types. Internal
-   mypy success alone is not sufficient; a downstream type-check fixture must
-   pass ([#11](https://github.com/mdmanurung/annplyr/issues/11)).
-2. Adopt only the vetted security hardening from the closed template update,
+1. Adopt only the vetted security hardening from the closed template update,
    with traceable action pins, minimal permissions, scoped dependency updates,
    and a clean zizmor audit
    ([#12](https://github.com/mdmanurung/annplyr/issues/12)).
@@ -80,6 +76,13 @@ It preserves exact one-chunk results, validates cumulative budgets before
 reads, reuses grouped positional plans, and records fixed-runner timing and
 three-process peak-RSS evidence in
 {doc}`development/performance-issue-10`.
+
+Issue [#11](https://github.com/mdmanurung/annplyr/issues/11) exported the three
+real accessor/grouped/expression types and added a typing-only AnnData façade
+for one-cast `.ap` discovery without a runtime wrapper or mypy plugin. Exact
+aliases, `group_by()` overloads, import-order tests, a clean external consumer
+fixture, and the generated {doc}`development/public-typing-contract` now keep
+runtime annotations, docs, and downstream mypy behavior aligned.
 
 ## Milestone 1: Public Contract And Errors
 

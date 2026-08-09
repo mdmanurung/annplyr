@@ -4,6 +4,18 @@
 
 Use `adata.ap.<verb>(...)` when the result should remain aligned AnnData.
 
+For a checked downstream boundary, use one no-op cast; do not import private
+accessor or grouped modules:
+
+```python
+from typing import cast
+
+from annplyr.typing import AnnDataWithAnnplyr
+
+typed = cast(AnnDataWithAnnplyr, adata)
+filtered = typed.ap.filter(obs=ap.col("qc_pass"))
+```
+
 **Subsetting and column ops:**
 - `filter(obs=..., var=..., x=..., raw=..., layer=..., copy=True, max_matrix_values=...)` — subset observations or features.
 - `select(obs=..., var=..., x=..., copy=True)` — keep named metadata columns and selected features.

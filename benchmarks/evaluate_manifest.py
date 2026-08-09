@@ -57,6 +57,8 @@ def main() -> None:
     timing_new: dict[str, list[float]] = candidate["timing_seconds"]
     rss_base: dict[str, list[float]] = baseline["peak_rss_kib"]
     rss_new: dict[str, list[float]] = candidate["peak_rss_kib"]
+    hashes_base: dict[str, list[str]] = baseline.get("result_hashes", {})
+    hashes_new: dict[str, list[str]] = candidate.get("result_hashes", {})
 
     sample_errors: list[str] = []
     for label, samples in (("baseline", timing_base), ("candidate", timing_new)):
@@ -67,6 +69,9 @@ def main() -> None:
         for name, values in samples.items():
             if len(values) != 3:
                 sample_errors.append(f"{label} {name} has {len(values)} RSS samples; need exactly 3")
+    for name in sorted(set(hashes_base) | set(hashes_new)):
+        if hashes_base.get(name) != hashes_new.get(name):
+            sample_errors.append(f"result hash mismatch for {name}: {hashes_base.get(name)} != {hashes_new.get(name)}")
 
     families: dict[str, Any] = {}
     regressions: list[dict[str, Any]] = []

@@ -35,6 +35,12 @@
     "noise_method": "median absolute deviation with raw-sample overlap"
   },
   "families": {
+    "bounded_reductions": {
+      "primary": [
+        "bench_reductions.DenseReductions.time_mean_all_features"
+      ],
+      "rss": "dense_reduction"
+    },
     "matrix_projection": {
       "primary": [
         "bench_projection.DenseProjection.time_filter_three_features",
@@ -66,6 +72,13 @@
     }
   },
   "scenarios": {
+    "bounded_dense_reduction": {
+      "shape": [100000, 500],
+      "dtype": "float32",
+      "operations": ["mean_all_features"],
+      "oracle": "independent per-column NumPy means and exact SHA-256 result hash",
+      "chunk_target_values": 25165824
+    },
     "dense_projection": {
       "shape": [20000, 2000],
       "dtype": "float32",

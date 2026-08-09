@@ -49,6 +49,7 @@ def _normalize(timing_path: Path, peak_rss_path: Path) -> dict[str, Any]:
     return {
         "label": timing_label,
         "peak_rss_kib": peak_rss["samples"],
+        "result_hashes": peak_rss.get("result_hashes", {}),
         "source_peak_rss": str(peak_rss_path.resolve()),
         "source_timing": str(timing_path.resolve()),
         "timing_seconds": _timing_samples(timing),

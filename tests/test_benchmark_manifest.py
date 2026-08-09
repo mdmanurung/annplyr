@@ -37,7 +37,15 @@ def test_raw_benchmark_results_normalize_parameter_samples_and_skip_smoke(tmp_pa
             }
         )
     )
-    rss_path.write_text(json.dumps({"label": "abc123", "samples": {"dense_projection": [1, 2, 3]}}))
+    rss_path.write_text(
+        json.dumps(
+            {
+                "label": "abc123",
+                "samples": {"dense_projection": [1, 2, 3]},
+                "result_hashes": {"dense_reduction": ["deadbeef"]},
+            }
+        )
+    )
 
     normalized = _normalize(timing_path, rss_path)
 
@@ -47,3 +55,4 @@ def test_raw_benchmark_results_normalize_parameter_samples_and_skip_smoke(tmp_pa
         "bench_family.Case.time_parameterized('csc')": [0.4, 0.5],
     }
     assert normalized["peak_rss_kib"] == {"dense_projection": [1, 2, 3]}
+    assert normalized["result_hashes"] == {"dense_reduction": ["deadbeef"]}

@@ -114,4 +114,4 @@ def test_release_metadata_matches_project_version() -> None:
 
     assert f'version: "{version}"' in Path("CITATION.cff").read_text()
     assert f'version = "{version}"' in Path("docs/conf.py").read_text()
-    assert 'date-released: "2026-08-09"' in Path("CITATION.cff").read_text()
+    assert 'date-released: "2026-08-10"' in Path("CITATION.cff").read_text()

@@ -20,6 +20,7 @@ were peeled to their commit objects before acceptance.
 | [`codecov/codecov-action`](https://github.com/codecov/codecov-action/releases/tag/v7.0.0) | `v7.0.0` | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | advisory OIDC coverage upload |
 | [`re-actors/alls-green`](https://github.com/re-actors/alls-green/releases/tag/v1.2.2) | `v1.2.2` | `05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe` | aggregate stable and advisory test jobs |
 | [`zizmorcore/zizmor-action`](https://github.com/zizmorcore/zizmor-action/releases/tag/v0.6.2) | `v0.6.2` | `3dc1ecc9bcb9e94e9b2c709687979e1298497054` | blocking workflow audit with zizmor 1.29.0 |
+| [`openjournals/openjournals-draft-action`](https://github.com/openjournals/openjournals-draft-action/releases/tag/v1.0) | `v1.0` | `85a18372e48f551d8af9ddb7a747de685fbbb01c` | JOSS paper draft PDF |
 
 The accepted major updates retain the inputs annplyr uses. `setup-uv` v9 changes
 only the default cache-pruning policy relevant here; release jobs disable that

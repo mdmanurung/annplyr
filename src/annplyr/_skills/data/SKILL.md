@@ -1,6 +1,6 @@
 ---
 name: annplyr
-description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, raw, obsm, varm, obsp, varp, and tabular uns; plotnine-ready to_df/to_tidy/as_frame extraction; and alignment, sparse/backed, or matrix-materialization safety."
+description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, raw, obsm, varm, obsp, varp, and tabular uns; plotnine-ready to_wide/to_tidy/as_frame extraction; and alignment, sparse/backed, or matrix-materialization safety."
 license: BSD-3-Clause
 ---
 

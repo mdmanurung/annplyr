@@ -13,24 +13,24 @@ from typing import cast
 from annplyr.typing import AnnDataWithAnnplyr
 
 typed = cast(AnnDataWithAnnplyr, adata)
-filtered = typed.ap.filter(obs=ap.col("qc_pass"))
+filtered = typed.ap.filter(ap.col("qc_pass"))
 ```
 
 **Subsetting and column ops:**
-- `filter(obs=..., var=..., x=..., raw=..., layer=..., copy=True, max_matrix_values=...)` — subset observations or features.
+- `filter(*predicates, copy=True, max_matrix_values=...)` — subset observations or features, one predicate per argument; each names its own container.
 - `select(obs=..., var=..., x=..., copy=True)` — keep named metadata columns and selected features.
 - `rename(obs={new_name: old_name}, var={...})` — rename metadata columns by mapping new names to existing names.
 - `rename_with(str.lower, obs=...)` — rename selected columns by applying a function to names.
 - `relocate(obs=..., before=..., after=...)` — reorder metadata columns. Raises `SelectionError` when the `before`/`after` anchor is among the columns being moved.
 - `distinct(obs=..., var=..., keep_all=..., copy=True, max_matrix_values=...)` — deduplicate by selected columns.
-- `arrange(obs=..., var=..., x=..., raw=..., copy=True, max_matrix_values=...)` — reorder observations or features.
+- `arrange(*keys, copy=True, max_matrix_values=...)` — reorder observations or features, one sort key per argument; wrap a key in `ap.desc` to reverse it.
 - `slice(idx, copy=True)` / `slice_head(n=...)` / `slice_tail(n=...)` / `slice_min(...)` / `slice_max(...)` / `slice_sample(n=..., random_state=...)` — position or rank-based slicing; default `axis="obs"`, pass `axis="var"` for features.
 
 **Mutation and summaries:**
-- `mutate(obs={...}, var={...}, x={...}, raw={...}, obsm={...}, varm={...}, layer=..., inplace=False)` — write metadata columns; matrix sources are read-only.
-- `transmute(obs={...}, ..., max_matrix_values=...)` — like `mutate` but drops all columns not produced by the call; always independent and has no ownership flag.
+- `mutate({name: value, ...}, into="obs", inplace=False)` — write one metadata column per assignment, in order; a later value may read an earlier result. `into="var"` writes the feature axis. Matrix values are read-only.
+- `transmute({name: value, ...}, into="obs", max_matrix_values=...)` — like `mutate` but drops all columns not produced by the call; always independent and has no ownership flag.
 - `group_by(obs=..., var=...)` — return a persistent `GroupedAnnData` wrapper; call `ungroup()` for AnnData.
-- `summarize(obs={...}, ..., by=..., max_matrix_values=...)` — aggregate by grouping key; also callable as `summarise`.
+- `summarize({name: agg, ...}, by=..., max_matrix_values=...)` — aggregate by grouping key, one aggregate per entry; also callable as `summarise`.
 - `count(by=..., wt=..., sort=False, axis="obs", name="n")` — count rows, optionally weighted; returns a DataFrame.
 - `tally(wt=..., sort=False, axis="obs", name="n")` — like `count` without a grouping argument.
 - `add_count(by=..., wt=..., name="n")` — append a count column to AnnData and return AnnData.
@@ -41,7 +41,7 @@ filtered = typed.ap.filter(obs=ap.col("qc_pass"))
 
 **Extraction and pipeline:**
 - `pull(obs=...)` / `pull(var=...)` / `pull(x=...)` / `pull(raw=...)` — extract exactly one requested source column.
-- `to_df(obs=..., x=..., raw=..., obsm={...}, obsp={...}, max_matrix_values=...)` — wide DataFrame, one row per observation.
+- `to_wide(obs=..., x=..., raw=..., obsm={...}, obsp={...}, max_matrix_values=...)` — wide DataFrame, one row per observation. Renamed from `to_df`, which `AnnData` already defines differently.
 - `to_tidy(obs=..., x=..., raw=..., allow_all_features=False, max_matrix_values=...)` — long DataFrame with observation, feature, and value columns.
 - `pivot_longer(obs=..., x=..., raw=..., names_to=..., values_to=..., max_matrix_values=...)` — pivot selected metadata/matrix columns to long form.
 - `as_frame(source, key=..., select=..., max_matrix_values=...)` — controlled access to any container (`obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`, `varp`, or tabular `uns`).
@@ -56,7 +56,7 @@ Use `ap.col("name")` for metadata or matrix columns in the current source. Use s
 adata.ap.select(obs=ap.starts_with("qc_"))
 adata.ap.select(var=ap.matches("^MT-"))
 adata.ap.select(obs=ap.everything())
-adata.ap.to_df(obs=ap.pick(ap.starts_with("qc_")))  # pick wraps a selector into a column list
+adata.ap.to_wide(obs=ap.pick(ap.starts_with("qc_")))  # pick wraps a selector into a column list
 ```
 
 Virtual axis names are available as `ap.obs_names` and `ap.var_names` in expressions.

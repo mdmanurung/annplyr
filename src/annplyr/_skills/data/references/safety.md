@@ -26,7 +26,7 @@ Backed axis selection with `copy=True` produces an independent in-memory object.
 
 ```python
 adata = adata.to_memory()
-adata = adata.ap.mutate(obs={"new_column": ap.col("old_column")})
+adata = adata.ap.mutate({"new_column": ap.col("old_column")})
 ```
 
 ## Good Failure Modes

@@ -42,6 +42,8 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: trailing-whitespace
+        # pandas prints trailing spaces, and doctest testoutput blocks must match them
+        exclude: ^docs/.*\.md$
       - id: check-case-conflict
       - id: check-merge-conflict
         args: [--assume-in-merge]

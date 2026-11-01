@@ -174,6 +174,10 @@ normalizing imported sample-sheet columns.
 
 ## Arrange and slice
 
+`arrange()` applies keys left to right and keeps ties in their original order.
+A categorical column sorts by its category order, as in dplyr, not
+alphabetically.
+
 `slice_*()` works on either axis, so the same verb answers "deepest cells" and
 "most widely detected genes":
 

@@ -28,14 +28,15 @@ license: "BSD-3-Clause"
 version: "0.5.0"
 date-released: "2026-09-27"
 # [gap: DOI] add `doi: "10.5281/zenodo.XXXXXXX"` after Zenodo mints one for the release.
-preferred-citation:
-  type: article
-  title: "annplyr: tidy AnnData wrangling in Python"
-  authors:
-    - family-names: "Manurung"
-      given-names: "Mikhael"
-      # [gap: ORCID] [gap: affiliation]
-  journal: "Journal of Open Source Software"
-  # [gap: volume, issue, year, start page and DOI] fill in after JOSS publication.
-  # [gap: JOSS review issue number] needed for the article identifier.
-  status: preprint
+# Uncomment once JOSS accepts the paper; until then GitHub cites the software.
+# preferred-citation:
+#   type: article
+#   title: "annplyr: tidy AnnData wrangling in Python"
+#   authors:
+#     - family-names: "Manurung"
+#       given-names: "Mikhael"
+#       # [gap: ORCID] [gap: affiliation]
+#   journal: "Journal of Open Source Software"
+#   # [gap: volume, issue, year, start page and DOI] fill in after JOSS publication.
+#   # [gap: JOSS review issue number] needed for the article identifier.
+#   status: preprint

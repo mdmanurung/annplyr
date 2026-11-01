@@ -7,7 +7,7 @@ import narwhals as nw
 import numpy as np
 import pandas as pd
 from anndata import AnnData
-from narwhals.exceptions import ColumnNotFoundError
+from narwhals.exceptions import ColumnNotFoundError, DuplicateError
 from scipy import sparse
 
 from annplyr._errors import (
@@ -248,6 +248,9 @@ def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
     except ColumnNotFoundError as exc:
         msg = f"Unknown column in selector: {exc}"
         raise UnknownColumnError(msg) from exc
+    except DuplicateError as exc:
+        msg = f"Selection failed: {exc}"
+        raise DuplicateNameError(msg) from exc
     except Exception as exc:
         msg = f"Selection failed: {exc}"
         raise SelectionError(msg) from exc

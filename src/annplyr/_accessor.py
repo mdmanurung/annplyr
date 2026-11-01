@@ -164,6 +164,33 @@ class AnnplyrAccessor:
         on the feature axis or in matrices are rejected before reads. Ownership,
         null handling, and predicate evaluation follow :meth:`filter`, including
         its no-op behavior when no predicates are supplied.
+
+        Parameters
+        ----------
+        *predicates
+            Boolean expressions, combined with AND.
+        source
+            Container for an expression that names no column.
+        copy
+            Return an independent object rather than a view.
+        max_matrix_values
+            Upper bound on matrix values read; ``None`` means no bound.
+
+        Returns
+        -------
+        AnnData
+            The observations where every predicate is true.
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view.
+
+        Raises
+        ------
+        IncompatibleAxisError
+            If a predicate reads a source outside this verb's scope.
+        UnknownColumnError
+            If a predicate names a column or feature that does not exist.
         """
         _validate_filter_scope(self._obj, predicates, source=source, expression=False)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
@@ -184,6 +211,33 @@ class AnnplyrAccessor:
         Metadata, embeddings, and feature-axis sources are rejected before
         reads. Evaluation and ownership follow :meth:`filter`, including its
         no-op behavior when no predicates are supplied.
+
+        Parameters
+        ----------
+        *predicates
+            Boolean expressions, combined with AND.
+        source
+            Container for an expression that names no column.
+        copy
+            Return an independent object rather than a view.
+        max_matrix_values
+            Upper bound on matrix values read; ``None`` means no bound.
+
+        Returns
+        -------
+        AnnData
+            The observations where every predicate is true.
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view.
+
+        Raises
+        ------
+        IncompatibleAxisError
+            If a predicate reads a source outside this verb's scope.
+        UnknownColumnError
+            If a predicate names a column or feature that does not exist.
         """
         _validate_filter_scope(self._obj, predicates, source=source, expression=True)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
@@ -533,8 +587,8 @@ class AnnplyrAccessor:
         if not by:
             return _with_annplyr_accessor(self._obj)
         if axis == "var":
-            return GroupedAnnData(self._obj, var=by)
-        return GroupedAnnData(self._obj, obs=by)
+            return GroupedAnnData(self._obj, var=cast(Selector, by))
+        return GroupedAnnData(self._obj, obs=cast(Selector, by))
 
     def summarize(
         self,

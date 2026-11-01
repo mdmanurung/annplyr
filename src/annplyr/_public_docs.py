@@ -22,7 +22,7 @@ _AXIS_METHODS = {
 }
 _JOIN_METHODS = {"anti_join", "full_join", "inner_join", "left_join", "right_join", "semi_join"}
 _INPLACE_METHODS = {"add_count", "add_tally", "mutate", "relocate", "rename", "rename_with"}
-_EXTRACTION_METHODS = {"as_frame", "nest_by", "pivot_longer", "pull", "to_df", "to_tidy"}
+_EXTRACTION_METHODS = {"as_frame", "nest_by", "pivot_longer", "pull", "to_tidy", "to_wide"}
 _TABLE_METHODS = {
     "count",
     "group_data",

@@ -30,8 +30,8 @@ from annplyr._verbs import (
     _slice_selector,
     _sort_values_for_frame,
     _subset_positions,
-    _validate_slice_n,
     _validate_filter_scope,
+    _validate_slice_n,
     add_count_adata,
     anti_join_adata,
     arrange_adata,
@@ -187,6 +187,33 @@ class GroupedAnnData:
 
         Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_obs`.
         Grouping keys and the grouped filter's first-seen order are preserved.
+
+        Parameters
+        ----------
+        *predicates
+            Boolean expressions, combined with AND.
+        source
+            Container for an expression that names no column.
+        copy
+            Return an independent object rather than a view.
+        max_matrix_values
+            Upper bound on matrix values read; ``None`` means no bound.
+
+        Returns
+        -------
+        GroupedAnnData
+            The observations where every predicate is true, still grouped.
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view.
+
+        Raises
+        ------
+        IncompatibleAxisError
+            If a predicate reads a source outside this verb's scope.
+        UnknownColumnError
+            If a predicate names a column or feature that does not exist.
         """
         _validate_filter_scope(self._adata, predicates, source=source, expression=False)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
@@ -202,6 +229,33 @@ class GroupedAnnData:
 
         Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_exp`.
         Grouping keys and the grouped filter's first-seen order are preserved.
+
+        Parameters
+        ----------
+        *predicates
+            Boolean expressions, combined with AND.
+        source
+            Container for an expression that names no column.
+        copy
+            Return an independent object rather than a view.
+        max_matrix_values
+            Upper bound on matrix values read; ``None`` means no bound.
+
+        Returns
+        -------
+        GroupedAnnData
+            The observations where every predicate is true, still grouped.
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view.
+
+        Raises
+        ------
+        IncompatibleAxisError
+            If a predicate reads a source outside this verb's scope.
+        UnknownColumnError
+            If a predicate names a column or feature that does not exist.
         """
         _validate_filter_scope(self._adata, predicates, source=source, expression=True)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)

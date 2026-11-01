@@ -56,7 +56,14 @@ The reduction chunk target is an internal implementation detail, currently
 
 .. autoclass:: annplyr.GroupedAnnData
    :members:
+
+.. autoclass:: annplyr.TidyAnnData
+   :members: to_anndata, wrap
 ```
+
+`TidyAnnData` is the `AnnData` subclass that AnnData-returning verbs give back.
+It carries every accessor verb as a method, so `adata.ap.filter(...).select(...)`
+chains without re-entering `.ap`.
 
 ## Consumer Typing
 

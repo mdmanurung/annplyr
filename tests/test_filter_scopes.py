@@ -39,7 +39,9 @@ def test_expression_sources_and_projection(dense_adata: AnnData, source: str, st
     if storage != "dense":
         dense_adata.X = getattr(sparse, f"{storage}_matrix")(dense_adata.X)
         dense_adata.layers["counts"] = getattr(sparse, f"{storage}_matrix")(dense_adata.layers["counts"])
-    values = dense_adata.layers[source] if source == "counts" else dense_adata.raw.X if source == "raw" else dense_adata.X
+    values = (
+        dense_adata.layers[source] if source == "counts" else dense_adata.raw.X if source == "raw" else dense_adata.X
+    )
     column = values[:, 0].toarray().ravel() if sparse.issparse(values) else values[:, 0]
     expected = dense_adata.obs_names[column > 1]
     result = dense_adata.ap.filter_exp(ap.col(f"{source}:g0") > 1, max_matrix_values=dense_adata.n_obs)
@@ -50,10 +52,17 @@ def test_expression_sources_and_projection(dense_adata: AnnData, source: str, st
 
 @pytest.mark.parametrize(
     ("verb", "reference"),
-    [("filter_obs", "x:g0"), ("filter_obs", "var:length"), ("filter_exp", "score"),
-     ("filter_exp", "X_pca:0"), ("filter_exp", "var:length")],
+    [
+        ("filter_obs", "x:g0"),
+        ("filter_obs", "var:length"),
+        ("filter_exp", "score"),
+        ("filter_exp", "X_pca:0"),
+        ("filter_exp", "var:length"),
+    ],
 )
-def test_scope_rejected_before_reads(dense_adata: AnnData, monkeypatch: pytest.MonkeyPatch, verb: str, reference: str) -> None:
+def test_scope_rejected_before_reads(
+    dense_adata: AnnData, monkeypatch: pytest.MonkeyPatch, verb: str, reference: str
+) -> None:
     def unread(*args: object, **kwargs: object) -> None:
         pytest.fail("an invalid scoped filter attempted a matrix read")
 
@@ -99,10 +108,18 @@ def test_null_and_or_predicates_with_duplicate_names(dense_adata: AnnData) -> No
 @pytest.mark.parametrize("verb", ["filter_obs", "filter_exp"])
 def test_group_local_evaluation_preserves_keys(dense_adata: AnnData, verb: str) -> None:
     column = "score" if verb == "filter_obs" else "x:g0"
-    values = dense_adata.obs["score"] if verb == "filter_obs" else pd.Series(dense_adata.X[:, 0], index=dense_adata.obs_names)
+    values = (
+        dense_adata.obs["score"]
+        if verb == "filter_obs"
+        else pd.Series(dense_adata.X[:, 0], index=dense_adata.obs_names)
+    )
     mask = values > values.groupby(dense_adata.obs["batch"], sort=False).transform("mean")
-    positions = [i for key in pd.unique(dense_adata.obs["batch"]) for i in range(dense_adata.n_obs)
-                 if dense_adata.obs["batch"].iloc[i] == key and mask.iloc[i]]
+    positions = [
+        i
+        for key in pd.unique(dense_adata.obs["batch"])
+        for i in range(dense_adata.n_obs)
+        if dense_adata.obs["batch"].iloc[i] == key and mask.iloc[i]
+    ]
     grouped = getattr(dense_adata.ap.group_by("batch"), verb)(ap.col(column) > ap.mean(column))
     assert grouped.group_vars() == ["batch"]
     assert grouped.ungroup().obs_names.equals(dense_adata.obs_names[positions])

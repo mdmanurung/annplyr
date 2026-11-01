@@ -7,6 +7,110 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-27
+
+### Changed
+
+- **Breaking:** expression verbs take one flat payload, and each expression names
+  the container it reads from, so a verb no longer repeats one keyword per
+  storage location:
+
+  | Before | After | Args |
+  |---|---|---|
+  | `filter(obs=..., var=..., x=..., raw=..., obsm=..., varm=..., layer=...)` | `filter(*predicates)` | 12 → 5 |
+  | `arrange(obs=..., var=..., x=..., raw=...)` | `arrange(*keys)` | 10 → 5 |
+  | `mutate(obs=..., var=..., x=..., raw=..., obsm=..., varm=..., layer=...)` | `mutate({...}, into=...)` | 10 → 5 |
+  | `transmute(obs=..., ...)` | `transmute({...}, into=...)` | 9 → 4 |
+  | `summarize(obs=..., x=..., raw=..., by=...)` | `summarize({...}, by=...)` | 10 → 5 |
+
+- **Breaking:** a bare column name is `obs` metadata. A matrix always needs a
+  qualifier, because there is no safe default container for it: `x:` for `X`,
+  `raw:` for `.raw`, a layer name such as `counts:`, an `obsm`/`varm` key such as
+  `X_pca:`, and `var:`/`varm:` for the feature axis. A name that legitimately
+  contains a colon, such as `ENSG001:1`, is never reinterpreted, because only a
+  reserved or known-container prefix qualifies.
+
+  ```python
+  # before
+  adata.ap.filter(obs=ap.col("n_genes") >= 500, x=ap.col("MS4A1") > 0, layer="counts")
+
+  # after: X and a named layer are readable in one call, which the old
+  # layer= mode switch made impossible
+  adata.ap.filter(ap.col("n_genes") >= 500, ap.col("counts:MS4A1") > 0)
+  ```
+
+- **Breaking:** one expression cannot mix containers, because each is evaluated
+  against its own frame. This was never possible either — the old per-source
+  keywords could not combine columns from two containers in a single expression —
+  so no capability is lost, and the failure is now a typed
+  `IncompatibleAxisError` naming both containers instead of an opaque
+  missing-column error. An expression that names no column, such as a raw
+  Narwhals expression, is evaluated against the default `obs` frame unless the
+  verb's new `source=` names a container, which is charged for in full.
+- **Breaking:** `mutate` and `transmute` write one destination per call, chosen
+  by the new `into="obs"|"var"`. Writing both axes in a single call is now two
+  calls. Assignment order and sequential reads are unchanged, including a later
+  assignment seeing a same-named column an earlier one overwrote, and pandas
+  extension dtypes (`Int64`, `boolean`, `string`, categorical) are still
+  preserved.
+
+### Added
+
+- AnnData-returning verbs now return `TidyAnnData`, a subclass of `AnnData` that
+  also carries every verb as a method. Chaining no longer re-enters the
+  accessor, so `adata.ap.filter(...).select(...)` replaces
+  `adata.ap.filter(...).ap.select(...)`. `isinstance(result, AnnData)` still
+  holds, so Scanpy, AnnData, and user `isinstance` checks are unaffected, and
+  `result.to_anndata()` returns an `AnnData` without the verbs. The upgrade is
+  an in-place class change, so `inplace=True` verbs still return the exact
+  object they were called on, and a user-defined `AnnData` subclass keeps its
+  methods, `__slots__`, and `isinstance` relationships.
+- Every verb is also available as a free function taking the AnnData object
+  first (`ap.filter(adata, obs=...)`), so a pipeline can start without the
+  accessor. All three surfaces are generated from one accessor, so signatures,
+  docstrings, and behavior cannot drift.
+- `src/annplyr/_tidy.pyi`, a generated stub that gives static checkers the same
+  verb signatures as `inspect.signature`. Regenerate with
+  `python scripts/render_tidy_stub.py --write`.
+
+### Changed
+
+- **Breaking:** `to_df()` is renamed `to_wide()`. `AnnData.to_df(layer=...)`
+  already exists upstream and dumps the whole of `X`; annplyr's verb takes
+  selectors and was shadowing it on results. `AnnData.to_df` keeps its original
+  meaning and stays reachable.
+- `AnnDataWithAnnplyr` is now an alias of the concrete `TidyAnnData` class
+  rather than a typing-only stub aliasing `AnnData`. It is unchanged for
+  annotations; at runtime it now identifies the class results actually are.
+- `GroupedAnnData.ungroup()` and grouped iteration return wrapped results, so a
+  chain continues past the group boundary instead of resetting. `ungroup()`
+  upgrades the underlying object's class in place, which means a chained result
+  stays chainable.
+- `group_by()` with no arguments now returns a wrapped result like every other
+  AnnData-returning verb. It previously returned the raw input.
+- `__all__` grew from 97 to 133 symbols: 35 verb functions plus
+  `TidyAnnData`.
+
+### Migration
+
+| Before | After |
+|---|---|
+| `adata.ap.filter(...).ap.select(...)` | `adata.ap.filter(...).select(...)` |
+| `adata.ap.to_df(obs=..., x=...)` | `adata.ap.to_wide(obs=..., x=...)` |
+| `adata.ap.filter(obs=pred)` | `adata.ap.filter(pred)` |
+| `adata.ap.filter(obs=a, x=b, layer="counts")` | `adata.ap.filter(a, ap.col("counts:..."))` |
+| `adata.ap.mutate(obs={...}, var={...})` | `adata.ap.mutate({...})` then `.mutate({...}, into="var")` |
+| `adata.ap.summarize(obs={...}, raw={...}, by=g)` | `adata.ap.summarize({...}, by=g)` |
+| `ap.sample_summary(a, s, obs={...}, x={...})` | `ap.sample_summary(a, s, {...})` |
+| `adata.ap.filter(obs=pred)` | `ap.filter(adata, pred)` (optional) |
+| `cast(AnnDataWithAnnplyr, adata)` | unchanged; now casts to a real class |
+| requiring a plain `AnnData` downstream | `result.to_anndata()` |
+
+Verbs that derive a new object (`copy=True`, `filter`, `select`, and friends)
+return a plain `TidyAnnData` without a user-defined `AnnData` subclass, which
+matches upstream `AnnData`, whose own `copy` and `__getitem__` behave the same
+way. In-place verbs and `ungroup()` keep the subclass.
+
 ## [0.4.0] - 2026-08-10
 
 ### Fixed

@@ -203,6 +203,38 @@ should happen when the condition labels are arbitrary. A real contrast would
 show up as a difference between the `control` and `stimulated` rows of the same
 cell type.
 
+## Treat donors as the replicates
+
+The table above counts cells, but cells from one donor are not independent.
+A condition contrast needs one value per donor and cell type first, so the
+donor is the unit of replication:
+
+```{testcode}
+per_donor = ranked.ungroup().summarize(
+    {
+        "cells": ap.n(),
+        "mean_b_score": ap.mean("b_score"),
+    },
+    by=["donor_id", "condition", "louvain"],
+)
+b_cells = per_donor[per_donor["louvain"] == "B cells"]
+
+print(b_cells.round(3).to_string(index=False))
+```
+
+```{testoutput}
+donor_id  condition louvain  cells  mean_b_score
+ donor_2 stimulated B cells     93         1.198
+ donor_1    control B cells     84         1.286
+ donor_3 stimulated B cells     90         1.282
+```
+
+Each row is now one donor. A downstream test, such as a pseudobulk model or a
+donor-level t-test, takes these rows as its observations. Here there are
+three synthetic donors, one of them a control, which is too few for inference.
+annplyr builds the donor table; the statistical model stays the analyst's
+choice.
+
 ## Build the analysis object and the plotting table
 
 ```{testcode}

@@ -13,18 +13,18 @@ Most annplyr workflows alternate between two kinds of result:
 
 | Operation | Typical result | Use it for |
 |---|---|---|
-| filter, select, mutate, arrange, slice, join | AnnData | Continue analysis or call `.ap` again |
+| filter, select, mutate, arrange, slice, join | AnnData | Continue the chain, or pass it to Scanpy |
 | grouped AnnData verbs | `GroupedAnnData` | Reuse group-local semantics across steps |
 | summarize, count, extraction | pandas object | Plot, report, model, or export |
 
 ```{testcode}
-print(type(adata.ap.filter(obs=ap.col("louvain") == "B cells")).__name__)
-print(type(adata.ap.group_by(obs="louvain")).__name__)
+print(type(adata.ap.filter(ap.col("louvain") == "B cells")).__name__)
+print(type(adata.ap.group_by("louvain")).__name__)
 print(type(adata.ap.count(by="louvain")).__name__)
 ```
 
 ```{testoutput}
-AnnData
+TidyAnnData
 GroupedAnnData
 DataFrame
 ```
@@ -38,11 +38,12 @@ long expression table is deliberately pandas.
 genes, proteins, or peaks. Row-like operations default to cells, and `axis="var"`
 switches the same verb to features.
 
-Arguments also name their **source**, so one call can filter cells by metadata
+A column name carries its **source**: a bare name is `obs` metadata, and a matrix
+needs a qualifier such as `x:` or `raw:`. One call can filter cells by metadata
 while selecting genes from the matrix:
 
 ```{testcode}
-subset = adata.ap.filter(obs=ap.col("percent_mito") < 0.03).ap.select(
+subset = adata.ap.filter(ap.col("percent_mito") < 0.03).select(
     var=["n_cells"],
     x=["MS4A1", "CD79A", "NKG7"],
 )
@@ -54,21 +55,23 @@ print(subset.shape)
 (2257, 3)
 ```
 
-Naming the source is what prevents a gene called `n_counts` from colliding with
+Qualifying the source is what prevents a gene called `n_counts` from colliding with
 the `obs` column of the same name.
 
 ## Sources stay attached to AnnData
 
 Expressions can read from `obs` and `var` metadata, selected features in `X` or
-a named layer through `x=`, the immutable snapshot through `raw=`, and keyed
+a named layer through `x:` or `<layer>:`, the immutable snapshot through `raw:`, and keyed
 `obsm`/`varm` matrices. `as_frame()` additionally reaches `obsp`, `varp`, and
 tabular `uns`.
 
 ```{testcode}
 annotated = adata.ap.mutate(
-    obs={"deep": ap.col("n_counts") >= 2000},
-    raw={"ms4a1_detected": ap.col("MS4A1") > 0},
-    obsm={"X_pca": {"pc1": ap.col("0")}},
+    {
+        "deep": ap.col("n_counts") >= 2000,
+        "ms4a1_detected": ap.col("raw:MS4A1") > 0,
+        "pc1": ap.col("X_pca:0"),
+    }
 )
 
 print(annotated.obs[["louvain", "deep", "ms4a1_detected", "pc1"]].head(3).round(3))
@@ -93,10 +96,10 @@ Same-shape metadata operations return a new object too, unless `inplace=True`
 asks for exact input identity:
 
 ```{testcode}
-copied = adata.ap.mutate(obs={"flag": ap.lit(1)})
+copied = adata.ap.mutate({"flag": ap.lit(1)})
 print(copied is adata, "flag" in adata.obs)
 
-same = adata.ap.mutate(obs={"flag": ap.lit(1)}, inplace=True)
+same = adata.ap.mutate({"flag": ap.lit(1)}, inplace=True)
 print(same is adata, "flag" in adata.obs)
 ```
 
@@ -123,7 +126,7 @@ names[1] = names[0]
 duplicated.obs_names = names
 
 print(duplicated.obs_names[:3].tolist())
-print(duplicated.ap.filter(obs=ap.col("louvain") == "CD4 T cells").n_obs)
+print(duplicated.ap.filter(ap.col("louvain") == "CD4 T cells").n_obs)
 ```
 
 ```{testoutput}
@@ -144,7 +147,7 @@ built once and reused:
 qc_rule = (ap.col("n_genes") >= 500) & (ap.col("percent_mito") < 0.03)
 panel = ap.any_of(["MS4A1", "CD79A", "MISSING_GENE"])
 
-analysis = adata.ap.filter(obs=qc_rule).ap.select(x=panel)
+analysis = adata.ap.filter(qc_rule).select(x=panel)
 
 print(analysis.shape, analysis.var_names.tolist())
 ```

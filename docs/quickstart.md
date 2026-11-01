@@ -35,13 +35,13 @@ Name: count, dtype: int64
 ```{note}
 `pbmc3k_processed()` ships **scaled** values in `X`, the z-scores Scanpy's PCA
 was run on. The interpretable log-normalised values live in `.raw`, so every
-expression example on this page reads `raw=` rather than `x=`. annplyr makes you
+expression example on this page reads `raw:` rather than `x:`. annplyr makes you
 state which one you mean.
 ```
 
 ## 1. Filter cells on QC metrics
 
-Predicates in a tuple are combined with `AND`, so the call reads like the QC
+Predicates passed together are combined with `AND`, so the call reads like the QC
 rule itself and each threshold stays legible.
 
 ::::{tab-set}
@@ -50,10 +50,8 @@ rule itself and each threshold stays legible.
 
 ```{testcode}
 qc = adata.ap.filter(
-    obs=(
-        ap.col("n_genes") >= 500,
-        ap.col("percent_mito") < 0.03,
-    )
+    ap.col("n_genes") >= 500,
+    ap.col("percent_mito") < 0.03,
 )
 
 print(qc.shape)
@@ -150,7 +148,7 @@ arithmetic, and write the column back with the cell order intact.
 :::{tab-item} annplyr
 
 ```{testcode}
-scored = qc.ap.mutate(raw={"b_score": (ap.col("MS4A1") + ap.col("CD79A")) / 2})
+scored = qc.ap.mutate({"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2})
 
 print(scored.obs["b_score"].head().round(3))
 ```
@@ -206,12 +204,12 @@ assembly. Every one of those steps is a chance to misalign a group.
 
 ```{testcode}
 summary = scored.ap.summarize(
-    obs={
+    {
         "cells": ap.n(),
         "median_genes": ap.median("n_genes"),
         "mean_b_score": ap.mean("b_score"),
+        "mean_LYZ": ap.mean("raw:LYZ"),
     },
-    raw={"mean_LYZ": ap.mean("LYZ")},
     by="louvain",
 )
 
@@ -274,9 +272,9 @@ B cells carry the marker score; `CD14+` monocytes and dendritic cells carry
 When several steps share the same groups, group once and keep the grouping:
 
 ```{testcode}
-by_type = scored.ap.group_by(obs="louvain")
+by_type = scored.ap.group_by("louvain")
 
-print(by_type.summarize(raw={"mean_MS4A1": ap.mean("MS4A1")}).round(3))
+print(by_type.summarize({"mean_MS4A1": ap.mean("raw:MS4A1")}).round(3))
 ```
 
 ```{testoutput}

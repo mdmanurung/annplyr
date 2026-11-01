@@ -93,15 +93,13 @@ rows in `X`, layers, or embeddings.
 
 ## Apply the cell-level QC rule
 
-QC thresholds stay ordinary expressions over `obs`; a tuple means every
+QC thresholds stay ordinary expressions over `obs`; every
 predicate must pass:
 
 ```{testcode}
 qc = cohort.ap.filter(
-    obs=(
-        ap.col("n_genes") >= 500,
-        ap.col("percent_mito") < 0.03,
-    )
+    ap.col("n_genes") >= 500,
+    ap.col("percent_mito") < 0.03,
 )
 
 print(qc.shape, qc.is_view)
@@ -117,12 +115,12 @@ while `qc` moves to the next stage.
 
 ## Derive a marker score without rewriting the matrix
 
-Matrix arguments to `mutate()` are read-only sources. This call reads two genes
+Matrix qualifiers in `mutate()` are read-only sources. This call reads two genes
 out of the 13,714 in `.raw` and writes one `obs` column:
 
 ```{testcode}
 scored = qc.ap.mutate(
-    raw={"b_score": (ap.col("MS4A1") + ap.col("CD79A")) / 2},
+    {"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2},
     max_matrix_values=2 * qc.n_obs,
 )
 
@@ -137,9 +135,9 @@ AAACCGTGCTTCCG-1  donor_1     control  CD14+ Monocytes      0.0
 AAACCGTGTATGCG-1  donor_2  stimulated         NK cells      0.0
 ```
 
-Add `layer="counts"` to evaluate the same expression against a named layer.
-`raw=`, keyed `obsm=`, and keyed `varm=` make other aligned measurements
-available without a separate helper API for each.
+Use a layer name such as `counts:` to evaluate the same expression against a
+named layer. `raw:`, keyed `obsm` names such as `X_pca:`, and `varm:` make other
+aligned measurements available without a separate helper API for each.
 
 ## Keep grouping explicit across related operations
 
@@ -147,11 +145,11 @@ Persistent grouping pays off when several operations share a unit of
 comparison. Here the ranking and the selection both happen within donor:
 
 ```{testcode}
-ranked = scored.ap.group_by(obs="donor_id").mutate(
-    obs={"depth_rank": ap.min_rank("n_counts", descending=True)}
+ranked = scored.ap.group_by("donor_id").mutate(
+    {"depth_rank": ap.min_rank("n_counts", descending=True)}
 )
 
-deepest = ranked.filter(obs=ap.col("depth_rank") <= 2).ungroup()
+deepest = ranked.filter(ap.col("depth_rank") <= 2).ungroup()
 
 print(deepest.obs[["donor_id", "n_counts", "depth_rank"]])
 ```
@@ -176,9 +174,12 @@ marks where ordinary AnnData chaining resumes.
 One call crosses condition and cell type, and mixes metadata with expression:
 
 ```{testcode}
-summary = ranked.ungroup().ap.summarize(
-    obs={"cells": ap.n(), "mean_b_score": ap.mean("b_score")},
-    raw={"mean_LYZ": ap.mean("LYZ")},
+summary = ranked.ungroup().summarize(
+    {
+        "cells": ap.n(),
+        "mean_b_score": ap.mean("b_score"),
+        "mean_LYZ": ap.mean("raw:LYZ"),
+    },
     by=["condition", "louvain"],
 )
 
@@ -205,12 +206,12 @@ cell type.
 ## Build the analysis object and the plotting table
 
 ```{testcode}
-analysis = ranked.ungroup().ap.select(
+analysis = ranked.ungroup().select(
     obs=["donor_id", "condition", "louvain", "n_counts", "b_score", "depth_rank"],
     x=["MS4A1", "CD79A", "NKG7"],
 )
 
-plot_data = analysis.ap.to_tidy(
+plot_data = analysis.to_tidy(
     obs=["donor_id", "condition", "louvain"],
     raw=["MS4A1", "CD79A", "NKG7"],
     max_matrix_values=3 * analysis.n_obs,
@@ -262,7 +263,7 @@ def donor_counts(data):
     return data.ap.count("donor_id", sort=True)
 
 
-print(analysis.ap.pipe(donor_counts))
+print(analysis.pipe(donor_counts))
 ```
 
 ```{testoutput}
@@ -272,8 +273,8 @@ print(analysis.ap.pipe(donor_counts))
 2  donor_2  697
 ```
 
-`analysis` is still a standard AnnData object, ready for Scanpy, CellRank,
-scvi-tools, serialization, or another `.ap` pipeline. annplyr owns the wrangling
+`analysis` is still an `AnnData` subclass, ready for Scanpy, CellRank,
+scvi-tools, serialization, or another annplyr pipeline. annplyr owns the wrangling
 semantics; the surrounding workflow keeps ownership of normalization,
 modelling, visualization, and biological interpretation.
 
@@ -284,17 +285,15 @@ The central steps read as one pipeline:
 ```python
 analysis = (
     adata.ap.left_join(sample_sheet, by="donor_id", relationship="many-to-one")
-    .ap.filter(
-        obs=(
-            ap.col("n_genes") >= 500,
-            ap.col("percent_mito") < 0.03,
-        )
+    .filter(
+        ap.col("n_genes") >= 500,
+        ap.col("percent_mito") < 0.03,
     )
-    .ap.mutate(
-        raw={"b_score": (ap.col("MS4A1") + ap.col("CD79A")) / 2},
+    .mutate(
+        {"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2},
         max_matrix_values=2 * adata.n_obs,
     )
-    .ap.select(
+    .select(
         obs=["donor_id", "condition", "louvain", "b_score"],
         x=["MS4A1", "CD79A", "NKG7"],
     )

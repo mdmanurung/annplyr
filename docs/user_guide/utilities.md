@@ -45,8 +45,8 @@ per-sample table:
 print(
     ap.sample_summary(
         adata,
-        sample="louvain",
-        obs={"cells": ap.n(), "mean_genes": ap.mean("n_genes")},
+        "louvain",
+        {"cells": ap.n(), "mean_genes": ap.mean("n_genes")},
     ).round(1)
 )
 ```

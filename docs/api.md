@@ -9,7 +9,7 @@ start with {doc}`quickstart` or {doc}`tutorials`.
 | derive aligned metadata | `mutate`, `transmute`, `add_count` |
 | reuse group-local operations | `group_by` and `GroupedAnnData` |
 | attach sample or feature tables | the six join methods |
-| produce a pandas table | `summarize`, `to_df`, `to_tidy`, `as_frame` |
+| produce a pandas table | `summarize`, `to_wide`, `to_tidy`, `as_frame` |
 | construct expressions or selectors | `col`, `all_of`, `any_of`, `across` |
 
 ## Accessor
@@ -38,7 +38,7 @@ call `.to_memory()` before same-shape mutation.
 | `transmute` | Always independent; no ownership argument | Replaces metadata columns while reading projected sources | selection/source/size/budget errors |
 | grouped AnnData verbs | New grouped wrapper, or identical wrapper for explicit in-place calls; `ungroup()` returns AnnData | One shared positional group plan; keys retained or updated | selection, axis, join, size, and budget errors |
 | summaries, count/tally, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Canonical matrix reducers use deterministic bounded chunks; metadata and opaque expressions read their planned sources | selection/source/axis/budget errors |
-| `pull`, `to_df`, `to_tidy`, `pivot_longer`, `as_frame`, `nest_by` | pandas/Series or nested extraction result; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
+| `pull`, `to_wide`, `to_tidy`, `pivot_longer`, `as_frame`, `nest_by` | pandas/Series or nested extraction result; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
 | expressions, selectors, and aggregators | `AnnplyrExpr`, selector, or expansion metadata; input unchanged | Lazy until evaluated; raw Narwhals is opaque and fully charged | `SelectionError`, `UnknownColumnError`, `UnknownSourceError` |
 | dataframe rectangling helpers | New pandas objects; input unchanged | Operates after explicit tabular extraction | `SelectionError`, `DuplicateNameError`, `SizeMismatchError` |
 | single-cell utilities | Readers return tables/reports; writers are independent unless `inplace=True` | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
@@ -87,14 +87,13 @@ from annplyr.typing import AnnDataWithAnnplyr
 
 def select_markers(adata: AnnData) -> AnnDataWithAnnplyr:
     typed = cast(AnnDataWithAnnplyr, adata)
-    return typed.ap.filter(obs=ap.col("qc_pass")).ap.select(x=["MS4A1", "CD79A"])
+    return typed.ap.filter(ap.col("qc_pass")).select(x=["MS4A1", "CD79A"])
 ```
 
-`AnnDataWithAnnplyr` is a typing-only AnnData subtype and an exact alias of
-`AnnData` at runtime; the cast does not copy or wrap the object. This avoids a
-mypy plugin and preserves normal `isinstance` behavior. `group_by()` overloads
-return `GroupedAnnData` whenever `obs=` or `var=` is supplied, and return the
-unchanged typed AnnData only when both are omitted.
+`AnnDataWithAnnplyr` is an alias of the concrete `TidyAnnData` class. The cast
+does not copy or wrap the object. `isinstance` checks against `AnnData` still
+hold. `group_by()` returns `GroupedAnnData` whenever keys are supplied, and
+returns the typed AnnData when called with no keys.
 
 The supported aliases live in `annplyr.typing`:
 
@@ -109,6 +108,53 @@ The supported aliases live in `annplyr.typing`:
 
 The generated {doc}`development/public-typing-contract` inventories every root
 symbol, public method signature, overload, return annotation, and alias.
+
+## Flat verb functions
+
+`ap.filter(adata, ...)` is the same call as `adata.ap.filter(...)`.
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   annplyr.add_count
+   annplyr.add_tally
+   annplyr.anti_join
+   annplyr.arrange
+   annplyr.as_frame
+   annplyr.count
+   annplyr.distinct
+   annplyr.filter
+   annplyr.filter_exp
+   annplyr.filter_obs
+   annplyr.full_join
+   annplyr.group_by
+   annplyr.inner_join
+   annplyr.left_join
+   annplyr.mutate
+   annplyr.nest_by
+   annplyr.pipe
+   annplyr.pivot_longer
+   annplyr.pull
+   annplyr.relocate
+   annplyr.rename
+   annplyr.rename_with
+   annplyr.right_join
+   annplyr.select
+   annplyr.semi_join
+   annplyr.slice
+   annplyr.slice_head
+   annplyr.slice_max
+   annplyr.slice_min
+   annplyr.slice_sample
+   annplyr.slice_tail
+   annplyr.summarise
+   annplyr.summarize
+   annplyr.tally
+   annplyr.to_tidy
+   annplyr.to_wide
+   annplyr.transmute
+```
 
 ## Expressions And Selectors
 

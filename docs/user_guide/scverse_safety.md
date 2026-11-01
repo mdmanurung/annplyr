@@ -17,7 +17,7 @@ embeddings, PCA loadings, and two pairwise graphs. One filter keeps all of them
 consistent:
 
 ```{testcode}
-subset = adata.ap.filter(obs=ap.col("louvain") == "B cells")
+subset = adata.ap.filter(ap.col("louvain") == "B cells")
 
 print(subset.shape, subset.raw.shape)
 print(subset.obsm["X_umap"].shape, subset.obsp["connectivities"].shape)
@@ -45,7 +45,7 @@ pandas sparse columns, and AnnData-returning projections retain the input
 CSR/CSC format:
 
 ```{testcode}
-print(adata.ap.to_df(raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs).dtypes)
+print(adata.ap.to_wide(raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs).dtypes)
 ```
 
 ```{testoutput}
@@ -68,7 +68,7 @@ load it explicitly when mutation is intended:
 
 ```python
 memory = backed.to_memory()
-memory.ap.mutate(obs={"new": ap.col("old")}, inplace=True)
+memory.ap.mutate({"new": ap.col("old")}, inplace=True)
 ```
 
 This keeps the move from disk-backed analysis to in-memory mutation visible in
@@ -81,7 +81,7 @@ the workflow rather than implicit.
 `pull()` or `as_frame()`; they are not mutation targets or join keys.
 
 ```{testcode}
-print(adata.ap.to_df(raw=["MS4A1"], max_matrix_values=adata.n_obs).shape)
+print(adata.ap.to_wide(raw=["MS4A1"], max_matrix_values=adata.n_obs).shape)
 ```
 
 ```{testoutput}

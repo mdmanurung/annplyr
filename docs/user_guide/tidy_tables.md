@@ -6,18 +6,18 @@ AnnData. Until that boundary, keeping transformations on AnnData
 preserves alignment and avoids copying matrix values nobody asked for.
 
 The examples extract from Scanpy's PBMC3K. Its `X` holds scaled values, so the
-log-normalised counts come from `raw=`.
+log-normalised counts come from `raw`.
 
 ## Wide tables for models and inspection
 
-`to_df()` returns one row per observation, one column per requested value.
+`to_wide()` returns one row per observation, one column per requested value.
 
 ::::{tab-set}
 
 :::{tab-item} annplyr
 
 ```{testcode}
-wide = adata.ap.to_df(
+wide = adata.ap.to_wide(
     obs=["louvain", "n_genes"],
     raw=["MS4A1", "CD79A"],
     max_matrix_values=2 * adata.n_obs,
@@ -72,7 +72,7 @@ print as `0.0`. A wide export of many genes stays cheap.
 Embeddings come from the same call through a keyed mapping:
 
 ```{testcode}
-model_frame = adata.ap.to_df(
+model_frame = adata.ap.to_wide(
     obs=["louvain"],
     obsm={"X_pca": ["0", "1"]},
     max_matrix_values=2 * adata.n_obs,
@@ -171,8 +171,7 @@ summarize before leaving AnnData. No cell-by-gene intermediate is built:
 ```{testcode}
 print(
     adata.ap.summarize(
-        obs={"cells": ap.n()},
-        raw={"mean_MS4A1": ap.mean("MS4A1")},
+        {"cells": ap.n(), "mean_MS4A1": ap.mean("raw:MS4A1")},
         by="louvain",
     ).round(3)
 )

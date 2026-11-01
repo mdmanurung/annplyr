@@ -10,8 +10,12 @@ documentation build, so the numbers you read are the numbers the code produces:
 
 ```{testcode}
 summary = adata.ap.summarize(
-    obs={"cells": ap.n(), "median_genes": ap.median("n_genes")},
-    raw={"mean_MS4A1": ap.mean("MS4A1"), "mean_LYZ": ap.mean("LYZ")},
+    {
+        "cells": ap.n(),
+        "median_genes": ap.median("n_genes"),
+        "mean_MS4A1": ap.mean("raw:MS4A1"),
+        "mean_LYZ": ap.mean("raw:LYZ"),
+    },
     by="louvain",
 )
 

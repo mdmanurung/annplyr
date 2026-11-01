@@ -28,7 +28,7 @@ import anndata as ad
 import annplyr as ap
 
 adata = ad.read_h5ad("analysis.h5ad")
-filtered = adata.ap.filter(obs=ap.col("qc_pass"))
+filtered = adata.ap.filter(ap.col("qc_pass"))
 ```
 
 The import registers the accessor on `AnnData`; it does not modify `adata` or

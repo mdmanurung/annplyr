@@ -24,8 +24,8 @@ objects by default.
 
 ## Filter across several sources at once
 
-Predicates in one tuple are combined with `AND`, and different sources can be
-mixed in the same call. Here metadata and expression are combined:
+Predicates passed together are combined with `AND`, and each one names its own
+source, so different sources can be mixed in the same call. Here metadata and expression are combined:
 
 ::::{tab-set}
 
@@ -33,11 +33,9 @@ mixed in the same call. Here metadata and expression are combined:
 
 ```{testcode}
 b_cells = adata.ap.filter(
-    obs=(
-        ap.col("louvain") == "B cells",
-        ap.col("percent_mito") < 0.03,
-    ),
-    raw=ap.col("MS4A1") > 0,
+    ap.col("louvain") == "B cells",
+    ap.col("percent_mito") < 0.03,
+    ap.col("raw:MS4A1") > 0,
 )
 
 print(b_cells.shape)
@@ -71,8 +69,8 @@ Both baseline masks are pandas Series indexed by `obs_names`, but indexing an
 AnnData with their conjunction wants a numpy array. Mixing metadata and
 expression criteria is where hand-written masks go wrong.
 
-Feature predicates use `var=`; pass `layer="counts"` when `x=` expressions
-should read a named layer instead of `X`.
+Feature predicates use the `var:` qualifier. A layer name such as `counts:`
+reads that layer instead of `X`.
 
 ## Select the analysis schema
 
@@ -103,16 +101,19 @@ schema-driven selection.
 
 ## Derive metadata with mutate
 
-`mutate()` writes `obs` or `var` columns. Matrix, layer, `raw`, embedding, and
-loading arguments are read-only sources for the derived values:
+`mutate()` writes `obs` columns, or `var` columns with `into="var"`. Matrix,
+layer, `raw`, embedding, and loading qualifiers are read-only sources for the
+derived values:
 
 ```{testcode}
 annotated = adata.ap.mutate(
-    obs={"deep": ap.col("n_counts") >= 2000},
-    raw={"b_markers": (ap.col("MS4A1") > 0) & (ap.col("CD79A") > 0)},
+    {
+        "deep": ap.col("n_counts") >= 2000,
+        "b_markers": (ap.col("raw:MS4A1") > 0) & (ap.col("raw:CD79A") > 0),
+    }
 )
 
-print(annotated.ap.count(by=["louvain", "b_markers"], sort=True).head())
+print(annotated.count(by=["louvain", "b_markers"], sort=True).head())
 ```
 
 ```{testoutput}
@@ -133,7 +134,7 @@ set:
 
 ```{testcode}
 scaled = adata.ap.mutate(
-    obs=ap.across(ap.starts_with("n_"), lambda name: ap.col(name) / 1000, names="{col}_k")
+    {"scaled": ap.across(ap.starts_with("n_"), lambda name: ap.col(name) / 1000, names="{col}_k")}
 )
 
 print(scaled.obs.head(3).round(3))
@@ -211,12 +212,12 @@ in the same call:
 
 ```{testcode}
 summary = adata.ap.summarize(
-    obs={
+    {
         "cells": ap.n(),
         "median_genes": ap.median("n_genes"),
         "mean_mito": ap.mean("percent_mito"),
+        "mean_NKG7": ap.mean("raw:NKG7"),
     },
-    raw={"mean_NKG7": ap.mean("NKG7")},
     by="louvain",
 )
 
@@ -304,7 +305,7 @@ def save_analysis(data, path):
     return path
 
 
-output = adata.ap.filter(obs=ap.col("percent_mito") < 0.03).ap.pipe(
+output = adata.ap.filter(ap.col("percent_mito") < 0.03).pipe(
     save_analysis,
     "results/qc_cells.h5ad",
 )

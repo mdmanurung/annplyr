@@ -44,7 +44,7 @@ lineage = pd.DataFrame(
 
 annotated = adata.ap.left_join(lineage, by="louvain", axis="obs")
 
-print(annotated.ap.count(by="lineage", sort=True))
+print(annotated.count(by="lineage", sort=True))
 print(annotated.n_obs == adata.n_obs, "lineage" in adata.obs)
 ```
 
@@ -97,7 +97,7 @@ external table declares eligible".
 lymphoid = lineage.loc[lineage["lineage"] == "Lymphoid", ["louvain"]]
 
 print(adata.ap.semi_join(lymphoid, by="louvain", axis="obs").shape)
-print(adata.ap.anti_join(lymphoid, by="louvain", axis="obs").ap.count(by="louvain", sort=True))
+print(adata.ap.anti_join(lymphoid, by="louvain", axis="obs").count(by="louvain", sort=True))
 ```
 
 ```{testoutput}
@@ -124,8 +124,8 @@ panel = pd.DataFrame(
     }
 )
 
-labelled = adata.ap.mutate(var={"gene": ap.var_names})
-with_panel = labelled.ap.left_join(panel, by="gene", axis="var")
+labelled = adata.ap.mutate({"gene": ap.var_names}, into="var")
+with_panel = labelled.left_join(panel, by="gene", axis="var")
 
 print(with_panel.var.loc[["MS4A1", "NKG7", "CD79A"]])
 ```

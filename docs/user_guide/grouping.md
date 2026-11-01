@@ -12,7 +12,7 @@ All examples run against Scanpy's PBMC3K, grouped by its Louvain cell-type
 labels.
 
 ```{testcode}
-by_type = adata.ap.group_by(obs="louvain")
+by_type = adata.ap.group_by("louvain")
 
 print(by_type.group_vars())
 print(by_type.group_keys())
@@ -68,8 +68,8 @@ selection share one grouping, and the result is only ungrouped at the end.
 
 ```{testcode}
 deepest = (
-    adata.ap.group_by(obs="louvain")
-    .mutate(obs={"depth_rank": ap.min_rank("n_counts", descending=True)})
+    adata.ap.group_by("louvain")
+    .mutate({"depth_rank": ap.min_rank("n_counts", descending=True)})
     .slice_max(ap.col("n_counts"), n=1)
     .ungroup()
 )
@@ -127,7 +127,7 @@ every step.
 ## Summarize the groups
 
 ```{testcode}
-print(by_type.summarize(obs={"cells": ap.n(), "mean_genes": ap.mean("n_genes")}).round(1))
+print(by_type.summarize({"cells": ap.n(), "mean_genes": ap.mean("n_genes")}).round(1))
 ```
 
 ```{testoutput}
@@ -171,6 +171,6 @@ established at its start, and the returned wrapper resolves later verbs from the
 final key values. All six grouped joins run once globally and update suffixed
 key names when necessary.
 
-Grouping is axis-specific. Pass `var=` for feature groups such as chromosome or
+Grouping is axis-specific. Pass `axis="var"` for feature groups such as chromosome or
 feature type. Computed, virtual-name, cross-axis, and empty grouping
 specifications raise typed selection or axis errors.

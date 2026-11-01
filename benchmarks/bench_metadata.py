@@ -41,7 +41,7 @@ class WideMetadata:
         assert out.obs.shape == (200_000, 21)
 
     def time_mutate_ten_independent(self) -> None:
-        out = self.adata.ap.mutate(obs=self.assignments)
+        out = self.adata.ap.mutate(self.assignments)
         assert all(name in out.obs for name in self.assignments)
 
     def time_left_join(self) -> None:

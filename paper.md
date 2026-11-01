@@ -58,11 +58,11 @@ Expressions name the container they read from. A bare name is `obs` metadata. A 
 
 Several design choices target the misalignment risk. Axis operations use integer position, so duplicate cell or feature names stay distinct. Sparse matrices stay sparse during projection. Only the requested features are read. An optional `max_matrix_values` argument sets a cumulative limit, and the planner rejects a request that would exceed it before any read. AnnData-returning verbs return `TidyAnnData`, a subclass of `AnnData`, so `isinstance` checks and Scanpy calls keep working.
 
-The package also ships helpers to check marker panels against `var_names` (`feature_present`), summarize per sample, and store plotting palettes. It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation runs every example on the PBMC3k dataset during the build.
+The package also ships helpers to check marker panels against `var_names` (`feature_present`), summarize per sample, and store plotting palettes. It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation examples run on the PBMC3k dataset as doctests, so a stale example fails the build.
 
 # Example
 
-This example summarizes the processed PBMC3k dataset by cluster. Cell counts and sequencing depth come from `obs`. Marker means come from `.raw`.
+This example summarizes the processed PBMC3k dataset by cluster. Cell counts and genes detected per cell come from `obs`. Marker means come from `.raw`.
 
 ```python
 import scanpy as sc

@@ -28,13 +28,13 @@ class DenseProjection:
         self.expected_filtered = int(np.any(values > 0, axis=1).sum())
 
     def time_filter_three_features(self) -> None:
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = self.adata.ap.filter(x=predicate, copy=True)
+        predicate = (ap.col("x:g0") > 0) | (ap.col("x:g1") > 0) | (ap.col("x:g2") > 0)
+        out = self.adata.ap.filter(predicate, copy=True)
         assert out.n_obs == self.expected_filtered
         assert out.n_vars == self.adata.n_vars
 
     def time_export_ten_features(self) -> None:
-        out = self.adata.ap.to_df(x=self.features)
+        out = self.adata.ap.to_wide(x=self.features)
         assert out.shape == (20_000, 10)
         assert_columns(out.columns, self.features)
         realize_frame(out)
@@ -72,8 +72,8 @@ class SparseProjection:
         self.expected_filtered = int((positive_counts > 0).sum())
 
     def time_filter_three_features(self, matrix_format: str) -> None:
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = self.adata.ap.filter(x=predicate, copy=True)
+        predicate = (ap.col("x:g0") > 0) | (ap.col("x:g1") > 0) | (ap.col("x:g2") > 0)
+        out = self.adata.ap.filter(predicate, copy=True)
         assert out.n_obs == self.expected_filtered
         assert out.X.format == matrix_format
 
@@ -83,7 +83,7 @@ class SparseProjection:
         float(out.iloc[0])
 
     def time_to_df_ten_features(self, matrix_format: str) -> None:
-        out = self.adata.ap.to_df(x=self.features)
+        out = self.adata.ap.to_wide(x=self.features)
         assert out.shape == (100_000, 10)
         assert_columns(out.columns, self.features)
         realize_frame(out)
@@ -96,7 +96,7 @@ class SparseProjection:
 
     def time_budget_rejection(self, matrix_format: str) -> None:
         try:
-            self.adata.ap.to_df(x=self.features, max_matrix_values=1)
+            self.adata.ap.to_wide(x=self.features, max_matrix_values=1)
         except ap.AnnplyrError:
             return
         raise AssertionError("projected matrix budget was not rejected")
@@ -143,7 +143,7 @@ class BackedProjection:
 
     def time_selected_read(self, storage: str) -> None:
         target = self._target()
-        out = target.ap.to_df(x=self.features)
+        out = target.ap.to_wide(x=self.features)
         expected_rows = 20_000 if storage == "dense" else 100_000
         assert out.shape == (expected_rows, 10)
         assert_columns(out.columns, self.features)
@@ -151,8 +151,8 @@ class BackedProjection:
 
     def time_filter_three_features(self, storage: str) -> None:
         target = self._target()
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = target.ap.filter(x=predicate, copy=False)
+        predicate = (ap.col("x:g0") > 0) | (ap.col("x:g1") > 0) | (ap.col("x:g2") > 0)
+        out = target.ap.filter(predicate, copy=False)
         assert out.n_obs == self.expected_filtered
         assert out.n_vars == target.n_vars
 
@@ -166,7 +166,7 @@ class BackedProjection:
     def time_budget_rejection(self, storage: str) -> None:
         target = self._target()
         try:
-            target.ap.to_df(x=self.features, max_matrix_values=1)
+            target.ap.to_wide(x=self.features, max_matrix_values=1)
         except ap.AnnplyrError:
             return
         raise AssertionError("projected matrix budget was not rejected")

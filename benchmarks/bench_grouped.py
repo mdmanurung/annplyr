@@ -31,28 +31,28 @@ class GroupedTwenty:
 
     def setup(self) -> None:
         self.adata = _grouped_fixture(20)
-        self.grouped = self.adata.ap.group_by(obs="group")
+        self.grouped = self.adata.ap.group_by("group")
         frame = self.adata.obs
         means = frame.groupby("group", observed=True)["score"].transform("mean")
         self.expected_filtered = int((frame["score"] > means).sum())
 
     def time_filter(self) -> None:
-        out = self.grouped.filter(obs=ap.col("score") > ap.mean("score"), copy=True)
+        out = self.grouped.filter(ap.col("score") > ap.mean("score"), copy=True)
         assert unwrap_grouped(out).n_obs == self.expected_filtered
 
     def time_mutate(self) -> None:
-        out = self.grouped.mutate(obs={"centered": ap.col("score") - ap.mean("score")})
+        out = self.grouped.mutate({"centered": ap.col("score") - ap.mean("score")})
         ungrouped = unwrap_grouped(out)
         assert ungrouped.n_obs == 200_000
         assert "centered" in ungrouped.obs
 
     def time_summarize(self) -> None:
-        out = self.grouped.summarize(obs={"mean_score": ap.mean("score")})
+        out = self.grouped.summarize({"mean_score": ap.mean("score")})
         assert out.shape == (20, 2)
         realize_frame(out)
 
     def time_arrange(self) -> None:
-        out = self.grouped.arrange(obs=ap.col("score"), copy=True)
+        out = self.grouped.arrange(ap.col("score"), copy=True)
         assert unwrap_grouped(out).n_obs == 200_000
 
     def time_slice_head(self) -> None:
@@ -70,7 +70,7 @@ class GroupedHighCardinality:
 
     def setup(self) -> None:
         self.adata = _grouped_fixture(50_000)
-        self.grouped = self.adata.ap.group_by(obs="group")
+        self.grouped = self.adata.ap.group_by("group")
 
     def time_group_keys(self) -> None:
         out = self.grouped.group_keys()

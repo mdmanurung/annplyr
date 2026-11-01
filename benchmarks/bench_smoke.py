@@ -30,25 +30,25 @@ class Smoke:
             index=pd.Index([f"o{i}" for i in range(5_000)]),
         )
         grouped_adata = AnnData(X=np.zeros((5_000, 1), dtype=np.float32), obs=obs, var=pd.DataFrame(index=["g0"]))
-        self.grouped = grouped_adata.ap.group_by(obs="group")
+        self.grouped = grouped_adata.ap.group_by("group")
         self.features = feature_names(10)
 
     def time_dense_projection(self) -> None:
-        out = self.dense.ap.to_df(x=self.features)
+        out = self.dense.ap.to_wide(x=self.features)
         assert out.shape == (1_000, 10)
 
     def time_sparse_projection(self) -> None:
-        out = self.sparse.ap.to_df(x=self.features)
+        out = self.sparse.ap.to_wide(x=self.features)
         assert out.shape == (5_000, 10)
 
     def time_grouped_filter(self) -> None:
-        out = self.grouped.filter(obs=ap.col("score") > ap.mean("score"), copy=True)
+        out = self.grouped.filter(ap.col("score") > ap.mean("score"), copy=True)
         assert 0 < unwrap_grouped(out).n_obs < 5_000
 
     def time_grouped_mutate(self) -> None:
-        out = self.grouped.mutate(obs={"centered": ap.col("score") - ap.mean("score")})
+        out = self.grouped.mutate({"centered": ap.col("score") - ap.mean("score")})
         assert "centered" in unwrap_grouped(out).obs
 
     def time_grouped_summarize(self) -> None:
-        out = self.grouped.summarize(obs={"mean_score": ap.mean("score")})
+        out = self.grouped.summarize({"mean_score": ap.mean("score")})
         assert out.shape == (20, 2)

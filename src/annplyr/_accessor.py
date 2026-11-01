@@ -9,6 +9,7 @@ from anndata import AnnData
 from annplyr._errors import AnnplyrError
 from annplyr._extensions import register_anndata_accessor
 from annplyr._grouped import GroupedAnnData
+from annplyr._tidy import TidyAnnData, install_verbs
 from annplyr._typing import (
     AnnDataWithAnnplyr,
     Axis,
@@ -24,6 +25,8 @@ from annplyr._typing import (
     SourceSelectors,
 )
 from annplyr._verbs import (
+    _axis,
+    _validate_filter_scope,
     add_count_adata,
     add_tally_adata,
     anti_join_adata,
@@ -53,8 +56,8 @@ from annplyr._verbs import (
     slice_tail_adata,
     summarize_adata,
     tally_adata,
-    to_df_adata,
     to_tidy_adata,
+    to_wide_adata,
     transmute_adata,
 )
 
@@ -62,8 +65,12 @@ T = TypeVar("T")
 
 
 def _with_annplyr_accessor(adata: AnnData) -> AnnDataWithAnnplyr:
-    """Narrow an AnnData result after the namespace has been registered."""
-    return cast(AnnDataWithAnnplyr, adata)
+    """Return a chainable result that still passes ``isinstance(x, AnnData)``.
+
+    Wrapping preserves object identity, so ``inplace=True`` verbs still return
+    the exact object they were called on.
+    """
+    return cast(AnnDataWithAnnplyr, TidyAnnData.wrap(adata))
 
 
 @register_anndata_accessor("ap")
@@ -75,34 +82,111 @@ class AnnplyrAccessor:
 
     def filter(
         self,
-        obs: Expression | Sequence[Expression] | None = None,
-        var: Expression | Sequence[Expression] | None = None,
-        x: Expression | Sequence[Expression] | None = None,
-        raw: Expression | Sequence[Expression] | None = None,
-        obs_names: Expression | Sequence[Expression] | None = None,
-        var_names: Expression | Sequence[Expression] | None = None,
-        obsm: SourceSelectors | None = None,
-        varm: SourceSelectors | None = None,
-        layer: str | None = None,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
+        """Subset axes with one predicate per argument, combined with AND.
+
+        Each predicate names its own container, so a single call can read
+        ``obs`` metadata, ``raw``, a named layer, and an embedding together::
+
+            adata.ap.filter(
+                ap.col("n_genes") >= 500,
+                ap.col("raw:LYZ") < 1.0,
+                ap.col("counts:MS4A1") > 0,
+            )
+
+        A bare name is ``obs`` metadata. A matrix always needs a qualifier,
+        because there is no safe default container for it: use ``x:`` for ``X``,
+        ``raw:`` for ``.raw``, a layer name such as ``counts:``, or an
+        ``obsm``/``varm`` key such as ``X_pca:``. ``var:`` and ``varm:``
+        reference the feature axis and subset features.
+
+        One expression cannot mix containers, because each is evaluated against
+        its own frame. Precompute the shared part with :meth:`mutate` first.
+
+        ``source=`` names the container for expressions that reference no
+        column, which is how a raw Narwhals expression is pointed at a matrix.
+        Such an expression is charged for the whole container.
+
+        Parameters
+        ----------
+        *predicates
+            See the annotated public signature.
+        copy
+            See the annotated public signature.
+        max_matrix_values
+            See the annotated public signature.
+
+        Returns
+        -------
+        AnnData
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view or materialized.
+
+        Raises
+        ------
+        SelectionError
+            If the request violates the corresponding public contract.
+        UnknownColumnError
+            If the request violates the corresponding public contract.
+        UnknownSourceError
+            If the request violates the corresponding public contract.
+        IncompatibleAxisError
+            If the request violates the corresponding public contract.
+        AnnplyrError
+            If the request violates the corresponding public contract.
+        """
         return _with_annplyr_accessor(
             filter_adata(
                 self._obj,
-                obs=obs,
-                var=var,
-                x=x,
-                raw=raw,
-                obs_names=obs_names,
-                var_names=var_names,
-                obsm=obsm,
-                varm=varm,
-                layer=layer,
+                *predicates,
+                source=source,
                 copy=copy,
                 max_matrix_values=max_matrix_values,
             )
         )
+
+    def filter_obs(
+        self,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> AnnDataWithAnnplyr:
+        """Filter cells using only obs metadata, combining predicates with AND.
+
+        Bare names and ``obs:`` references read observation metadata. Sources
+        on the feature axis or in matrices are rejected before reads. Ownership,
+        null handling, and predicate evaluation follow :meth:`filter`, including
+        its no-op behavior when no predicates are supplied.
+        """
+        _validate_filter_scope(self._obj, predicates, source=source, expression=False)
+        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
+
+    def filter_exp(
+        self,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> AnnDataWithAnnplyr:
+        """Filter cells using explicitly qualified gene-expression predicates.
+
+        Use ``ap.col("x:MS4A1")``, ``ap.col("raw:MS4A1")``, or a named layer
+        such as ``ap.col("counts:MS4A1")``. Bare names never guess an expression
+        source. An opaque Narwhals expression needs ``source="x"``, ``"raw"``,
+        or a layer name, and charges the entire source to the matrix budget.
+        Metadata, embeddings, and feature-axis sources are rejected before
+        reads. Evaluation and ownership follow :meth:`filter`, including its
+        no-op behavior when no predicates are supplied.
+        """
+        _validate_filter_scope(self._obj, predicates, source=source, expression=True)
+        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
 
     def select(
         self,
@@ -312,26 +396,16 @@ class AnnplyrAccessor:
 
     def arrange(
         self,
-        obs: Expression | Sequence[Expression] | None = None,
-        var: Expression | Sequence[Expression] | None = None,
-        x: Expression | Sequence[Expression] | None = None,
-        raw: Expression | Sequence[Expression] | None = None,
-        obsm: SourceSelectors | None = None,
-        varm: SourceSelectors | None = None,
-        layer: str | None = None,
+        *by: Expression | Sequence[Expression],
+        source: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             arrange_adata(
                 self._obj,
-                obs=obs,
-                var=var,
-                x=x,
-                raw=raw,
-                obsm=obsm,
-                varm=varm,
-                layer=layer,
+                *by,
+                source=source,
                 copy=copy,
                 max_matrix_values=max_matrix_values,
             )
@@ -376,26 +450,17 @@ class AnnplyrAccessor:
 
     def mutate(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
-        layer: str | None = None,
+        assignments: Mapping[str, Any] | None = None,
+        *,
+        into: str = "obs",
         inplace: bool = False,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             mutate_adata(
                 self._obj,
-                obs=obs,
-                var=var,
-                x=x,
-                raw=raw,
-                obsm=obsm,
-                varm=varm,
-                layer=layer,
+                assignments,
+                into=into,
                 inplace=inplace,
                 max_matrix_values=max_matrix_values,
             )
@@ -403,66 +468,87 @@ class AnnplyrAccessor:
 
     def transmute(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
-        layer: str | None = None,
+        assignments: Mapping[str, Any] | None = None,
+        *,
+        into: str = "obs",
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             transmute_adata(
                 self._obj,
-                obs=obs,
-                var=var,
-                x=x,
-                raw=raw,
-                obsm=obsm,
-                varm=varm,
-                layer=layer,
+                assignments,
+                into=into,
                 max_matrix_values=max_matrix_values,
             )
         )
 
     @overload
-    def group_by(self, obs: None = None, var: None = None) -> AnnDataWithAnnplyr: ...
+    def group_by(self) -> AnnDataWithAnnplyr: ...
 
     @overload
-    def group_by(self, obs: Selector, var: None = None) -> GroupedAnnData: ...
+    def group_by(self, *by: Selector, axis: Axis = "obs") -> GroupedAnnData: ...
 
-    @overload
-    def group_by(self, obs: None = None, var: Selector = ...) -> GroupedAnnData: ...
+    def group_by(self, *by: Selector, axis: Axis = "obs") -> AnnDataWithAnnplyr | GroupedAnnData:
+        """Group rows so later verbs run group-locally, one key per argument.
 
-    def group_by(self, obs: Selector | None = None, var: Selector | None = None) -> AnnDataWithAnnplyr | GroupedAnnData:
-        if obs is None and var is None:
-            return self._obj
-        return GroupedAnnData(self._obj, obs=obs, var=var)
+        The keys are positional, matching :meth:`count` and the ``by=`` of
+        :meth:`summarize`, so grouping reads the same as summarizing::
+
+            adata.ap.group_by("sample", "cell_type").summarize({"n": ap.n()})
+
+        A bare name is ``obs`` metadata; qualify a feature name with ``var:``.
+        With no keys the object comes back unchanged, so a chain is never broken
+        by a conditional ``group_by``. ``axis="var"`` groups features instead of
+        observations.
+
+        Parameters
+        ----------
+        *by
+            See the annotated public signature.
+        axis
+            See the annotated public signature.
+
+        Returns
+        -------
+        AnnData or GroupedAnnData
+
+        Ownership
+        ---------
+        The wrapper references the exact input object and never copies it.
+
+        Raises
+        ------
+        SelectionError
+            If the request violates the corresponding public contract.
+        UnknownColumnError
+            If the request violates the corresponding public contract.
+        UnknownSourceError
+            If the request violates the corresponding public contract.
+        IncompatibleAxisError
+            If the request violates the corresponding public contract.
+        AnnplyrError
+            If the request violates the corresponding public contract.
+        """
+        axis = _axis(axis)
+        if not by:
+            return _with_annplyr_accessor(self._obj)
+        if axis == "var":
+            return GroupedAnnData(self._obj, var=by)
+        return GroupedAnnData(self._obj, obs=by)
 
     def summarize(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
+        stats: Mapping[str, Any] | None = None,
         *,
         by: Selector | None = None,
-        layer: str | None = None,
+        source: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
         return summarize_adata(
             self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
+            stats,
             by=by,
-            layer=layer,
+            source=source,
             max_matrix_values=max_matrix_values,
         )
 
@@ -547,7 +633,7 @@ class AnnplyrAccessor:
             max_matrix_values=max_matrix_values,
         )
 
-    def to_df(
+    def to_wide(
         self,
         obs: Selector | None = None,
         x: Selector | None = None,
@@ -558,7 +644,7 @@ class AnnplyrAccessor:
         layer: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
-        return to_df_adata(
+        return to_wide_adata(
             self._obj,
             obs=obs,
             x=x,
@@ -654,3 +740,6 @@ class AnnplyrAccessor:
             kwargs[data_keyword] = self._obj
             return call(*args, **kwargs)
         return func(self._obj, *args, **kwargs)
+
+
+install_verbs(AnnplyrAccessor)

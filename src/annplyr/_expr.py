@@ -324,6 +324,38 @@ def expression_dependencies(value: Any) -> frozenset[str] | None:
     return frozenset()
 
 
+def collect_column_references(value: Any) -> set[str] | None:
+    """Return every column reference reachable from ``value``.
+
+    Recurses through mappings and sequences so a whole assignment dict or
+    predicate tuple can be inspected at once. Returns ``None`` when any part is
+    opaque, because an opaque expression's references are unknowable.
+    """
+    if isinstance(value, AnnplyrExpr):
+        return set(value.dependencies) if value.dependencies is not None else None
+    if isinstance(value, nw.Expr):
+        return None
+    if isinstance(value, Desc):
+        return collect_column_references(value.expr)
+    if isinstance(value, Mapping):
+        return _collect_from(list(value.values()))
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return _collect_from(list(value))
+    if hasattr(value, "to_expr"):
+        return None
+    return set()
+
+
+def _collect_from(values: Any) -> set[str] | None:
+    collected: set[str] = set()
+    for item in values:
+        nested = collect_column_references(item)
+        if nested is None:
+            return None
+        collected |= nested
+    return collected
+
+
 def reduction_spec(value: Any) -> _ReductionSpec | None:
     """Return bounded-reduction metadata for a canonical wrapped expression."""
     return value._reduction if isinstance(value, AnnplyrExpr) else None

@@ -39,10 +39,8 @@ def test_chained_grouped_fixture_preserves_structure_ownership_and_positional_or
     expected_obsm = source.obsm["embedding"][expected_positions, :].copy()
     expected_obsp = source.obsp["connectivity"][expected_positions, :][:, expected_positions].toarray()
 
-    grouped = source.ap.group_by(obs="group")
-    result = grouped.mutate(obs={"within_group": ap.row_number(), "double": ap.col("value") * 2}).arrange(
-        obs=ap.desc("value")
-    )
+    grouped = source.ap.group_by("group")
+    result = grouped.mutate({"within_group": ap.row_number(), "double": ap.col("value") * 2}).arrange(ap.desc("value"))
 
     assert isinstance(result, GroupedAnnData)
     assert result is not grouped

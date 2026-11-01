@@ -10,6 +10,8 @@ _AXIS_METHODS = {
     "arrange",
     "distinct",
     "filter",
+    "filter_exp",
+    "filter_obs",
     "select",
     "slice",
     "slice_head",

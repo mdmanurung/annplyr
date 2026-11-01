@@ -9,21 +9,25 @@ import annplyr as ap
 
 def test_across_expands_assignments_in_mutate_and_summarize(dense_adata: AnnData) -> None:
     mutated = dense_adata.ap.mutate(
-        obs=ap.across(
-            ap.where(pd.api.types.is_numeric_dtype),
-            lambda column: ap.col(column) * 10,
-            names="{col}_x10",
-        )
+        {
+            "across": ap.across(
+                ap.where(pd.api.types.is_numeric_dtype),
+                lambda column: ap.col(column) * 10,
+                names="{col}_x10",
+            )
+        }
     )
 
     assert mutated.obs["score_x10"].tolist() == [10.0, 20.0, 5.0, 30.0, 25.0]
 
     summary = dense_adata.ap.summarize(
-        obs=ap.across(
-            ["score"],
-            {"mean": ap.mean, "max": ap.max},
-            names="{fn}_{col}",
-        ),
+        {
+            "across": ap.across(
+                ["score"],
+                {"mean": ap.mean, "max": ap.max},
+                names="{fn}_{col}",
+            )
+        },
         by="batch",
     )
 
@@ -33,13 +37,13 @@ def test_across_expands_assignments_in_mutate_and_summarize(dense_adata: AnnData
     )
 
     transmuted = dense_adata.ap.transmute(
-        obs=ap.across(["score"], lambda column: ap.col(column) + 1, names="{col}_plus1")
+        {"across": ap.across(["score"], lambda column: ap.col(column) + 1, names="{col}_plus1")}
     )
     assert transmuted.obs.columns.tolist() == ["score_plus1"]
     assert transmuted.obs["score_plus1"].tolist() == [2.0, 3.0, 1.5, 4.0, 3.5]
 
     with pytest.raises(ap.DuplicateNameError, match="Duplicate assignment"):
-        dense_adata.ap.mutate(obs={"score": ap.lit(0), "also_score": ap.across(["score"])})
+        dense_adata.ap.mutate({"score": ap.lit(0), "also_score": ap.across(["score"])})
 
 
 def test_pick_if_any_and_if_all_use_tidyselect_columns(dense_adata: AnnData) -> None:
@@ -47,19 +51,19 @@ def test_pick_if_any_and_if_all_use_tidyselect_columns(dense_adata: AnnData) -> 
     adata.obs["qc_mito"] = [0.1, 0.4, 0.2, 0.6, 0.3]
     adata.obs["qc_ribo"] = [0.2, 0.1, 0.3, 0.7, 0.2]
 
-    picked = adata.ap.to_df(obs=ap.pick(ap.starts_with("qc_")))
+    picked = adata.ap.to_wide(obs=ap.pick(ap.starts_with("qc_")))
     assert picked.columns.tolist() == ["qc_mito", "qc_ribo"]
 
-    any_high = adata.ap.filter(obs=ap.if_any(ap.starts_with("qc_"), lambda column: ap.col(column) > 0.5))
+    any_high = adata.ap.filter(ap.if_any(ap.starts_with("qc_"), lambda column: ap.col(column) > 0.5))
     assert any_high.obs_names.tolist() == ["c3"]
 
-    all_low = adata.ap.filter(obs=ap.if_all(ap.starts_with("qc_"), lambda column: ap.col(column) < 0.35))
+    all_low = adata.ap.filter(ap.if_all(ap.starts_with("qc_"), lambda column: ap.col(column) < 0.35))
     assert all_low.obs_names.tolist() == ["c0", "c2", "c4"]
 
 
 def test_ntile_and_additional_rank_helpers(dense_adata: AnnData) -> None:
     mutated = dense_adata.ap.mutate(
-        obs={
+        {
             "tile": ap.ntile("score", 2),
             "tile3": ap.ntile("score", 3),
             "max_rank": ap.max_rank("score"),
@@ -78,7 +82,7 @@ def test_additional_logic_and_recode_helpers(dense_adata: AnnData) -> None:
     adata.obs["flag"] = [True, False, True, True, False]
 
     mutated = adata.ap.mutate(
-        obs={
+        {
             "cummean_score": ap.cummean("score"),
             "ever_flag": ap.cumany("flag"),
             "all_flag": ap.cumall("flag"),
@@ -101,7 +105,7 @@ def test_additional_logic_and_recode_helpers(dense_adata: AnnData) -> None:
 def test_grouped_matrix_sources_arrange_distinct_and_slices_are_group_local(dense_adata: AnnData) -> None:
     adata = dense_adata.copy()
     adata.obs["label"] = ["x", "x", "x", "x", "y"]
-    grouped = dense_adata.ap.group_by(obs="batch")
+    grouped = dense_adata.ap.group_by("batch")
 
     assert grouped.slice_min(ap.col("score"), n=1).ungroup().obs_names.tolist() == ["c0", "c2"]
     assert grouped.slice_max(ap.col("score"), n=1).ungroup().obs_names.tolist() == ["c4", "c3"]
@@ -111,11 +115,11 @@ def test_grouped_matrix_sources_arrange_distinct_and_slices_are_group_local(dens
     assert sampled.ungroup().n_obs == 2
     assert sampled.ungroup().obs["batch"].tolist() == ["A", "B"]
 
-    assert grouped.filter(x=ap.row_number() == 1).ungroup().obs_names.tolist() == ["c0", "c2"]
-    group_rows = grouped.mutate(x={"group_row": ap.row_number()})
+    assert grouped.filter(ap.row_number() == 1).ungroup().obs_names.tolist() == ["c0", "c2"]
+    group_rows = grouped.mutate({"group_row": ap.row_number()})
     assert group_rows.ungroup().obs["group_row"].tolist() == [1, 2, 1, 2, 3]
-    assert grouped.arrange(x=ap.desc("g0")).ungroup().obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
-    assert adata.ap.group_by(obs="batch").distinct(obs="label", keep_all=True).ungroup().obs_names.tolist() == [
+    assert grouped.arrange(ap.desc("x:g0")).ungroup().obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
+    assert adata.ap.group_by("batch").distinct(obs="label", keep_all=True).ungroup().obs_names.tolist() == [
         "c0",
         "c4",
         "c2",
@@ -133,7 +137,7 @@ def test_slice_helpers_validate_edge_cases(dense_adata: AnnData) -> None:
         dense_adata.ap.slice_sample(n=dense_adata.n_obs + 1, replace=False)
 
     with pytest.raises(ap.SelectionError, match="n and prop"):
-        dense_adata.ap.group_by(obs="batch").slice_sample(n=1, prop=0.5)
+        dense_adata.ap.group_by("batch").slice_sample(n=1, prop=0.5)
 
 
 def test_weighted_count_tally_and_add_tally(dense_adata: AnnData) -> None:
@@ -149,7 +153,7 @@ def test_weighted_count_tally_and_add_tally(dense_adata: AnnData) -> None:
     added = dense_adata.ap.add_count("batch", wt="score", name="batch_score_sum")
     assert added.obs["batch_score_sum"].tolist() == [5.5, 5.5, 3.5, 3.5, 5.5]
 
-    grouped_added = dense_adata.ap.group_by(obs="batch").add_tally(wt="score", name="batch_score_sum")
+    grouped_added = dense_adata.ap.group_by("batch").add_tally(wt="score", name="batch_score_sum")
     assert grouped_added.ungroup().obs["batch_score_sum"].tolist() == [5.5, 5.5, 3.5, 3.5, 5.5]
 
 

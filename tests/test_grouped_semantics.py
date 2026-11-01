@@ -9,7 +9,7 @@ import annplyr as ap
 
 
 def test_group_metadata_methods(dense_adata: AnnData) -> None:
-    grouped = dense_adata.ap.group_by(obs=["batch", "cell_type"])
+    grouped = dense_adata.ap.group_by(["batch", "cell_type"])
 
     assert grouped.group_vars() == ["batch", "cell_type"]
 
@@ -31,16 +31,16 @@ def test_group_metadata_methods(dense_adata: AnnData) -> None:
 
 
 def test_grouped_obs_mutate_uses_group_local_row_number(dense_adata: AnnData) -> None:
-    mutated = dense_adata.ap.group_by(obs="batch").mutate(obs={"within_batch": ap.row_number()})
+    mutated = dense_adata.ap.group_by("batch").mutate({"within_batch": ap.row_number()})
 
     assert mutated.ungroup().obs["within_batch"].tolist() == [1, 2, 1, 2, 3]
     assert "within_batch" not in dense_adata.obs
 
 
 def test_grouped_filter_slice_and_add_count_are_group_local(dense_adata: AnnData) -> None:
-    grouped = dense_adata.ap.group_by(obs="batch")
+    grouped = dense_adata.ap.group_by("batch")
 
-    filtered = grouped.filter(obs=ap.row_number() == 1)
+    filtered = grouped.filter(ap.row_number() == 1)
     assert filtered.ungroup().obs_names.tolist() == ["c0", "c2"]
 
     sliced = grouped.slice_head(n=1)
@@ -51,7 +51,7 @@ def test_grouped_filter_slice_and_add_count_are_group_local(dense_adata: AnnData
 
 
 def test_grouped_summarize_accepts_matrix_sources(dense_adata: AnnData) -> None:
-    summary = dense_adata.ap.group_by(obs="batch").summarize(x={"mean_g0": ap.mean("g0")})
+    summary = dense_adata.ap.group_by("batch").summarize({"mean_g0": ap.mean("x:g0")})
 
     pd.testing.assert_frame_equal(
         summary.reset_index(drop=True),
@@ -60,7 +60,7 @@ def test_grouped_summarize_accepts_matrix_sources(dense_adata: AnnData) -> None:
 
 
 def test_grouped_var_count_and_keys(dense_adata: AnnData) -> None:
-    grouped = dense_adata.ap.group_by(var="feature_type")
+    grouped = dense_adata.ap.group_by("feature_type", axis="var")
 
     pd.testing.assert_frame_equal(
         grouped.count().reset_index(drop=True),
@@ -76,7 +76,7 @@ def test_grouped_mutate_handles_duplicate_obs_names() -> None:
     obs = pd.DataFrame({"batch": ["A", "A", "B", "B"]}, index=["x", "x", "x", "x"])
     adata = AnnData(X=x, obs=obs)
 
-    mutated = adata.ap.group_by(obs="batch").mutate(obs={"n": ap.row_number()})
+    mutated = adata.ap.group_by("batch").mutate({"n": ap.row_number()})
 
     assert mutated.ungroup().obs["n"].tolist() == [1, 2, 1, 2]
 
@@ -88,7 +88,7 @@ def test_grouped_mutate_rejects_backed_before_writing(tmp_path, dense_adata: Ann
 
     try:
         with pytest.raises(ap.AnnplyrError, match="backed"):
-            backed.ap.group_by(obs="batch").mutate(obs={"within_batch": ap.row_number()})
+            backed.ap.group_by("batch").mutate({"within_batch": ap.row_number()})
         assert "within_batch" not in backed.obs
     finally:
         backed.file.close()

@@ -11,6 +11,7 @@ from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
 from annplyr._expr import col
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
 from annplyr._groups import GroupPlan, GroupSpec
+from annplyr._tidy import TidyAnnData
 from annplyr._typing import (
     AnnDataWithAnnplyr,
     Axis,
@@ -22,7 +23,6 @@ from annplyr._typing import (
     JoinUnmatched,
     NaMatches,
     Selector,
-    SourceSelectors,
 )
 from annplyr._verbs import (
     _axis_positions,
@@ -31,6 +31,7 @@ from annplyr._verbs import (
     _sort_values_for_frame,
     _subset_positions,
     _validate_slice_n,
+    _validate_filter_scope,
     add_count_adata,
     anti_join_adata,
     arrange_adata,
@@ -105,7 +106,7 @@ class GroupedAnnData:
                 group = _subset_positions(self._adata, positions, None, copy=False)
             else:
                 group = _subset_positions(self._adata, None, positions, copy=False)
-            yield key, cast(AnnDataWithAnnplyr, group)
+            yield key, cast(AnnDataWithAnnplyr, TidyAnnData.wrap(group))
 
     def group_vars(self) -> list[str]:
         self._spec.validate(self._adata)
@@ -118,40 +119,92 @@ class GroupedAnnData:
         return self._plan().group_data()
 
     def ungroup(self) -> AnnDataWithAnnplyr:
-        return self._adata
+        return cast(AnnDataWithAnnplyr, TidyAnnData.wrap(self._adata))
 
     def filter(
         self,
-        obs: Expression | Sequence[Expression] | None = None,
-        var: Expression | Sequence[Expression] | None = None,
-        x: Expression | Sequence[Expression] | None = None,
-        raw: Expression | Sequence[Expression] | None = None,
-        obs_names: Expression | Sequence[Expression] | None = None,
-        var_names: Expression | Sequence[Expression] | None = None,
-        obsm: SourceSelectors | None = None,
-        varm: SourceSelectors | None = None,
-        layer: str | None = None,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
+        """Subset within groups, one predicate per argument, combined with AND.
+
+        Same container syntax as :meth:`annplyr.AnnplyrAccessor.filter`; the
+        predicates are applied inside each group, and groups are concatenated
+        in first-seen order.
+
+        Parameters
+        ----------
+        *predicates
+            See the annotated public signature.
+        copy
+            See the annotated public signature.
+        max_matrix_values
+            See the annotated public signature.
+
+        Returns
+        -------
+        GroupedAnnData
+
+        Ownership
+        ---------
+        Returns an independent result by default; ``copy=False`` may be a view or materialized.
+
+        Raises
+        ------
+        SelectionError
+            If the request violates the corresponding public contract.
+        UnknownColumnError
+            If the request violates the corresponding public contract.
+        UnknownSourceError
+            If the request violates the corresponding public contract.
+        IncompatibleAxisError
+            If the request violates the corresponding public contract.
+        AnnplyrError
+            If the request violates the corresponding public contract.
+        """
         plan = self._plan()
         result = filter_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obs_names=obs_names,
-            var_names=var_names,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
+            *predicates,
+            source=source,
             copy=copy,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
             _group_axis=self._axis,
         )
         return self._wrap(result)
+
+    def filter_obs(
+        self,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        """Filter cells on obs metadata using the existing grouped evaluation.
+
+        Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_obs`.
+        Grouping keys and the grouped filter's first-seen order are preserved.
+        """
+        _validate_filter_scope(self._adata, predicates, source=source, expression=False)
+        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
+
+    def filter_exp(
+        self,
+        *predicates: Expression | Sequence[Expression],
+        source: str | None = None,
+        copy: bool = True,
+        max_matrix_values: int | None = None,
+    ) -> GroupedAnnData:
+        """Filter cells on expression using the existing grouped evaluation.
+
+        Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_exp`.
+        Grouping keys and the grouped filter's first-seen order are preserved.
+        """
+        _validate_filter_scope(self._adata, predicates, source=source, expression=True)
+        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
 
     def select(
         self,
@@ -233,33 +286,22 @@ class GroupedAnnData:
 
     def transmute(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
-        layer: str | None = None,
+        assignments: Mapping[str, Any] | None = None,
+        *,
+        into: str = "obs",
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         plan = self._plan()
-        if self._axis == "obs":
-            retained = {column: col(column) for column in self._spec.columns}
-            retained.update(obs or {})
-            obs = retained
-        else:
-            retained = {column: col(column) for column in self._spec.columns}
-            retained.update(var or {})
-            var = retained
+        # group keys are always retained so future grouped calls keep working
+        destination = into if into in {"obs", "var"} else self._axis
+        if destination == self._axis:
+            retained: dict[str, Any] = {column: col(column) for column in self._spec.columns}
+            retained.update(assignments or {})
+            assignments = retained
         result = transmute_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
+            assignments,
+            into=destination,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
             _group_axis=self._axis,
@@ -268,26 +310,17 @@ class GroupedAnnData:
 
     def mutate(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
-        layer: str | None = None,
+        assignments: Mapping[str, Any] | None = None,
+        *,
+        into: str = "obs",
         inplace: bool = False,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         plan = self._plan()
         result = mutate_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
+            assignments,
+            into=into,
             inplace=inplace,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
@@ -297,26 +330,18 @@ class GroupedAnnData:
 
     def summarize(
         self,
-        obs: Mapping[str, Any] | None = None,
-        var: Mapping[str, Any] | None = None,
-        x: Mapping[str, Any] | None = None,
-        raw: Mapping[str, Any] | None = None,
-        obsm: Mapping[str, Mapping[str, Any]] | None = None,
-        varm: Mapping[str, Mapping[str, Any]] | None = None,
-        layer: str | None = None,
+        stats: Mapping[str, Any] | None = None,
+        *,
+        by: Selector | None = None,
+        source: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
         plan = self._plan()
         result = summarize_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
+            stats,
             by=list(self._spec.columns),
-            layer=layer,
+            source=source,
             max_matrix_values=max_matrix_values,
             _group_plan=plan,
         ).reset_index(drop=True)
@@ -372,32 +397,23 @@ class GroupedAnnData:
 
     def arrange(
         self,
-        obs: Expression | Sequence[Expression] | None = None,
-        var: Expression | Sequence[Expression] | None = None,
-        x: Expression | Sequence[Expression] | None = None,
-        raw: Expression | Sequence[Expression] | None = None,
-        obsm: SourceSelectors | None = None,
-        varm: SourceSelectors | None = None,
-        layer: str | None = None,
+        *by: Expression | Sequence[Expression],
+        source: str | None = None,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         plan = self._plan()
-        result = arrange_adata(
-            self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            layer=layer,
-            copy=copy,
-            max_matrix_values=max_matrix_values,
-            _group_positions=plan.positions,
-            _group_axis=self._axis,
+        return self._wrap(
+            arrange_adata(
+                self._adata,
+                *by,
+                source=source,
+                copy=copy,
+                max_matrix_values=max_matrix_values,
+                _group_positions=plan.positions,
+                _group_axis=self._axis,
+            )
         )
-        return self._wrap(result)
 
     def distinct(
         self,

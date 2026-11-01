@@ -24,7 +24,7 @@ def test_skill_trigger_description_covers_core_user_phrases() -> None:
     skill_text = (install.bundled_skill_dir() / "SKILL.md").read_text()
     description = next(line for line in skill_text.splitlines() if line.startswith("description: "))
 
-    for phrase in ["adata.ap", "to_df", "to_tidy", "plotnine", "single-cell"]:
+    for phrase in ["adata.ap", "to_wide", "to_tidy", "plotnine", "single-cell"]:
         assert phrase in description
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -11,9 +12,26 @@ from anndata import AnnData
 from annplyr._errors import IncompatibleAxisError, SelectionError, UnknownColumnError
 from annplyr._expr import AnnplyrExpr
 from annplyr._frames import VIRTUAL_COLUMNS, evaluate_select, obs_frame, var_frame
+from annplyr._resolve import resolve_grouping_keys
 
 Axis = Literal["obs", "var"]
 _MISSING_OBJECT_KEY = object()
+
+
+def _as_keys(selector: Any) -> tuple[Any, ...]:
+    """Normalize one axis' grouping keys to a tuple without splitting a name.
+
+    ``group_by`` receives ``*by``, so a single argument arrives already wrapped
+    in a tuple. Unwrapping a lone string would spell it out letter by letter, so
+    only genuine sequences are expanded.
+    """
+    if selector is None:
+        return ()
+    if isinstance(selector, str):
+        return (selector,)
+    if isinstance(selector, Sequence) and not isinstance(selector, (str, bytes)):
+        return tuple(selector)
+    return (selector,)
 
 
 @dataclass(frozen=True)
@@ -30,11 +48,12 @@ class GroupSpec:
         if obs is None and var is None:
             raise SelectionError("group_by requires obs or var metadata columns")
         axis: Axis = "obs" if obs is not None else "var"
-        selector = obs if obs is not None else var
-        if isinstance(selector, (AnnplyrExpr, nw.Expr)):
+        keys = _as_keys(obs if obs is not None else var)
+        computed = [key for key in keys if isinstance(key, (AnnplyrExpr, nw.Expr))]
+        if computed:
             raise SelectionError("group_by accepts existing metadata names or tidy selectors, not computed expressions")
         frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
-        selected = evaluate_select(frame, selector)
+        selected = evaluate_select(frame, resolve_grouping_keys(keys))
         columns = tuple(str(column) for column in selected.columns)
         available = cast(pd.DataFrame, adata.obs if axis == "obs" else adata.var).columns
         if not columns:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from annplyr._grouped import GroupedAnnData
+from annplyr._tidy import TidyAnnData
 from annplyr._typing import (
     AnnDataWithAnnplyr,
     Axis,
@@ -34,4 +35,5 @@ __all__ = [
     "Selector",
     "Source",
     "SourceSelectors",
+    "TidyAnnData",
 ]

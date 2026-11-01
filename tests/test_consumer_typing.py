@@ -16,9 +16,10 @@ ROOT = Path(__file__).parents[1]
 def test_public_runtime_types_and_typing_aliases_are_complete(dense_adata: AnnData) -> None:
     assert ap.AnnplyrAccessor is type(dense_adata.ap)
     assert isinstance(ap.col("score"), ap.AnnplyrExpr)
-    assert isinstance(dense_adata.ap.group_by(obs="batch"), ap.GroupedAnnData)
+    assert isinstance(dense_adata.ap.group_by("batch"), ap.GroupedAnnData)
     assert dense_adata.ap.group_by() is dense_adata
-    assert apt.AnnDataWithAnnplyr is AnnData
+    assert apt.AnnDataWithAnnplyr is ap.TidyAnnData
+    assert issubclass(ap.TidyAnnData, AnnData)
     assert set(apt.__all__) == {
         "AnnDataWithAnnplyr",
         "Axis",
@@ -33,15 +34,15 @@ def test_public_runtime_types_and_typing_aliases_are_complete(dense_adata: AnnDa
         "Selector",
         "Source",
         "SourceSelectors",
+        "TidyAnnData",
     }
 
 
 def test_group_by_overloads_distinguish_grouped_and_ungrouped_returns() -> None:
     overloads = get_overloads(ap.AnnplyrAccessor.group_by)
-    assert len(overloads) == 3
+    assert len(overloads) == 2
     assert [overload.__annotations__["return"] for overload in overloads] == [
         "AnnDataWithAnnplyr",
-        "GroupedAnnData",
         "GroupedAnnData",
     ]
 

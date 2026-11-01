@@ -213,7 +213,7 @@ def test_sparse_frames_preserve_sparse_dtypes_for_matrix_sources(sparse_adata: A
     frame = source_frame(sparse_adata, "x")
 
     assert all(isinstance(dtype, pd.SparseDtype) for dtype in frame.dtypes)
-    filtered = sparse_adata.ap.filter(x=ap.col("g3") >= 40, layer="counts")
+    filtered = sparse_adata.ap.filter(ap.col("counts:g3") >= 40)
     assert filtered.obs_names.tolist() == ["c3", "c4"]
 
 
@@ -245,7 +245,7 @@ def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData)
         )
 
         with pytest.raises(ap.AnnplyrError, match="backed"):
-            backed.ap.mutate(obs={"double_score": ap.col("score") * 2})
+            backed.ap.mutate({"double_score": ap.col("score") * 2})
     finally:
         backed.file.close()
 
@@ -255,7 +255,7 @@ def test_pairwise_containers_remain_aligned_after_axis_reordering(dense_adata: A
     adata.obsp["connectivities"] = np.arange(adata.n_obs * adata.n_obs).reshape(adata.n_obs, adata.n_obs)
     adata.varp["correlations"] = np.arange(adata.n_vars * adata.n_vars).reshape(adata.n_vars, adata.n_vars)
 
-    arranged = adata.ap.arrange(obs=ap.desc("score"), var="length")
+    arranged = adata.ap.arrange(ap.desc("score"), ap.col("var:length"))
 
     obs_order = [adata.obs_names.get_loc(name) for name in arranged.obs_names]
     var_order = [adata.var_names.get_loc(name) for name in arranged.var_names]
@@ -273,9 +273,9 @@ def test_expression_verbs_do_not_call_anndata_to_df(monkeypatch, dense_adata: An
 
     monkeypatch.setattr(dense_adata, "to_df", fail_to_df)
 
-    filtered = dense_adata.ap.filter(x=ap.col("g0") > 1)
+    filtered = dense_adata.ap.filter(ap.col("x:g0") > 1)
     assert filtered.obs_names.tolist() == ["c1", "c3", "c4"]
-    mutated = dense_adata.ap.mutate(x={"g3_counts": ap.col("g3")})
+    mutated = dense_adata.ap.mutate({"g3_counts": ap.col("x:g3")})
     assert mutated.obs["g3_counts"].tolist() == [2.0, 1.0, 0.0, 8.0, 4.0]
 
 
@@ -287,7 +287,7 @@ def test_metadata_assignment_preserves_common_extension_dtypes(dense_adata: AnnD
     adata.obs["label"] = pd.Series(["x", "y", None, "z", "x"], index=adata.obs_names, dtype="string")
 
     mutated = adata.ap.mutate(
-        obs={
+        {
             "cluster_copy": ap.col("cluster"),
             "nullable_copy": ap.col("nullable_n"),
             "flag_copy": ap.col("flag"),

@@ -37,19 +37,19 @@ def _grouped_fixture(*, duplicate_names: bool = False) -> AnnData:
 
 def test_group_spec_resolves_once_and_rejects_computed_virtual_and_empty_selection() -> None:
     adata = _grouped_fixture()
-    grouped = adata.ap.group_by(obs=ap.starts_with("gro"))
+    grouped = adata.ap.group_by(ap.starts_with("gro"))
     assert grouped.group_vars() == ["group"]
 
     with pytest.raises(SelectionError, match="computed"):
-        adata.ap.group_by(obs=ap.col("group"))
+        adata.ap.group_by(ap.col("group"))
     with pytest.raises(SelectionError):
-        adata.ap.group_by(obs=nw.col("group"))
+        adata.ap.group_by(nw.col("group"))
     with pytest.raises(SelectionError):
-        adata.ap.group_by(obs=ap.obs_names)
+        adata.ap.group_by(ap.obs_names)
     with pytest.raises(SelectionError, match="at least one"):
-        adata.ap.group_by(obs=ap.any_of(["missing"]))
+        adata.ap.group_by(ap.any_of(["missing"]))
     with pytest.raises(SelectionError):
-        adata.ap.group_by(obs=ap.col("value") + 1)
+        adata.ap.group_by(ap.col("value") + 1)
 
     del adata.obs["group"]
     with pytest.raises(UnknownColumnError, match="Stored grouping"):
@@ -57,7 +57,7 @@ def test_group_spec_resolves_once_and_rejects_computed_virtual_and_empty_selecti
 
 
 def test_group_plan_is_first_seen_na_inclusive_observed_and_positional() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs="group")
+    grouped = _grouped_fixture().ap.group_by("group")
     keys = grouped.group_keys()
     assert keys["group"].astype(object).where(keys["group"].notna(), "NA").tolist() == ["b", "a", "NA"]
     assert isinstance(keys["group"].dtype, pd.CategoricalDtype)
@@ -80,7 +80,7 @@ def test_group_fast_paths_canonicalize_mixed_object_null_sentinels() -> None:
         index=names,
     )
     adata = AnnData(X=np.zeros((4, 1)), obs=obs, var=pd.DataFrame(index=["g0"]))
-    grouped = adata.ap.group_by(obs="group")
+    grouped = adata.ap.group_by("group")
 
     keys = grouped.group_keys()
     count = grouped.count()
@@ -97,10 +97,10 @@ def test_group_fast_paths_canonicalize_mixed_object_null_sentinels() -> None:
 @pytest.mark.filterwarnings("ignore:Observation names are not unique")
 @pytest.mark.filterwarnings("ignore:Variable names are not unique")
 def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names() -> None:
-    grouped = _grouped_fixture(duplicate_names=True).ap.group_by(obs="group")
+    grouped = _grouped_fixture(duplicate_names=True).ap.group_by("group")
     operations = {
-        "filter": grouped.filter(obs=ap.row_number() == 1),
-        "arrange": grouped.arrange(obs="value"),
+        "filter": grouped.filter(ap.row_number() == 1),
+        "arrange": grouped.arrange(ap.col("value")),
         "distinct": grouped.distinct(obs="value"),
         "slice": grouped.slice(1),
         "head": grouped.slice_head(1),
@@ -121,11 +121,11 @@ def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names
 
 
 def test_grouped_select_transmute_rename_and_relocate_retain_or_update_keys() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs=["group", "id"])
+    grouped = _grouped_fixture().ap.group_by(["group", "id"])
     selected = grouped.select(obs="value")
     assert selected.ungroup().obs.columns.tolist() == ["group", "id", "value"]
 
-    transmuted = grouped.transmute(obs={"double": ap.col("value") * 2})
+    transmuted = grouped.transmute({"double": ap.col("value") * 2})
     assert transmuted.ungroup().obs.columns.tolist() == ["group", "id", "double"]
     assert transmuted.group_vars() == ["group", "id"]
 
@@ -138,10 +138,10 @@ def test_grouped_select_transmute_rename_and_relocate_retain_or_update_keys() ->
 
 
 def test_grouped_inplace_identity_and_key_mutation_use_old_plan_then_regroup() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs="group")
+    grouped = _grouped_fixture().ap.group_by("group")
     underlying = grouped.ungroup()
     result = grouped.mutate(
-        obs={
+        {
             "within": ap.row_number(),
             "group": ap.if_else(ap.row_number() == 1, "first", "rest"),
         },
@@ -164,9 +164,9 @@ def test_grouped_inplace_identity_and_key_mutation_use_old_plan_then_regroup() -
 
 
 def test_grouped_mutate_scatter_preserves_extension_and_categorical_dtypes() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs="group")
+    grouped = _grouped_fixture().ap.group_by("group")
     result = grouped.mutate(
-        obs={
+        {
             "nullable_copy": ap.col("nullable"),
             "flag_copy": ap.col("flag"),
             "text_copy": ap.col("text"),
@@ -180,8 +180,8 @@ def test_grouped_mutate_scatter_preserves_extension_and_categorical_dtypes() -> 
 
 
 def test_grouped_summary_count_and_tally_share_plan_order_and_key_dtypes() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs="group")
-    summary = grouped.summarize(obs={"mean": ap.mean("value")})
+    grouped = _grouped_fixture().ap.group_by("group")
+    summary = grouped.summarize({"mean": ap.mean("value")})
     count = grouped.count()
     tally = grouped.tally(wt="value")
     assert summary["group"].astype(object).where(summary["group"].notna(), "NA").tolist() == ["b", "a", "NA"]
@@ -196,7 +196,7 @@ def test_grouped_weighted_count_does_not_collide_with_internal_column_names() ->
     internal_name = "__annplyr_group_weight__"
     adata.obs = adata.obs.rename(columns={"group": internal_name})
 
-    result = adata.ap.group_by(obs=internal_name).count(wt="value")
+    result = adata.ap.group_by(internal_name).count(wt="value")
 
     assert result[internal_name].astype(object).where(result[internal_name].notna(), "NA").tolist() == ["b", "a", "NA"]
     assert result["n"].tolist() == [7, 6, 5]
@@ -204,7 +204,7 @@ def test_grouped_weighted_count_does_not_collide_with_internal_column_names() ->
 
 def test_all_six_grouped_joins_execute_globally_and_update_suffixed_key() -> None:
     adata = _grouped_fixture()
-    grouped = adata.ap.group_by(obs="group")
+    grouped = adata.ap.group_by("group")
     right = pd.DataFrame(
         {
             "id": [12, 10, 15, 11, 14, 13],
@@ -234,12 +234,12 @@ def test_all_six_grouped_joins_execute_globally_and_update_suffixed_key() -> Non
 def test_grouped_var_axis_and_non_group_axis_join_remain_positional() -> None:
     adata = _grouped_fixture(duplicate_names=True)
     adata.var["gene_id"] = [0, 1, 2]
-    grouped_var = adata.ap.group_by(var="kind")
+    grouped_var = adata.ap.group_by("kind", axis="var")
     sliced = grouped_var.slice_head(1)
     assert sliced.ungroup().X[0, :].tolist() == [0, 1]
     assert sliced.group_vars() == ["kind"]
 
-    grouped_obs = adata.ap.group_by(obs="group")
+    grouped_obs = adata.ap.group_by("group")
     right = pd.DataFrame({"gene_id": [2, 0, 1], "label": ["c", "a", "b"]})
     joined = grouped_obs.right_join(right, by="gene_id", axis="var")
     assert joined.ungroup().X[0, :].tolist() == [2, 0, 1]
@@ -275,7 +275,7 @@ def test_grouped_shape_verbs_have_explicit_copy_true_signatures() -> None:
 
 
 def test_grouped_pipe_passes_wrapper_and_supports_keyword_injection() -> None:
-    grouped = _grouped_fixture().ap.group_by(obs="group")
+    grouped = _grouped_fixture().ap.group_by("group")
     assert grouped.pipe(lambda value: value) is grouped
     assert grouped.pipe((lambda *, data: data, "data")) is grouped
     with pytest.raises(AnnplyrError, match="both the pipe target"):
@@ -283,7 +283,7 @@ def test_grouped_pipe_passes_wrapper_and_supports_keyword_injection() -> None:
 
 
 def test_grouped_matrix_methods_expose_budget_and_reject_before_read(monkeypatch) -> None:
-    import annplyr._verbs as verbs
+    import annplyr._sources as sources
 
     methods = ["filter", "arrange", "distinct", "mutate", "transmute", "summarize", "summarise"]
     for method in methods:
@@ -301,10 +301,10 @@ def test_grouped_matrix_methods_expose_budget_and_reject_before_read(monkeypatch
             return pd.DataFrame(np.zeros((len(rows), len(columns))))
 
     sentinel = Sentinel()
-    monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: sentinel)
-    grouped = _grouped_fixture().ap.group_by(obs="group")
+    monkeypatch.setattr(sources, "source_adapter", lambda *args, **kwargs: sentinel)
+    grouped = _grouped_fixture().ap.group_by("group")
     with pytest.raises(AnnplyrError, match="materialize 6 matrix values"):
-        grouped.filter(x=ap.col("a") > 0, max_matrix_values=5)
+        grouped.filter(ap.col("x:a") > 0, max_matrix_values=5)
     assert sentinel.reads == 0
 
 
@@ -314,7 +314,7 @@ def test_high_cardinality_plan_has_one_nonempty_group_per_first_seen_key() -> No
         X=np.zeros((size, 1), dtype=np.float32),
         obs=pd.DataFrame({"key": pd.array(np.arange(size), dtype="Int64")}),
     )
-    grouped = adata.ap.group_by(obs="key")
+    grouped = adata.ap.group_by("key")
     plan = grouped._plan()
     assert len(plan.positions) == size
     assert plan.first_positions.tolist() == list(range(size))

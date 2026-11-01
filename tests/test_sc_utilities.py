@@ -39,8 +39,7 @@ def test_sample_summary_and_add_sample_meta_use_existing_tidy_verbs(dense_adata:
     summary = ap.sample_summary(
         dense_adata,
         "batch",
-        obs={"mean_score": ap.mean("score")},
-        x={"mean_g0": ap.mean("g0")},
+        {"mean_score": ap.mean("score"), "mean_g0": ap.mean("x:g0")},
     )
 
     pd.testing.assert_frame_equal(

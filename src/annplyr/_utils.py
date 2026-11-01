@@ -88,14 +88,25 @@ def sample_meta(
 def sample_summary(
     adata: AnnData,
     sample: str,
+    stats: Mapping[str, Any] | None = None,
     *,
-    obs: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    layer: str | None = None,
+    source: str | None = None,
+    max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
-    """Summarize observation metadata and selected expression by sample."""
+    """Summarize observation metadata and selected expression by sample.
+
+    ``stats`` uses the same flat aggregate syntax as
+    :meth:`annplyr.AnnplyrAccessor.summarize`, so a matrix aggregate is named
+    with a qualifier such as ``ap.mean("raw:LYZ")``.
+    """
     _check_obs_column(adata, sample)
-    return summarize_adata(adata, obs=obs, x=x, by=sample, layer=layer)
+    return summarize_adata(
+        adata,
+        stats,
+        by=sample,
+        source=source,
+        max_matrix_values=max_matrix_values,
+    )
 
 
 def add_sample_meta(

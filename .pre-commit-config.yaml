@@ -19,6 +19,20 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
         types_or: [python, pyi, jupyter]
+  - repo: local
+    hooks:
+      - id: render-typing-contract
+        name: verify generated public typing contract
+        entry: python scripts/render_typing_contract.py --check
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: render-tidy-stub
+        name: verify generated TidyAnnData stub
+        entry: python scripts/render_tidy_stub.py --check
+        language: system
+        pass_filenames: false
+        types: [python]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

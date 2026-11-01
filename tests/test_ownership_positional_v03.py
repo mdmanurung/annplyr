@@ -58,7 +58,7 @@ def test_shape_copy_is_independent_across_every_aligned_container() -> None:
 def test_copy_false_is_nonmutating_and_may_be_a_view() -> None:
     source = _aligned_adata()
     before = source.copy()
-    result = source.ap.filter(obs=ap.col("value") > 1, copy=False)
+    result = source.ap.filter(ap.col("value") > 1, copy=False)
     assert result.obs_names.tolist() == ["c0", "c2", "c3"]
     np.testing.assert_array_equal(source.X, before.X)
     pd.testing.assert_frame_equal(source.obs, before.obs)
@@ -90,7 +90,7 @@ def test_same_shape_inplace_identity_and_validation_before_write() -> None:
     pd.testing.assert_frame_equal(adata.obs, snapshot)
 
     with pytest.raises(SelectionError):
-        adata.ap.mutate(obs={"would_write": ap.lit(1), "bad": ap.col("missing")}, inplace=True)
+        adata.ap.mutate({"would_write": ap.lit(1), "bad": ap.col("missing")}, inplace=True)
     assert "would_write" not in adata.obs
 
 
@@ -116,8 +116,8 @@ def test_relocate_x_and_sorted_counts_preserve_exact_inplace_identity() -> None:
 def test_positional_verbs_and_joins_are_unambiguous_with_duplicate_axis_names() -> None:
     adata = _aligned_adata(duplicate_names=True)
 
-    assert adata.ap.filter(obs=ap.col("value") >= 2).X[:, 0].tolist() == [0, 6, 9]
-    assert adata.ap.arrange(obs="value").X[:, 0].tolist() == [3, 0, 6, 9]
+    assert adata.ap.filter(ap.col("value") >= 2).X[:, 0].tolist() == [0, 6, 9]
+    assert adata.ap.arrange(ap.col("value")).X[:, 0].tolist() == [3, 0, 6, 9]
     assert adata.ap.distinct(obs="value").X[:, 0].tolist() == [0, 3, 9]
     assert adata.ap.slice(1, 0).X[:, 0].tolist() == [3, 0]
     assert adata.ap.select(obs="value").X[:, 0].tolist() == [0, 3, 6, 9]
@@ -136,8 +136,8 @@ def test_positional_verbs_and_joins_are_unambiguous_with_duplicate_axis_names() 
     assert semi.X[:, 0].tolist() == [0, 3, 6, 9]
     assert anti.X[:, 0].tolist() == [0, 6]
 
-    assert adata.ap.filter(var=ap.col("kind") == "b").X[0, :].tolist() == [0, 2]
-    assert adata.ap.arrange(var="kind").X[0, :].tolist() == [1, 0, 2]
+    assert adata.ap.filter(ap.col("var:kind") == "b").X[0, :].tolist() == [0, 2]
+    assert adata.ap.arrange(ap.col("var:kind")).X[0, :].tolist() == [1, 0, 2]
     assert adata.ap.distinct(var="kind", axis="var").X[0, :].tolist() == [0, 1]
     assert adata.ap.slice(1, 0, axis="var").X[0, :].tolist() == [1, 0]
     assert adata.ap.select(var="kind").X[0, :].tolist() == [0, 1, 2]
@@ -151,7 +151,7 @@ def test_transmute_has_no_ownership_switch_and_is_always_independent() -> None:
     assert "copy" not in signature.parameters
     assert "inplace" not in signature.parameters
     source = _aligned_adata()
-    result = source.ap.transmute(obs={"twice": ap.col("value") * 2})
+    result = source.ap.transmute({"twice": ap.col("value") * 2})
     assert result is not source
     result.X[0, 0] = -1
     assert source.X[0, 0] == 0

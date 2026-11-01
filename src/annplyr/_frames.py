@@ -263,7 +263,8 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
         return frame.index
     work = with_row_number(prepare_sparse_for_arithmetic(frame))
     try:
-        filtered = nw.from_native(work).filter(*exprs).to_native()
+        # The row expression broadcasts scalar predicates, as tidy filtering requires.
+        filtered = nw.from_native(work).filter(*[(nw.col(ROW_NUMBER) > 0) & expr for expr in exprs]).to_native()
     except ColumnNotFoundError as exc:
         msg = f"Unknown column in filter predicate: {exc}"
         raise UnknownColumnError(msg) from exc

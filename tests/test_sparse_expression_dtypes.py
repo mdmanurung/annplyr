@@ -42,32 +42,34 @@ def sparse_adata(dtype: np.dtype | type) -> AnnData:
 def test_two_matrix_columns_combine_for_every_sparse_subtype(dtype: np.dtype | type) -> None:
     adata = sparse_adata(dtype)
 
-    mutated = adata.ap.mutate(x={"total": ap.col("g1") + ap.col("g2")})
-
+    mutated = adata.ap.mutate({"total": ap.col("x:g1") + ap.col("x:g2")})
     assert mutated.obs["total"].tolist() == [3, 3, 5, 7]
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_narrow_sparse_subtypes_combine_in_every_evaluating_verb(dtype: np.dtype | type) -> None:
     adata = sparse_adata(dtype)
-    total = ap.col("g1") + ap.col("g2")
+    total = ap.col("x:g1") + ap.col("x:g2")
 
-    assert adata.ap.filter(x=total > 3).obs_names.tolist() == ["cell_2", "cell_3"]
-    assert adata.ap.arrange(x=ap.desc(total)).obs_names.tolist() == [
+    assert adata.ap.filter(total > 3).obs_names.tolist() == ["cell_2", "cell_3"]
+    assert adata.ap.arrange(ap.desc(total)).obs_names.tolist() == [
         "cell_3",
         "cell_2",
         "cell_0",
         "cell_1",
     ]
-    assert adata.ap.summarize(x={"mean_total": ap.mean(total)}, by="group")["mean_total"].tolist() == [3.0, 6.0]
-    grouped = adata.ap.group_by(obs="group").summarize(x={"mean_total": ap.mean(total)})
+    assert adata.ap.summarize({"mean_total": ap.mean("x:g1") + ap.mean("x:g2")}, by="group")["mean_total"].tolist() == [
+        3.0,
+        6.0,
+    ]
+    grouped = adata.ap.group_by("group").summarize({"mean_total": ap.mean("x:g1") + ap.mean("x:g2")})
     assert grouped["mean_total"].tolist() == [3.0, 6.0]
 
 
 def test_exports_keep_the_source_sparse_subtype() -> None:
     adata = sparse_adata(np.float32)
 
-    wide = adata.ap.to_df(x=["g1", "g2"])
+    wide = adata.ap.to_wide(x=["g1", "g2"])
     long = adata.ap.to_tidy(obs=["group"], x=["g1", "g2"], max_matrix_values=2 * adata.n_obs)
 
     assert [str(dtype) for dtype in wide.dtypes] == ["Sparse[float32, 0.0]", "Sparse[float32, 0.0]"]
@@ -77,7 +79,6 @@ def test_exports_keep_the_source_sparse_subtype() -> None:
 def test_promotion_does_not_write_through_to_the_source_matrix() -> None:
     adata = sparse_adata(np.float32)
 
-    adata.ap.mutate(x={"total": ap.col("g1") + ap.col("g2")})
-
+    adata.ap.mutate({"total": ap.col("x:g1") + ap.col("x:g2")})
     assert adata.X.dtype == np.float32
     assert "total" not in adata.obs

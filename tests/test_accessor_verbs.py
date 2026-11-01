@@ -18,12 +18,11 @@ def test_import_registers_ap_accessor(dense_adata: AnnData) -> None:
 
 def test_filter_select_and_arrange_match_manual_indexing(dense_adata: AnnData) -> None:
     filtered = dense_adata.ap.filter(
-        obs=ap.col("batch") == "A",
-        x=ap.col("g0") > 20,
-        obsm={"X_pca": ap.col("0") >= 0},
-        var=ap.col("feature_type") == "rna",
-        varm={"loadings": ap.col("0") > 0},
-        layer="counts",
+        ap.col("batch") == "A",
+        ap.col("counts:g0") > 20,
+        ap.col("var:feature_type") == "rna",
+        ap.col("X_pca:0") >= 0,
+        ap.col("loadings:0") > 0,
     )
 
     assert filtered.obs_names.tolist() == ["c4"]
@@ -40,7 +39,7 @@ def test_filter_select_and_arrange_match_manual_indexing(dense_adata: AnnData) -
     assert selected.var.columns.tolist() == ["chrom"]
     assert selected.var_names.tolist() == ["g0", "g3"]
 
-    arranged = dense_adata.ap.arrange(obs=ap.desc("score"), var=ap.col("length"))
+    arranged = dense_adata.ap.arrange(ap.desc("score"), ap.col("var:length"))
 
     assert arranged.obs_names.tolist() == ["c3", "c4", "c1", "c0", "c2"]
     assert arranged.var_names.tolist() == ["g3", "g0", "g2", "g1"]
@@ -76,35 +75,34 @@ def test_mutate_writes_obs_and_var_columns_from_read_only_sources(dense_adata: A
     original_obsm = dense_adata.obsm["X_pca"].copy()
     original_varm = dense_adata.varm["loadings"].copy()
 
-    mutated = dense_adata.ap.mutate(
-        obs={"double_score": ap.col("score") * 2},
-        var={"length_kb": ap.col("length") / 1000},
-        x={"g0_counts": ap.col("g0")},
-        obsm={"X_pca": {"pc0": ap.col("0")}},
-        varm={"loadings": {"loading0": ap.col("0")}},
-        layer="counts",
-    )
+    mutated = dense_adata.ap.mutate({"double_score": ap.col("score") * 2, "g0_counts": ap.col("counts:g0")})
 
     assert "double_score" not in dense_adata.obs
     assert mutated is not dense_adata
     assert mutated.obs["double_score"].tolist() == [2.0, 4.0, 1.0, 6.0, 5.0]
     assert mutated.obs["g0_counts"].tolist() == [10.0, 20.0, 0.0, 50.0, 30.0]
-    assert mutated.obs["pc0"].tolist() == [0.1, -0.2, 0.3, 1.0, 0.5]
-    assert mutated.var["length_kb"].tolist() == [0.1, 0.2, 0.15, 0.08]
-    assert mutated.var["loading0"].tolist() == [0.5, -0.1, 0.3, 1.2]
+    # one destination per call: obsm and varm land in their own calls
+    assert "pc0" not in mutated.obs
+    obs_meta = mutated.ap.mutate({"pc0": ap.col("X_pca:0")})
+    assert obs_meta.obs["pc0"].tolist() == [0.1, -0.2, 0.3, 1.0, 0.5]
+    var_meta = mutated.ap.mutate(
+        {"length_kb": ap.col("var:length") / 1000, "loading0": ap.col("loadings:0")}, into="var"
+    )
+    assert var_meta.var["length_kb"].tolist() == [0.1, 0.2, 0.15, 0.08]
+    assert var_meta.var["loading0"].tolist() == [0.5, -0.1, 0.3, 1.2]
     np.testing.assert_array_equal(mutated.X, original_x)
     np.testing.assert_array_equal(mutated.obsm["X_pca"], original_obsm)
     np.testing.assert_array_equal(mutated.varm["loadings"], original_varm)
 
 
 def test_grouped_iteration_summarize_count_and_by_arguments(dense_adata: AnnData) -> None:
-    grouped = dense_adata.ap.group_by(obs="batch")
+    grouped = dense_adata.ap.group_by("batch")
 
     groups = list(grouped)
     assert [key for key, _ in groups] == [{"batch": "A"}, {"batch": "B"}]
     assert [group.obs_names.tolist() for _, group in groups] == [["c0", "c1", "c4"], ["c2", "c3"]]
 
-    summary = grouped.summarize(obs={"mean_score": ap.mean("score"), "cells": ap.n()})
+    summary = grouped.summarize({"mean_score": ap.mean("score"), "cells": ap.n()})
     expected = pd.DataFrame({"batch": ["A", "B"], "mean_score": [11 / 6, 7 / 4], "cells": [3, 2]})
     pd.testing.assert_frame_equal(summary.reset_index(drop=True), expected)
 
@@ -114,7 +112,7 @@ def test_grouped_iteration_summarize_count_and_by_arguments(dense_adata: AnnData
         pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),
     )
 
-    one_off = dense_adata.ap.summarise(obs={"max_score": ap.max("score")}, by="batch")
+    one_off = dense_adata.ap.summarise({"max_score": ap.max("score")}, by="batch")
     pd.testing.assert_frame_equal(
         one_off.reset_index(drop=True),
         pd.DataFrame({"batch": ["A", "B"], "max_score": [2.5, 3.0]}),
@@ -123,8 +121,7 @@ def test_grouped_iteration_summarize_count_and_by_arguments(dense_adata: AnnData
 
 def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) -> None:
     obs_summary = dense_adata.ap.summarize(
-        x={"mean_g0": ap.mean("g0")},
-        obsm={"X_pca": {"mean_pc0": ap.mean("0")}},
+        {"mean_g0": ap.mean("x:g0"), "mean_pc0": ap.mean("X_pca:0")},
         by="batch",
     )
     pd.testing.assert_frame_equal(
@@ -133,8 +130,8 @@ def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) 
     )
 
     var_summary = dense_adata.ap.summarize(
-        varm={"loadings": {"max_loading0": ap.max("0")}},
-        by="feature_type",
+        {"max_loading0": ap.max("loadings:0")},
+        by="var:feature_type",
     )
     pd.testing.assert_frame_equal(
         var_summary.reset_index(drop=True),
@@ -142,12 +139,12 @@ def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) 
     )
 
 
-def test_pull_to_df_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> None:
+def test_pull_to_wide_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> None:
     pulled = dense_adata.ap.pull(x="g3")
     assert pulled.name == "g3"
     assert pulled.tolist() == [2.0, 1.0, 0.0, 8.0, 4.0]
 
-    wide = dense_adata.ap.to_df(obs=["batch"], x=["g0", "g3"], obsm={"X_pca": ["0"]})
+    wide = dense_adata.ap.to_wide(obs=["batch"], x=["g0", "g3"], obsm={"X_pca": ["0"]})
     assert wide.index.tolist() == dense_adata.obs_names.tolist()
     assert wide.columns.tolist() == ["batch", "g0", "g3", "X_pca_0"]
     assert wide.loc["c3", "X_pca_0"] == 1.0
@@ -159,8 +156,8 @@ def test_pull_to_df_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> None:
 
 
 def test_sparse_anndata_uses_same_expression_semantics(sparse_adata: AnnData) -> None:
-    filtered = sparse_adata.ap.filter(x=ap.col("g3") >= 40, layer="counts")
+    filtered = sparse_adata.ap.filter(ap.col("counts:g3") >= 40)
     assert filtered.obs_names.tolist() == ["c3", "c4"]
 
-    mutated = sparse_adata.ap.mutate(x={"g1_counts": ap.col("g1")}, layer="counts")
+    mutated = sparse_adata.ap.mutate({"g1_counts": ap.col("counts:g1")})
     assert mutated.obs["g1_counts"].tolist() == [0.0, 30.0, 10.0, 20.0, 0.0]

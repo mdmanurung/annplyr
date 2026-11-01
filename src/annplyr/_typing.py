@@ -1,27 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import narwhals as nw
 import pandas as pd
-from anndata import AnnData
 
 from annplyr._expr import AnnplyrExpr, AnnplyrSelector
+from annplyr._tidy import TidyAnnData
 
-if TYPE_CHECKING:
-    from annplyr._accessor import AnnplyrAccessor
-
-    class AnnDataWithAnnplyr(AnnData):
-        """Static AnnData view whose registered ``ap`` namespace is visible."""
-
-        @property
-        def ap(self) -> AnnplyrAccessor: ...
-
-else:
-    # Runtime registration modifies AnnData itself. Keeping this as an alias makes
-    # casts free and preserves isinstance behavior; type checkers see the class above.
-    AnnDataWithAnnplyr = AnnData
+# Verb results are real ``TidyAnnData`` objects, so this alias is the concrete
+# class rather than a typing-only stub. It is still an ``AnnData`` subclass, so
+# ``isinstance`` checks keep passing for consumers.
+AnnDataWithAnnplyr = TidyAnnData
 
 
 type Axis = Literal["obs", "var"]
@@ -50,4 +41,5 @@ __all__ = [
     "Selector",
     "Source",
     "SourceSelectors",
+    "TidyAnnData",
 ]

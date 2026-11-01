@@ -55,11 +55,7 @@ def test_distinct_subsets_first_rows_for_unique_metadata(dense_adata: AnnData) -
 
 
 def test_transmute_keeps_only_new_metadata_columns(dense_adata: AnnData) -> None:
-    transmuted = dense_adata.ap.transmute(
-        obs={"score2": ap.col("score") * 2},
-        x={"g0_counts": ap.col("g0")},
-        layer="counts",
-    )
+    transmuted = dense_adata.ap.transmute({"score2": ap.col("score") * 2, "g0_counts": ap.col("counts:g0")})
 
     assert transmuted.obs.columns.tolist() == ["score2", "g0_counts"]
     assert transmuted.obs["score2"].tolist() == [2.0, 4.0, 1.0, 6.0, 5.0]
@@ -79,7 +75,7 @@ def test_tally_and_add_count(dense_adata: AnnData) -> None:
 
 
 def test_everything_ignores_virtual_name_columns_outside_select(dense_adata: AnnData) -> None:
-    wide = dense_adata.ap.to_df(obs=ap.everything())
+    wide = dense_adata.ap.to_wide(obs=ap.everything())
     assert wide.columns.tolist() == dense_adata.obs.columns.tolist()
 
     counted = dense_adata.ap.count(by=ap.everything())
@@ -130,10 +126,10 @@ def test_real_virtual_name_columns_are_not_overwritten(dense_adata: AnnData) -> 
     adata.obs["obs_names"] = ["real"] * adata.n_obs
     adata.var["var_names"] = ["real_var"] * adata.n_vars
 
-    wide = adata.ap.to_df(obs=["obs_names"])
+    wide = adata.ap.to_wide(obs=["obs_names"])
     assert wide["obs_names"].tolist() == ["real"] * adata.n_obs
-    assert adata.ap.filter(obs=ap.obs_names == "c0").obs_names.tolist() == ["c0"]
-    assert adata.ap.filter(obs_names=ap.obs_names == "c1").obs_names.tolist() == ["c1"]
+    assert adata.ap.filter(ap.obs_names == "c0").obs_names.tolist() == ["c0"]
+    assert adata.ap.filter(ap.obs_names == "c1").obs_names.tolist() == ["c1"]
 
 
 def test_select_rejects_computed_columns_for_anndata_alignment(dense_adata: AnnData) -> None:
@@ -146,7 +142,7 @@ def test_select_rejects_computed_columns_for_anndata_alignment(dense_adata: AnnD
 
 def test_mutate_assignments_are_sequential_and_recycle_scalars(dense_adata: AnnData) -> None:
     mutated = dense_adata.ap.mutate(
-        obs={
+        {
             "score2": ap.col("score") * 2,
             "score4": ap.col("score2") * 2,
             "cells": ap.n(),
@@ -160,7 +156,7 @@ def test_mutate_assignments_are_sequential_and_recycle_scalars(dense_adata: AnnD
 
 
 def test_arrange_uses_obs_keys_before_matrix_keys(dense_adata: AnnData) -> None:
-    arranged = dense_adata.ap.arrange(obs="batch", x="g0", layer="counts")
+    arranged = dense_adata.ap.arrange(ap.col("batch"), ap.col("counts:g0"))
 
     assert arranged.obs_names.tolist() == ["c0", "c1", "c4", "c2", "c3"]
 
@@ -170,7 +166,7 @@ def test_advanced_expression_helpers_work_in_summarize_and_mutate(dense_adata: A
     adata.obs["maybe_score"] = [1.0, None, 0.5, None, 2.5]
 
     summary = adata.ap.summarize(
-        obs={
+        {
             "cell_types": ap.n_distinct("cell_type"),
             "first_score": ap.first("score"),
             "last_score": ap.last("score"),
@@ -190,7 +186,7 @@ def test_advanced_expression_helpers_work_in_summarize_and_mutate(dense_adata: A
     )
 
     mutated = adata.ap.mutate(
-        obs={
+        {
             "next_score": ap.lead("score"),
             "previous_score": ap.lag("score", default=-1),
             "score_or_zero": ap.replace_na("maybe_score", 0),
@@ -211,7 +207,7 @@ def test_lag_default_only_fills_shift_boundaries(dense_adata: AnnData) -> None:
     adata = dense_adata.copy()
     adata.obs["maybe_score"] = [1.0, None, 0.5, 3.0, 2.5]
 
-    mutated = adata.ap.mutate(obs={"previous": ap.lag("maybe_score", default=0)})
+    mutated = adata.ap.mutate({"previous": ap.lag("maybe_score", default=0)})
 
     assert mutated.obs["previous"].iloc[0] == 0
     assert mutated.obs["previous"].iloc[1] == 1.0
@@ -222,7 +218,7 @@ def test_summarize_matrix_source_keeps_feature_when_group_name_collides(dense_ad
     adata = dense_adata.copy()
     adata.obs["g0"] = [1, 1, 2, 2, 1]
 
-    summary = adata.ap.summarize(x={"mean_g0": ap.mean("g0")}, by="g0")
+    summary = adata.ap.summarize({"mean_g0": ap.mean("x:g0")}, by="g0")
 
     pd.testing.assert_frame_equal(
         summary.reset_index(drop=True),
@@ -232,7 +228,7 @@ def test_summarize_matrix_source_keeps_feature_when_group_name_collides(dense_ad
 
 def test_rank_and_cumulative_helpers_are_axis_ordered(dense_adata: AnnData) -> None:
     mutated = dense_adata.ap.mutate(
-        obs={
+        {
             "score_rank": ap.min_rank("score"),
             "score_dense_rank": ap.dense_rank("score"),
             "cum_score": ap.cum_sum("score"),

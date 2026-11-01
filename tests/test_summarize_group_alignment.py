@@ -68,8 +68,7 @@ def test_metadata_and_matrix_aggregates_stay_on_their_own_group(source: str) -> 
     adata = make_adata()
 
     summary = adata.ap.summarize(
-        obs={"cells": ap.n(), "mean_score": ap.mean("score")},
-        **{source: {"mean_g1": ap.mean("g1")}},
+        {"cells": ap.n(), "mean_score": ap.mean("score"), "mean_g1": ap.mean(f"{source}:g1")},
         by="label",
     )
 
@@ -83,8 +82,8 @@ def test_metadata_and_matrix_aggregates_stay_on_their_own_group(source: str) -> 
 def test_persistent_grouping_agrees_with_one_off_by() -> None:
     adata = make_adata()
 
-    one_off = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
-    persistent = adata.ap.group_by(obs="label").summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")})
+    one_off = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
+    persistent = adata.ap.group_by("label").summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")})
 
     pd.testing.assert_frame_equal(one_off, persistent)
 
@@ -92,7 +91,7 @@ def test_persistent_grouping_agrees_with_one_off_by() -> None:
 def test_sparse_sources_keep_their_group_alignment() -> None:
     adata = make_adata(sparse.csr_matrix(VALUES))
 
-    summary = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
+    summary = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
 
     reference = expected()
     assert summary["label"].tolist() == reference["label"].tolist()
@@ -103,7 +102,7 @@ def test_missing_group_keys_keep_their_aggregates() -> None:
     adata = make_adata()
     adata.obs["label"] = pd.Series(["zeta", None, "mu", "zeta", None, "zeta"], index=adata.obs_names)
 
-    summary = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
+    summary = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
 
     assert summary["label"].tolist()[0] == "zeta"
     assert pd.isna(summary["label"].tolist()[1])
@@ -117,8 +116,7 @@ def test_multiple_group_keys_stay_aligned() -> None:
     adata.obs["batch"] = ["b2", "b1", "b2", "b2", "b1", "b1"]
 
     summary = adata.ap.summarize(
-        obs={"cells": ap.n()},
-        x={"mean_g1": ap.mean("g1")},
+        {"cells": ap.n(), "mean_g1": ap.mean("x:g1")},
         by=["label", "batch"],
     )
 

@@ -67,8 +67,8 @@ def assert_adata_equal(actual: AnnData, expected: AnnData) -> None:
 
 
 def _run_grouped_pipeline(source: AnnData) -> tuple[Any, AnnData]:
-    grouped = source.ap.group_by(obs="cell_type")
-    result = grouped.mutate(obs={"within_type": ap.row_number()}).arrange(obs=ap.desc("quality_score"))
+    grouped = source.ap.group_by("cell_type")
+    result = grouped.mutate({"within_type": ap.row_number()}).arrange(ap.desc("quality_score"))
     return result, result.ungroup()
 
 
@@ -142,7 +142,7 @@ def test_concatenation_reconstructs_every_aligned_container() -> None:
 def test_scanpy_preprocessing_accepts_annplyr_output() -> None:
     scanpy = pytest.importorskip("scanpy", reason="Scanpy is installed only in the integration environment")
     source = make_representative_adata()
-    result = source.ap.filter(obs=ap.col("qc_pass").fill_null(False)).ap.select(x=["GATA3", "MS4A1", "LYZ", "NKG7"])
+    result = source.ap.filter(ap.col("qc_pass").fill_null(False)).ap.select(x=["GATA3", "MS4A1", "LYZ", "NKG7"])
     source_snapshot = source.copy()
 
     scanpy.pp.normalize_total(result, target_sum=10_000)

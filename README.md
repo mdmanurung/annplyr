@@ -3,6 +3,8 @@
 [![Test](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml)
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
+[![PyPI](https://img.shields.io/pypi/v/annplyr)](https://pypi.org/project/annplyr/)
+<!-- [gap: DOI badge] add after Zenodo mints a DOI: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
 `annplyr` brings tidy, dataframe-style verbs to AnnData. Filter cells, select
 genes, join sample metadata, derive annotations, summarize groups, and build
@@ -26,8 +28,12 @@ import annplyr as ap
 adata = sc.datasets.pbmc3k_processed()
 
 summary = adata.ap.summarize(
-    obs={"cells": ap.n(), "median_genes": ap.median("n_genes")},
-    raw={"mean_MS4A1": ap.mean("MS4A1"), "mean_LYZ": ap.mean("LYZ")},
+    {
+        "cells": ap.n(),
+        "median_genes": ap.median("n_genes"),
+        "mean_MS4A1": ap.mean("raw:MS4A1"),
+        "mean_LYZ": ap.mean("raw:LYZ"),
+    },
     by="louvain",
 )
 print(summary.round(2))
@@ -54,8 +60,8 @@ QC and extraction chain the same way:
 
 ```python
 plot_data = (
-    adata.ap.filter(obs=ap.col("percent_mito") < 0.03)
-    .ap.to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs)
+    adata.ap.filter(ap.col("percent_mito") < 0.03)
+    .to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs)
 )
 print(plot_data.shape)   # (4514, 4)
 ```
@@ -93,4 +99,11 @@ The package also bundles an annplyr Agent Skill. Install or refresh it with
 
 For development setup and checks, see
 [CONTRIBUTING.md](https://github.com/mdmanurung/annplyr/blob/main/CONTRIBUTING.md).
-Citation metadata is available in `CITATION.cff`.
+
+## Citation
+
+If you use `annplyr`, please cite it. GitHub's "Cite this repository" button reads
+[`CITATION.cff`](https://github.com/mdmanurung/annplyr/blob/main/CITATION.cff).
+The accompanying paper is in
+[`paper.md`](https://github.com/mdmanurung/annplyr/blob/main/paper.md)
+[gap: JOSS DOI and Zenodo DOI, add after publication].

@@ -1,10 +1,41 @@
 cff-version: 1.2.0
-message: "If you use annplyr, please cite it using this metadata."
+message: "If you use annplyr, please cite the software and, once published, the JOSS paper."
 title: "annplyr: tidy AnnData wrangling in Python"
+type: software
 authors:
-  - name: "annplyr developers"
+  - family-names: "Manurung"
+    given-names: "Mikhael"
+    email: "mikhael.manurung@gmail.com"
+    # [gap: ORCID] add `orcid: "https://orcid.org/0000-0000-0000-0000"` here.
+    # [gap: affiliation] add `affiliation: "..."` here.
+abstract: >-
+  annplyr brings dplyr-style verbs to AnnData. Users filter, select,
+  mutate, join, group and summarize cells and features through the
+  adata.ap accessor. Every verb that returns AnnData keeps obs aligned
+  with X, layers, raw, embeddings and pairwise matrices. Verbs that
+  return tables give pandas DataFrames.
+keywords:
+  - AnnData
+  - scverse
+  - single-cell
+  - tidy data
+  - dplyr
+  - data wrangling
+  - pandas
 repository-code: "https://github.com/mdmanurung/annplyr"
 url: "https://mdmanurung.github.io/annplyr/"
 license: "BSD-3-Clause"
 version: "0.5.0"
-date-released: "2026-08-10"
+date-released: "2026-09-27"
+# [gap: DOI] add `doi: "10.5281/zenodo.XXXXXXX"` after Zenodo mints one for the release.
+preferred-citation:
+  type: article
+  title: "annplyr: tidy AnnData wrangling in Python"
+  authors:
+    - family-names: "Manurung"
+      given-names: "Mikhael"
+      # [gap: ORCID] [gap: affiliation]
+  journal: "Journal of Open Source Software"
+  # [gap: volume, issue, year, start page and DOI] fill in after JOSS publication.
+  # [gap: JOSS review issue number] needed for the article identifier.
+  status: preprint

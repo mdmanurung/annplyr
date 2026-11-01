@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 from anndata import AnnData
@@ -241,3 +242,19 @@ def test_separate_treats_sep_as_regex_and_handles_na() -> None:
     assert result["post"].tolist()[:2] == ["b", "d"]
     assert pd.isna(result["pre"].iloc[2])
     assert pd.isna(result["post"].iloc[2])
+
+
+def test_arrange_applies_keys_left_to_right_with_bare_names(dense_adata: AnnData) -> None:
+    # A bare name used to be sorted after every expression key, so the last-written key won.
+    assert dense_adata.ap.arrange("batch", ap.desc("score")).obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
+
+
+def test_arrange_sorts_a_categorical_by_category_order() -> None:
+    obs = pd.DataFrame(
+        {"stage": pd.Categorical(["late", "early", "mid"], categories=["early", "mid", "late"])},
+        index=["a", "b", "c"],
+    )
+    adata = AnnData(X=np.zeros((3, 1)), obs=obs)
+
+    assert adata.ap.arrange("stage").obs_names.tolist() == ["b", "c", "a"]
+    assert adata.ap.arrange(ap.desc("stage")).obs_names.tolist() == ["a", "c", "b"]

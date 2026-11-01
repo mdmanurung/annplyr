@@ -688,13 +688,20 @@ def _sort_values_for_frame(frame: pd.DataFrame, by: Any) -> pd.Index:
     ascending: list[bool] = []
     for i, (expr, is_descending) in enumerate(keys):
         name = f"__annplyr_sort_{i}__"
-        selected = nw.from_native(work).select(_sort_expr(expr).alias(name)).to_native()
-        work[name] = selected[name].to_numpy()
+        selected = _select_sort_key(work, expr, name)
+        work[name] = selected[name].array  # a categorical sorts by category order, as in dplyr
         sort_columns.append(name)
         ascending.append(not is_descending)
 
     sorted_frame = work.sort_values(sort_columns, ascending=ascending, kind="mergesort")
     return sorted_frame.index
+
+
+def _select_sort_key(frame: pd.DataFrame, expr: Any, name: str) -> pd.DataFrame:
+    try:
+        return nw.from_native(frame).select(_sort_expr(expr).alias(name)).to_native()
+    except _MISSING_COLUMN_ERRORS as exc:
+        raise UnknownColumnError(_missing_column_message(exc, "sort key")) from exc
 
 
 def _sort_expr(expr: Any) -> Any:
@@ -744,9 +751,12 @@ def arrange_adata(
     planner = RequestPlanner(max_matrix_values)
     frames = resolve.prepare_frames(adata, buckets, planner)
 
+    # Keep the keys in the order written: bare names carry no reference, so bucketing
+    # alone used to put them after every expression key.
     resolved: dict[str, list[tuple[pd.DataFrame, Any]]] = {"obs": [], "var": []}
-    for resolved_source, frame in frames.items():
-        resolved[resolved_source.axis].append((frame, buckets[resolved_source]))
+    for item in items:
+        (item_source,) = resolve.partition_payload(adata, [item], verb="arrange", default_source=default)
+        resolved[item_source.axis].append((frames[item_source], [item]))
 
     obs_idx = _sort_values_for_group_frames(
         adata.n_obs,
@@ -781,8 +791,8 @@ def _sort_values_for_frames(base_index: pd.Index, frame_by_iter: Any) -> pd.Inde
         for expr, is_descending in _sort_keys(by):
             name = f"__annplyr_sort_{len(sort_columns)}__"
             work_frame = with_row_number(prepare_sparse_for_arithmetic(frame))
-            selected = nw.from_native(work_frame).select(_sort_expr(expr).alias(name)).to_native()
-            work[name] = selected[name].to_numpy()
+            selected = _select_sort_key(work_frame, expr, name)
+            work[name] = selected[name].array  # a categorical sorts by category order, as in dplyr
             sort_columns.append(name)
             ascending.append(not is_descending)
     if not sort_columns:
@@ -998,6 +1008,12 @@ def _evaluate_flat_assignments(
     registered for every read before the first adapter read. Later groups see the
     columns earlier groups produced, which is what makes assignments sequential.
     """
+    if not isinstance(assignments, Mapping):
+        msg = (
+            f"{verb} takes a dict of new column names to expressions, not {type(assignments).__name__}; "
+            f"write {verb}({{'name': expression}}), for example {verb}({{'scaled': ap.across(...)}})"
+        )
+        raise SelectionError(msg)
     groups = _flat_assignment_groups(adata, assignments, verb=verb)
     if not groups:
         return []
@@ -1418,7 +1434,7 @@ def prepare_by_frame(frame: pd.DataFrame, by: Any, *, axis: str | None = None) -
         ):
             msg = f"Grouping column {column!r} would overwrite an existing source column"
             raise DuplicateNameError(msg)
-        work[column] = by_frame[column].to_numpy()
+        work[column] = by_frame[column].array  # .array keeps categorical and nullable dtypes
     return work, by_columns
 
 
@@ -1747,6 +1763,11 @@ def _join_adata(
         joined = joined.sort_values(left_key, kind="mergesort")
     positions = joined[left_key].astype(np.intp).to_numpy()
     table = joined.drop(columns=[left_key, right_order, "_merge"], errors="ignore")
+    for column in by_columns:
+        # merging a categorical key against a plain right key demotes it to str and drops the
+        # category order that uns["<key>_colors"] is indexed by; matched keys are left values.
+        if isinstance(left[column].dtype, pd.CategoricalDtype) and column in table.columns:
+            table[column] = table[column].astype(left[column].dtype)
     labels = adata.obs_names.take(positions) if axis == "obs" else adata.var_names.take(positions)
     table.index = labels
     _ensure_unique([str(column) for column in table.columns], source=f"{axis} join")

@@ -85,3 +85,26 @@ def test_pipe_keyword_collision_raises_annplyr_error(dense_adata: AnnData) -> No
 
     with pytest.raises(ap.AnnplyrError, match="pipe target"):
         dense_adata.ap.pipe((identity, "data"), data=dense_adata)
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda a: a.ap.arrange("nope"),
+        lambda a: a.ap.slice_max(ap.col("x:g0"), n=1),  # slice_* read metadata only
+        lambda a: a.ap.slice_min(ap.col("nope"), n=1),
+    ],
+)
+def test_unknown_sort_key_raises_unknown_column_error(dense_adata: AnnData, call) -> None:
+    with pytest.raises(ap.UnknownColumnError):
+        call(dense_adata)
+
+
+def test_select_with_a_repeated_name_raises_duplicate_name_error(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.DuplicateNameError):
+        dense_adata.ap.select(obs=["batch", "batch"])
+
+
+def test_mutate_without_a_dict_names_the_fix(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.SelectionError, match=r"mutate\(\{'name': expression\}\)"):
+        dense_adata.ap.mutate(ap.across(ap.everything()))

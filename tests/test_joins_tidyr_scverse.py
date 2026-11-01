@@ -241,7 +241,7 @@ def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData)
         counted = backed.ap.count(by="batch")
         pd.testing.assert_frame_equal(
             counted.reset_index(drop=True),
-            pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),
+            pd.DataFrame({"batch": pd.Categorical(["A", "B"]), "n": [3, 2]}),  # h5ad stores batch as categorical
         )
 
         with pytest.raises(ap.AnnplyrError, match="backed"):
@@ -299,3 +299,18 @@ def test_metadata_assignment_preserves_common_extension_dtypes(dense_adata: AnnD
     assert str(mutated.obs["nullable_copy"].dtype) == "Int64"
     assert str(mutated.obs["flag_copy"].dtype) == "boolean"
     assert str(mutated.obs["label_copy"].dtype) == "string"
+
+
+def test_join_and_count_keep_categorical_key_dtype_and_order(dense_adata: AnnData) -> None:
+    # A plain right-hand key used to demote the categorical key to str and re-sort its
+    # categories, so uns["<key>_colors"] no longer matched the categories.
+    adata = dense_adata.copy()
+    adata.obs["batch"] = pd.Categorical(adata.obs["batch"], categories=["B", "A"])
+
+    joined = adata.ap.left_join(pd.DataFrame({"batch": ["A"], "tag": ["x"]}), by="batch")
+    assert joined.obs["batch"].dtype == adata.obs["batch"].dtype
+
+    counted = adata.ap.count("batch")
+    assert counted["batch"].dtype == adata.obs["batch"].dtype
+    assert counted["batch"].tolist() == ["A", "B"]  # first-seen order, not category order
+    assert counted["n"].tolist() == [3, 2]

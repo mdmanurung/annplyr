@@ -61,6 +61,10 @@ Docs, build and benchmarks:
 | Benchmark smoke through ASV | `asv_local.py run --quick -E existing -b "^bench_smoke"`, in a scratch copy with the CI benchmark stack | Pass: 5 of 5, after the port. It had failed on the old API. |
 | CITATION.cff | `uvx cffconvert --validate -i CITATION.cff` | Pass: schema 1.2.0 |
 | JOSS PDF | `.github/workflows/draft-pdf.yml` | **Unverified**: runs in GitHub Actions only |
+| Workflow audit | `uvx zizmor@1.29.0 --offline --persona pedantic .github/workflows/` | Pass: 0 findings, after adding `concurrency` to `draft-pdf.yml`. The action is now in `ci-security.md`. |
+| Paper example output | Diff of the `paper.md` table against the doctested `docs/index.md` output | Pass: identical code and output |
+| Docs CI in Actions | `docs.yaml` now runs the notebooks and downloads PBMC3k (about 24 MB) | **Unverified**: run locally only. It needs network, and adds a few minutes. |
+| Error messages name the fix | Raise sites sampled, and the typed errors asserted in the PBMC3k tests | **Partial**: unknown prefixes, sources and a non-dict `mutate` name the fix. Some planner and selection messages state only the problem. |
 
 ## Scientific validation
 
@@ -116,12 +120,15 @@ where they belong.
 - **Release steps, in order**:
   1. Merge this branch.
   2. Turn on the Zenodo GitHub integration.
-  3. Publish GitHub release `v0.5.0`. `release.yaml` builds it, and Zenodo
-     mints the DOI.
-  4. Upload to PyPI.
+  3. On pypi.org, register a pending trusted publisher for project `annplyr`.
+     Use workflow `release.yaml` and environment `pypi`. Create the `pypi`
+     environment in the GitHub repo settings.
+  4. Publish GitHub release `v0.5.0`. `release.yaml` then builds and uploads
+     to PyPI through trusted publishing, and Zenodo mints the DOI.
   5. Put the concept DOI into `CITATION.cff` and the README badge.
-- **JOSS**: submit `paper.md`, then fill `preferred-citation` once it is
-  accepted.
+- **JOSS**: submit `paper.md`. Once JOSS accepts it, uncomment and fill
+  `preferred-citation` in `CITATION.cff`. It stays commented until then, so
+  GitHub cites the software rather than an article that does not exist.
 - **scverse**: open a `meta.yaml` PR to `scverse/ecosystem-packages`. That
   needs the PyPI release first, plus your consent to the listing and to the
   scverse code of conduct.

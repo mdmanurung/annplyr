@@ -75,7 +75,7 @@ Use grouped operations with `group_by`; most verbs operate group-locally on the 
 
 ```python
 # row number within each group; ungroup only at an AnnData boundary
-ranked = adata.ap.group_by(obs="batch").mutate(obs={"group_row": ap.row_number()})
+ranked = adata.ap.group_by("batch").mutate({"group_row": ap.row_number()})
 ranked_adata = ranked.ungroup()
 
 # count observations per group, optionally weighted

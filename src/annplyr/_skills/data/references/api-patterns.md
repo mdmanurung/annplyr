@@ -29,7 +29,7 @@ filtered = typed.ap.filter(ap.col("qc_pass"))
 **Mutation and summaries:**
 - `mutate({name: value, ...}, into="obs", inplace=False)` — write one metadata column per assignment, in order; a later value may read an earlier result. `into="var"` writes the feature axis. Matrix values are read-only.
 - `transmute({name: value, ...}, into="obs", max_matrix_values=...)` — like `mutate` but drops all columns not produced by the call; always independent and has no ownership flag.
-- `group_by(obs=..., var=...)` — return a persistent `GroupedAnnData` wrapper; call `ungroup()` for AnnData.
+- `group_by(*by, axis="obs")` — return a persistent `GroupedAnnData` wrapper; call `ungroup()` for AnnData.
 - `summarize({name: agg, ...}, by=..., max_matrix_values=...)` — aggregate by grouping key, one aggregate per entry; also callable as `summarise`.
 - `count(by=..., wt=..., sort=False, axis="obs", name="n")` — count rows, optionally weighted; returns a DataFrame.
 - `tally(wt=..., sort=False, axis="obs", name="n")` — like `count` without a grouping argument.

@@ -91,6 +91,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - `__all__` grew from 97 to 133 symbols: 35 verb functions plus
   `TidyAnnData`.
 
+### Fixed
+
+- `left_join` and `inner_join` keep a categorical key's dtype and category
+  order, so `uns["<key>_colors"]` stays aligned. `count` and `summarize(by=...)`
+  keys keep categorical and nullable dtypes too.
+- `arrange` applies keys in the order written. Bare names used to sort after
+  every expression key.
+- `arrange` sorts a categorical column by its category order, as dplyr does,
+  not alphabetically.
+- An unknown sort key in `arrange` or `slice_min`/`slice_max` raises
+  `UnknownColumnError` instead of a raw Narwhals error.
+- `select` with a repeated name raises `DuplicateNameError`.
+- `mutate` and `transmute` given something other than a dict raise
+  `SelectionError` naming the fix, instead of `AttributeError`.
+- Verb results write to zarr. anndata's IO registry rejected the
+  `TidyAnnData` subclass.
+- `TidyAnnData` works with anndata 0.13, which removed `AnnData.concatenate`.
+- Every docs page, notebook, the README and the ASV benchmarks use the 0.5.0
+  API. Notebooks now execute during the docs build, so a stale one fails it.
+
+### Dependencies
+
+- Floors raised to the lowest tested versions: `anndata>=0.12.4`,
+  `narwhals>=2.22`, `numpy>=1.26`, `pandas>=2.2.2`, `scipy>=1.12`. A
+  `lowest-direct` test environment checks them in CI.
+
 ### Migration
 
 | Before | After |

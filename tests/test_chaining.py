@@ -111,7 +111,8 @@ def test_anndata_methods_that_build_new_objects_stay_chainable(dense_adata: AnnD
     assert isinstance(wrapped[:2], TidyAnnData)
     assert isinstance(wrapped.copy(), TidyAnnData)
     assert isinstance(wrapped.to_memory(), TidyAnnData)
-    assert isinstance(wrapped.concatenate(wrapped), TidyAnnData)
+    if hasattr(AnnData, "concatenate"):  # removed in anndata 0.13
+        assert isinstance(wrapped.concatenate(wrapped), TidyAnnData)
 
 
 def test_rename_categories_stays_chainable(dense_adata: AnnData) -> None:

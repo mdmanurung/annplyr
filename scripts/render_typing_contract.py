@@ -11,6 +11,8 @@ from typing import Any, get_overloads
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from anndata import AnnData  # noqa: E402
+
 import annplyr  # noqa: E402
 import annplyr.typing as annplyr_typing  # noqa: E402
 
@@ -33,6 +35,10 @@ def _format(value: Any) -> str:
 
 
 def _signature(value: Any) -> tuple[str, str]:
+    # TidyAnnData inherits AnnData's constructor, whose signature changes with
+    # every anndata release; it is anndata's contract, not annplyr's.
+    if inspect.isclass(value) and value.__init__ is AnnData.__init__:
+        return "inherited from anndata.AnnData", "class instance"
     try:
         signature = inspect.signature(value, eval_str=False)
     except (TypeError, ValueError):

@@ -150,8 +150,10 @@ class TidyAnnData(AnnData):
     def rename_categories(self, *args: Any, **kwargs: Any) -> Any:
         return _reclassify(self, super().rename_categories(*args, **kwargs))
 
-    def concatenate(self, *args: Any, **kwargs: Any) -> Any:
-        return _reclassify(self, super().concatenate(*args, **kwargs))
+    if hasattr(AnnData, "concatenate"):  # removed in anndata 0.13
+
+        def concatenate(self, *args: Any, **kwargs: Any) -> Any:
+            return _reclassify(self, super().concatenate(*args, **kwargs))
 
 
 def _without_self(signature: inspect.Signature) -> inspect.Signature:

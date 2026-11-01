@@ -162,7 +162,7 @@ def _looks_mistyped(adata: AnnData, text: str) -> bool:
 
 def _unknown_message(adata: AnnData, text: str) -> str:
     known: list[str] = sorted(RESERVED_QUALIFIERS)
-    known += [f"{name}:" for name in adata.layers]
+    known += [f"{name}:" for name in adata.layers.keys()]
     known += [f"{name}:" for name in adata.obsm]
     known += [f"{name}:" for name in adata.varm]
     head = text.partition(":")[0]

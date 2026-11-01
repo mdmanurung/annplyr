@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from anndata import AnnData
 
@@ -29,7 +29,7 @@ from annplyr._accessor import AnnplyrAccessor
 
 def _make_function(name: str, accessor_method: Callable[..., Any]) -> Callable[..., Any]:
     def verb(adata: AnnData, *args: Any, **kwargs: Any) -> Any:
-        return getattr(adata.ap, name)(*args, **kwargs)
+        return getattr(cast(Any, adata).ap, name)(*args, **kwargs)
 
     verb.__name__ = name
     verb.__qualname__ = name

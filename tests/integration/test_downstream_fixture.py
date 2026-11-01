@@ -155,3 +155,15 @@ def test_scanpy_preprocessing_accepts_annplyr_output() -> None:
     assert np.isfinite(result.X.data).all()
     assert np.isfinite(result.obsm["X_pca"]).all()
     assert_adata_equal(source, source_snapshot)
+
+
+def test_verb_results_can_be_written_to_zarr(tmp_path: Path) -> None:
+    # anndata's zarr writer dispatches on the exact class, which a TidyAnnData is not.
+    adata = make_representative_adata()
+    result = adata.ap.slice_head(n=3)
+    assert type(result).__name__ == "TidyAnnData"
+
+    result.write_zarr(tmp_path / "out.zarr")
+
+    assert type(result).__name__ == "TidyAnnData"  # the verbs stay on the object
+    assert ad.read_zarr(tmp_path / "out.zarr").obs_names.tolist() == result.obs_names.tolist()

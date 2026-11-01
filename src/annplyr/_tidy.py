@@ -138,6 +138,17 @@ class TidyAnnData(AnnData):
         """
         return _restore(self.copy())
 
+    def write_zarr(self, *args: Any, **kwargs: Any) -> None:
+        # anndata's IO registry keys on the exact class and has no zarr writer for a
+        # subclass, so write as the class the object had before the verbs were added.
+        current = type(self)
+        plain = _ORIGINAL_CLASS.get(current, AnnData)
+        self.__class__ = plain
+        try:
+            plain.write_zarr(self, *args, **kwargs)
+        finally:
+            self.__class__ = current
+
     def __getitem__(self, index: Any) -> Any:
         return _reclassify(self, super().__getitem__(index))
 

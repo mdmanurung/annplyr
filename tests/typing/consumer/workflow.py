@@ -6,7 +6,7 @@ import pandas as pd
 from anndata import AnnData
 
 import annplyr as ap
-from annplyr.data import X, obs
+from annplyr.data import X, counts, obs
 from annplyr.typing import (
     AnnDataWithAnnplyr,
     Expression,
@@ -54,6 +54,8 @@ def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
     wide = ungrouped.ap.as_frame(source, select=["GATA3", "MS4A1"])
     assert_type(wide, pd.DataFrame)
     pulled = ungrouped.ap.pull(obs.score)
+    layer_series = ungrouped.ap.pull(counts.GATA3)
+    assert_type(layer_series, pd.Series)
     assert_type(pulled, pd.Series)
     piped = ungrouped.ap.pipe(extract_scores)
     assert_type(piped, pd.DataFrame)

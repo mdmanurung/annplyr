@@ -14,8 +14,9 @@ second tab when you want to see what annplyr is saving you.
 import scanpy as sc
 
 import annplyr as ap
+from annplyr.data import obs, raw
 
-adata = sc.datasets.pbmc3k_processed()
+adata = ap.tidy(sc.datasets.pbmc3k_processed())
 print(adata.obs["louvain"].value_counts())
 ```
 
@@ -35,8 +36,13 @@ Name: count, dtype: int64
 ```{note}
 `pbmc3k_processed()` ships **scaled** values in `X`, the z-scores Scanpy's PCA
 was run on. The interpretable log-normalised values live in `.raw`, so every
-expression example on this page reads `raw:` rather than `x:`. annplyr makes you
+expression example on this page reads `raw` rather than `X`. annplyr makes you
 state which one you mean.
+
+`ap.tidy(adata)` turns the AnnData into a `TidyAnnData`, so verbs are methods:
+`adata.filter(...)`. It does not copy the data. The names `obs` and `raw` come
+from `annplyr.data`, one name per container, so `raw.MS4A1` reads the gene
+`MS4A1` from `.raw` and `obs.percent_mito` reads an `obs` column.
 ```
 
 ## 1. Filter cells on QC metrics
@@ -49,9 +55,9 @@ rule itself and each threshold stays legible.
 :::{tab-item} annplyr
 
 ```{testcode}
-qc = adata.ap.filter(
-    ap.col("n_genes") >= 500,
-    ap.col("percent_mito") < 0.03,
+qc = adata.filter(
+    obs.n_genes >= 500,
+    obs.percent_mito < 0.03,
 )
 
 print(qc.shape)
@@ -82,8 +88,8 @@ print(qc_ref.shape)
 
 The difference here is small but it compounds: you never build an intermediate
 mask variable, never repeat `adata.obs[...]` once per threshold, and never have
-to remember `.copy()`. Axis-changing verbs return an independent AnnData by
-default, so `adata` is still intact for a second threshold.
+to remember `.copy()`. Every verb returns a new object, so `adata` is still
+intact for a second threshold.
 
 ## 2. Count what survived
 
@@ -92,7 +98,7 @@ default, so `adata` is still intact for a second threshold.
 :::{tab-item} annplyr
 
 ```{testcode}
-print(qc.ap.count(by="louvain", sort=True))
+print(qc.count(obs.louvain, sort=True))
 ```
 
 ```{testoutput}
@@ -134,8 +140,8 @@ print(counts_ref)
 ::::
 
 Both give a tidy frame. `count()` gets there without the
-`rename_axis`/`reset_index` dance, and takes the same `by=` selector every
-other annplyr verb takes.
+`rename_axis`/`reset_index` dance, and takes names as positional arguments like
+every other annplyr verb.
 
 ## 3. Score a marker pair into `obs`
 
@@ -148,7 +154,7 @@ arithmetic, and write the column back with the cell order intact.
 :::{tab-item} annplyr
 
 ```{testcode}
-scored = qc.ap.mutate({"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2})
+scored = qc.mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)
 
 print(scored.obs["b_score"].head().round(3))
 ```
@@ -203,14 +209,12 @@ assembly. Every one of those steps is a chance to misalign a group.
 :::{tab-item} annplyr
 
 ```{testcode}
-summary = scored.ap.summarize(
-    {
-        "cells": ap.n(),
-        "median_genes": ap.median("n_genes"),
-        "mean_b_score": ap.mean("b_score"),
-        "mean_LYZ": ap.mean("raw:LYZ"),
-    },
-    by="louvain",
+summary = scored.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_b_score=ap.mean(obs.b_score),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=obs.louvain,
 )
 
 print(summary.round(3))
@@ -272,9 +276,9 @@ B cells carry the marker score; `CD14+` monocytes and dendritic cells carry
 When several steps share the same groups, group once and keep the grouping:
 
 ```{testcode}
-by_type = scored.ap.group_by("louvain")
+by_type = scored.group_by(obs.louvain)
 
-print(by_type.summarize({"mean_MS4A1": ap.mean("raw:MS4A1")}).round(3))
+print(by_type.summarize(mean_MS4A1=ap.mean(raw.MS4A1)).round(3))
 ```
 
 ```{testoutput}
@@ -303,29 +307,33 @@ so a mistyped selector fails instead of densifying 13,714 genes.
 :::{tab-item} annplyr
 
 ```{testcode}
-tidy = scored.ap.to_tidy(
-    obs=["louvain"],
-    raw=["MS4A1", "CD79A", "LYZ", "NKG7"],
+long = scored.join_features(
+    raw.MS4A1,
+    raw.CD79A,
+    raw.LYZ,
+    raw.NKG7,
+    shape="long",
     max_matrix_values=4 * scored.n_obs,
 )
 
-print(tidy.head())
-print(tidy.shape)
+print(long[[".cell", ".feature", ".abundance_raw", "louvain"]].head())
+print(long.shape)
 ```
 
 ```{testoutput}
-           obs_name feature     value          louvain
-0  AAACATTGATCAGC-1   MS4A1       0.0      CD4 T cells
-1  AAACATTGATCAGC-1   CD79A       0.0      CD4 T cells
-2  AAACATTGATCAGC-1     LYZ  1.098612      CD4 T cells
-3  AAACATTGATCAGC-1    NKG7       0.0      CD4 T cells
-4  AAACCGTGCTTCCG-1   MS4A1       0.0  CD14+ Monocytes
-(8468, 4)
+              .cell .feature  .abundance_raw          louvain
+0  AAACATTGATCAGC-1    MS4A1             0.0      CD4 T cells
+1  AAACATTGATCAGC-1    CD79A             0.0      CD4 T cells
+2  AAACATTGATCAGC-1      LYZ        1.098612      CD4 T cells
+3  AAACATTGATCAGC-1     NKG7             0.0      CD4 T cells
+4  AAACCGTGCTTCCG-1    MS4A1             0.0  CD14+ Monocytes
+(8468, 8)
 ```
 
 :::
 
 :::{tab-item} scanpy + pandas
+
 
 ```{testcode}
 long_ref = sc.get.obs_df(qc_ref, keys=["MS4A1", "CD79A", "LYZ", "NKG7"], use_raw=True)
@@ -347,15 +355,17 @@ print(long_ref.shape)
 
 ::::
 
-`tidy` is an ordinary pandas DataFrame, ready for seaborn, plotnine, Altair, or
-a statistical model. `scored` is still a fully aligned AnnData object for
-whatever comes next in the analysis.
+`long` is an ordinary pandas DataFrame, ready for seaborn, plotnine, Altair, or
+a statistical model. It carries every `obs` column along, which is why it has
+eight columns where the baseline kept four. `scored` is still a fully aligned
+AnnData object for whatever comes next in the analysis.
 
 ```{note}
-The `value` column comes back as a pandas sparse column, which keeps a large
-export cheap but does not support every pandas method, `.round()` among them.
-Call `tidy["value"] = tidy["value"].sparse.to_dense()` if you need a plain
-float column.
+The `.abundance_raw` column comes back as a pandas sparse column, which keeps a
+large export cheap but does not support every pandas method, `.round()` among
+them. Call `long[".abundance_raw"] = long[".abundance_raw"].sparse.to_dense()`
+if you need a plain float column.
+
 ```
 
 Next: work through the {doc}`tutorials`, learn the storage and ownership rules

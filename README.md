@@ -17,24 +17,24 @@ pip install annplyr
 
 ## Try it on real data
 
-Importing `annplyr` registers the `adata.ap` accessor. This runs as written on
-Scanpy's PBMC3K:
+`ap.tidy(adata)` wraps an AnnData object so the verbs are methods. Each
+container has a name in `annplyr.data`: `obs`, `var`, `X`, `raw`, and any layer
+or `obsm` key. This runs as written on Scanpy's PBMC3K:
 
 ```python
 import scanpy as sc
 
 import annplyr as ap
+from annplyr.data import obs, raw
 
-adata = sc.datasets.pbmc3k_processed()
+adata = ap.tidy(sc.datasets.pbmc3k_processed())
 
-summary = adata.ap.summarize(
-    {
-        "cells": ap.n(),
-        "median_genes": ap.median("n_genes"),
-        "mean_MS4A1": ap.mean("raw:MS4A1"),
-        "mean_LYZ": ap.mean("raw:LYZ"),
-    },
-    by="louvain",
+summary = adata.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_MS4A1=ap.mean(raw.MS4A1),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=obs.louvain,
 )
 print(summary.round(2))
 ```
@@ -59,16 +59,17 @@ dendritic cells, which is the expected answer.
 QC and extraction chain the same way:
 
 ```python
-plot_data = (
-    adata.ap.filter(ap.col("percent_mito") < 0.03)
-    .to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs)
+plot_data = adata.filter(obs.percent_mito < 0.03).join_features(
+    raw.MS4A1, raw.CD79A, shape="long", max_matrix_values=2 * adata.n_obs
 )
-print(plot_data.shape)   # (4514, 4)
+print(plot_data.shape)   # (4514, 7)
 ```
 
 The AnnData-returning steps preserve aligned `X`, layers, `raw`, embeddings,
-loadings, and pairwise matrices. The boundary to pandas is explicit: summary and
-extraction methods return DataFrames, everything else returns AnnData.
+loadings, and pairwise matrices. Every verb returns a new object. The boundary
+to pandas is explicit: summary and extraction methods return DataFrames,
+everything else returns AnnData.
+
 
 ## What you get
 
@@ -80,7 +81,8 @@ extraction methods return DataFrames, everything else returns AnnData.
   distinct because axis operations are position-based.
 - **Make materialization deliberate.** Matrix projection happens before pandas
   conversion, and `max_matrix_values=` places a cumulative bound on reads.
-- **Compose with Python.** AnnData results keep the `.ap` accessor; extracted
+- **Compose with Python.** AnnData results stay `TidyAnnData`, a subclass of
+  `AnnData`, so Scanpy calls work on them; extracted
   tables work directly with pandas and plotting libraries.
 
 `annplyr` is a wrangling layer, not a replacement for Scanpy, AnnData, or a

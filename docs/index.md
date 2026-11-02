@@ -1,22 +1,25 @@
 # annplyr
 
-`annplyr` provides tidy, dataframe-style wrangling for AnnData through the
-`adata.ap` accessor. Use it to express cell and feature selection, metadata
-integration, group-wise calculations, and table extraction as readable Python
-pipelines while AnnData remains the aligned source of truth.
+`annplyr` provides tidy, dataframe-style wrangling for AnnData. Wrap an object
+once with `ap.tidy(adata)`, then call verbs on it, or use the `adata.ap`
+accessor. Express cell and feature selection, metadata integration, group-wise
+calculations, and table extraction as readable Python pipelines while AnnData
+remains the aligned source of truth.
 
 Every example on these pages runs against Scanpy's PBMC3K during the
 documentation build, so the numbers you read are the numbers the code produces:
 
 ```{testcode}
-summary = adata.ap.summarize(
-    {
-        "cells": ap.n(),
-        "median_genes": ap.median("n_genes"),
-        "mean_MS4A1": ap.mean("raw:MS4A1"),
-        "mean_LYZ": ap.mean("raw:LYZ"),
-    },
-    by="louvain",
+from annplyr.data import obs, raw
+
+adata = ap.tidy(adata)
+
+summary = adata.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_MS4A1=ap.mean(raw.MS4A1),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=obs.louvain,
 )
 
 print(summary.round(2))
@@ -93,7 +96,9 @@ tutorials
 :maxdepth: 1
 
 user_guide/concepts
+user_guide/coming_from_r
 user_guide/verbs
+
 user_guide/grouping
 user_guide/joins
 user_guide/tidy_tables

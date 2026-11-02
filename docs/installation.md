@@ -19,20 +19,22 @@ uv add annplyr
 `annplyr` has no plotting framework or Scanpy dependency. It works with the
 AnnData object already produced by your scverse workflow.
 
-## Register the accessor
+## Wrap your AnnData
 
-Import the package once before using `.ap`:
+Wrap an object once with `ap.tidy`, then call verbs on it:
 
 ```python
 import anndata as ad
 import annplyr as ap
+from annplyr.data import obs
 
-adata = ad.read_h5ad("analysis.h5ad")
-filtered = adata.ap.filter(ap.col("qc_pass"))
+adata = ap.tidy(ad.read_h5ad("analysis.h5ad"))
+filtered = adata.filter(obs.qc_pass)
 ```
 
-The import registers the accessor on `AnnData`; it does not modify `adata` or
-read its matrices.
+`ap.tidy` does not copy or read the matrices. Importing `annplyr` also registers
+the `adata.ap` accessor, so `adata.ap.filter(...)` works on a plain AnnData.
+
 
 ## Check the installation
 

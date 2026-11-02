@@ -10,8 +10,9 @@ analysis wrappers.
 - **Preserve AnnData alignment.** Every AnnData-returning operation must keep
   `obs`, `var`, `X`, layers, `raw`, `obsm`, `varm`, `obsp`, and `varp`
   coordinated.
-- **Keep ownership explicit.** Independent results, optional non-copy results,
-  in-place metadata updates, and backed behavior must remain predictable.
+- **Keep ownership explicit.** Every verb returns a new object, and backed
+  behavior must remain predictable.
+
 - **Project before converting.** Sparse and backed inputs should read selected
   rows and columns before pandas conversion, with no silent whole-matrix
   densification.

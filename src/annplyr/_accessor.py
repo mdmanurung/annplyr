@@ -74,8 +74,7 @@ _PULLABLE = _TABLE | {"var", "varm", "varp", "uns"}
 def _with_annplyr_accessor(adata: AnnData) -> AnnDataWithAnnplyr:
     """Return a chainable result that still passes ``isinstance(x, AnnData)``.
 
-    Wrapping preserves object identity, so ``inplace=True`` verbs still return
-    the exact object they were called on.
+    Wrapping preserves the identity of the object it is given.
     """
     return cast(AnnDataWithAnnplyr, TidyAnnData.wrap(adata))
 
@@ -91,7 +90,6 @@ class AnnplyrAccessor:
         self,
         *predicates: Expression | Sequence[Expression],
         source: str | None = None,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         """Subset axes with one predicate per argument, combined with AND.
@@ -122,8 +120,6 @@ class AnnplyrAccessor:
         ----------
         *predicates
             See the annotated public signature.
-        copy
-            See the annotated public signature.
         max_matrix_values
             See the annotated public signature.
 
@@ -133,7 +129,7 @@ class AnnplyrAccessor:
 
         Ownership
         ---------
-        Returns an independent result by default; ``copy=False`` may be a view or materialized.
+        Returns an independent object; a backed input returns the view.
 
         Raises
         ------
@@ -153,12 +149,11 @@ class AnnplyrAccessor:
                 self._obj,
                 *predicates,
                 source=source,
-                copy=copy,
                 max_matrix_values=max_matrix_values,
             )
         )
 
-    def select(self, *names: Selector, copy: bool = True) -> AnnDataWithAnnplyr:
+    def select(self, *names: Selector) -> AnnDataWithAnnplyr:
         """Keep the named columns and features; ``-obs.x`` drops one instead.
 
         Names are strings, container columns (``obs.louvain``, ``var.gene_ids``,
@@ -168,43 +163,36 @@ class AnnplyrAccessor:
         keeps every column of it. With no names nothing changes.
         """
         kwargs = container_kwargs(self._obj, names, verb="select", allowed=META_AND_X, negation=True)
-        return _with_annplyr_accessor(select_adata(self._obj, **kwargs, copy=copy))
+        return _with_annplyr_accessor(select_adata(self._obj, **kwargs))
 
     def rename(
         self,
         mapping: Mapping[str, Any] | None = None,
         /,
-        *,
-        inplace: bool = False,
         **new_to_old: Any,
     ) -> AnnDataWithAnnplyr:
         """Rename columns or features, as ``new=old`` where ``old`` is a string or one column.
 
         ``rename(cell_type=obs.louvain)`` renames an obs column and
         ``rename({"CD4+": X.CD4})`` takes a name that is not an identifier. The
-        container comes from the old name, so a bare string is ``obs``. A new name
-        that clashes with ``inplace`` goes in the mapping.
+        container comes from the old name, so a bare string is ``obs``.
         """
-        return _with_annplyr_accessor(
-            rename_adata(self._obj, **rename_kwargs(self._obj, mapping, new_to_old), inplace=inplace)
-        )
+        return _with_annplyr_accessor(rename_adata(self._obj, **rename_kwargs(self._obj, mapping, new_to_old)))
 
     def rename_with(
         self,
         func: Callable[[str], str],
         *names: Selector,
-        inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
         """Rename the named columns with ``func``; with no names, every ``obs`` column."""
         kwargs = container_kwargs(self._obj, names, verb="rename_with", allowed=META_AND_X) or {"obs": everything()}
-        return _with_annplyr_accessor(rename_with_adata(self._obj, func, **kwargs, inplace=inplace))
+        return _with_annplyr_accessor(rename_with_adata(self._obj, func, **kwargs))
 
     def relocate(
         self,
         *names: Selector,
         before: str | AnnplyrExpr | None = None,
         after: str | AnnplyrExpr | None = None,
-        inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
         """Move the named columns to the front, or before or after an anchor column."""
         kwargs = container_kwargs(self._obj, names, verb="relocate", allowed=META_AND_X, negation=True)
@@ -214,7 +202,6 @@ class AnnplyrAccessor:
                 **kwargs,
                 before=relocate_anchor(self._obj, before, kwargs),
                 after=relocate_anchor(self._obj, after, kwargs),
-                inplace=inplace,
             )
         )
 
@@ -222,7 +209,6 @@ class AnnplyrAccessor:
         self,
         *names: Selector,
         keep_all: bool = False,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         """Keep the first row for each combination of the named columns.
@@ -238,7 +224,6 @@ class AnnplyrAccessor:
                 **kwargs,
                 axis="var" if "var" in kwargs else "obs",
                 keep_all=keep_all,
-                copy=copy,
                 max_matrix_values=max_matrix_values,
             )
         )
@@ -254,7 +239,6 @@ class AnnplyrAccessor:
         unmatched: JoinUnmatched = "drop",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             left_join_adata(
@@ -267,7 +251,6 @@ class AnnplyrAccessor:
                 unmatched=unmatched,
                 na_matches=na_matches,
                 suffixes=suffixes,
-                copy=copy,
             )
         )
 
@@ -282,7 +265,6 @@ class AnnplyrAccessor:
         unmatched: JoinUnmatched = "drop",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             inner_join_adata(
@@ -295,7 +277,6 @@ class AnnplyrAccessor:
                 unmatched=unmatched,
                 na_matches=na_matches,
                 suffixes=suffixes,
-                copy=copy,
             )
         )
 
@@ -310,7 +291,6 @@ class AnnplyrAccessor:
         unmatched: JoinUnmatched = "error",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             right_join_adata(
@@ -323,7 +303,6 @@ class AnnplyrAccessor:
                 unmatched=unmatched,
                 na_matches=na_matches,
                 suffixes=suffixes,
-                copy=copy,
             )
         )
 
@@ -338,7 +317,6 @@ class AnnplyrAccessor:
         unmatched: JoinUnmatched = "error",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             full_join_adata(
@@ -351,7 +329,6 @@ class AnnplyrAccessor:
                 unmatched=unmatched,
                 na_matches=na_matches,
                 suffixes=suffixes,
-                copy=copy,
             )
         )
 
@@ -362,11 +339,8 @@ class AnnplyrAccessor:
         by: JoinBy = None,
         axis: Axis = "obs",
         na_matches: NaMatches = "na",
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(
-            semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
-        )
+        return _with_annplyr_accessor(semi_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches))
 
     def anti_join(
         self,
@@ -375,17 +349,13 @@ class AnnplyrAccessor:
         by: JoinBy = None,
         axis: Axis = "obs",
         na_matches: NaMatches = "na",
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(
-            anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches, copy=copy)
-        )
+        return _with_annplyr_accessor(anti_join_adata(self._obj, other, by=by, axis=axis, na_matches=na_matches))
 
     def arrange(
         self,
         *by: Expression | Sequence[Expression],
         source: str | None = None,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
@@ -393,25 +363,24 @@ class AnnplyrAccessor:
                 self._obj,
                 *by,
                 source=source,
-                copy=copy,
                 max_matrix_values=max_matrix_values,
             )
         )
 
-    def slice(self, *indices: Any, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_adata(self._obj, *indices, axis=axis, copy=copy))
+    def slice(self, *indices: Any, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_adata(self._obj, *indices, axis=axis))
 
-    def slice_head(self, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis, copy=copy))
+    def slice_head(self, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis))
 
-    def slice_tail(self, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis, copy=copy))
+    def slice_tail(self, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis))
 
-    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis, copy=copy))
+    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis))
 
-    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis = "obs", copy: bool = True) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis, copy=copy))
+    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis))
 
     def slice_sample(
         self,
@@ -421,7 +390,6 @@ class AnnplyrAccessor:
         replace: bool = False,
         random_state: int | None = None,
         axis: Axis = "obs",
-        copy: bool = True,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             slice_sample_adata(
@@ -431,7 +399,6 @@ class AnnplyrAccessor:
                 replace=replace,
                 random_state=random_state,
                 axis=axis,
-                copy=copy,
             )
         )
 
@@ -441,7 +408,6 @@ class AnnplyrAccessor:
         /,
         *,
         into: str = "obs",
-        inplace: bool = False,
         max_matrix_values: int | None = None,
         **named: Any,
     ) -> AnnDataWithAnnplyr:
@@ -450,7 +416,6 @@ class AnnplyrAccessor:
                 self._obj,
                 merge_named(assignments, named, verb="mutate"),
                 into=into,
-                inplace=inplace,
                 max_matrix_values=max_matrix_values,
             )
         )
@@ -562,11 +527,10 @@ class AnnplyrAccessor:
         sort: bool = False,
         axis: Axis | None = None,
         name: str = "n",
-        inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
         resolved, keys = key_names(self._obj, by, verb="add_count", axis=axis, qualified=True)
         return _with_annplyr_accessor(
-            add_count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name, inplace=inplace)
+            add_count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name)
         )
 
     def pull(self, name: Selector, *, max_matrix_values: int | None = None) -> pd.Series:

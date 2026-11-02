@@ -159,12 +159,13 @@ def test_no_accessor_verb_is_silently_shadowed() -> None:
     assert SHADOWED_VERBS == {}
 
 
-def test_wrap_preserves_identity_for_inplace_verbs(sparse_adata: AnnData) -> None:
-    result = sparse_adata.ap.mutate({"flag": ap.lit(True)}, inplace=True)
+def test_verbs_return_a_new_chainable_object(sparse_adata: AnnData) -> None:
+    result = sparse_adata.ap.mutate({"flag": ap.lit(True)})
 
-    assert result is sparse_adata
-    assert isinstance(sparse_adata, TidyAnnData)
-    assert "flag" in sparse_adata.obs.columns
+    assert result is not sparse_adata
+    assert isinstance(result, TidyAnnData)
+    assert "flag" in result.obs.columns
+    assert "flag" not in sparse_adata.obs.columns
 
 
 def test_wrap_leaves_terminal_pandas_results_untouched(dense_adata: AnnData) -> None:
@@ -183,11 +184,11 @@ def test_wrap_is_idempotent(dense_adata: AnnData) -> None:
     assert TidyAnnData.wrap(once) is once
 
 
-def test_view_results_remain_views(dense_adata: AnnData) -> None:
-    view = dense_adata.ap.filter(ap.col("score") > 1.0, copy=False)
+def test_subset_results_are_not_views(dense_adata: AnnData) -> None:
+    result = dense_adata.ap.filter(ap.col("score") > 1.0)
 
-    assert view.is_view
-    assert isinstance(view, TidyAnnData)
+    assert not result.is_view
+    assert isinstance(result, TidyAnnData)
 
 
 def test_sparse_format_survives_the_wrap(sparse_adata: AnnData) -> None:
@@ -303,33 +304,32 @@ def _subclass_instance(cls: type[AnnData], **kwargs: Any) -> Any:
     )
 
 
-def test_wrap_preserves_a_user_anndata_subclass_inplace() -> None:
-    adata = _subclass_instance(_Subclassed)
+def test_wrap_preserves_a_user_anndata_subclass() -> None:
+    adata = TidyAnnData.wrap(_subclass_instance(_Subclassed))
 
-    result = adata.ap.mutate({"z": ap.lit(1)}, inplace=True)
-
-    assert result is adata
     assert isinstance(adata, _Subclassed)
     assert isinstance(adata, TidyAnnData)
     assert adata.domain_method() == "domain"
     # and it is still chainable
     assert adata.count("g")["n"].tolist() == [1, 1, 1, 1]
+    # a same-shape verb keeps the subclass on its new object
+    result = adata.ap.mutate({"z": ap.lit(1)})
+    assert result is not adata
+    assert result.domain_method() == "domain"
 
 
 def test_wrap_does_not_crash_on_a_subclass_with_slots() -> None:
     adata = _subclass_instance(_SlottedSubclass, label="keepme")
 
-    result = adata.ap.mutate({"z": ap.lit(1)}, inplace=True)
-
-    assert result is adata
+    assert TidyAnnData.wrap(adata) is adata
+    adata.ap.mutate({"z": ap.lit(1)})
     assert adata.label == "keepme"
     assert isinstance(adata, TidyAnnData)
     assert adata.domain_method() == "slotted:keepme"
 
 
 def test_composed_subclass_keeps_its_methods_through_copies() -> None:
-    adata = _subclass_instance(_Subclassed)
-    adata.ap.mutate({"z": ap.lit(1)}, inplace=True)
+    adata = TidyAnnData.wrap(_subclass_instance(_Subclassed))
 
     copied = adata.copy()
     sliced = adata[:2]
@@ -341,8 +341,7 @@ def test_composed_subclass_keeps_its_methods_through_copies() -> None:
 
 
 def test_to_anndata_restores_a_carried_subclass() -> None:
-    adata = _subclass_instance(_Subclassed)
-    adata.ap.mutate({"z": ap.lit(1)}, inplace=True)
+    adata = TidyAnnData.wrap(_subclass_instance(_Subclassed))
 
     plain = adata.to_anndata()
 

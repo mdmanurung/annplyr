@@ -222,10 +222,11 @@ class TestMutate:
         assert isinstance(result.obs["label_copy"].dtype, pd.CategoricalDtype)
         assert result.obs["nullable_copy"].isna().tolist() == [False, False, True]
 
-    def test_inplace_still_returns_the_same_object(self, multi: AnnData) -> None:
-        result = multi.ap.mutate({"flag": ap.lit(1)}, inplace=True)
+    def test_returns_a_new_object_and_leaves_the_input_alone(self, multi: AnnData) -> None:
+        result = multi.ap.mutate({"flag": ap.lit(1)})
 
-        assert result is multi
+        assert result is not multi
+        assert "flag" not in multi.obs
 
     def test_across_expands_within_the_default_frame(self) -> None:
         adata = AnnData(

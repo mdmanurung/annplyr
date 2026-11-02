@@ -92,13 +92,11 @@ class TidyAnnData(AnnData):
     """An ``AnnData`` that also carries the annplyr verbs.
 
     Use :meth:`wrap` rather than calling the constructor. It upgrades an
-    existing object in place so object identity is preserved, which is what
-    keeps the ``inplace=True`` ownership contract intact.
+    existing object in place, so the object keeps its identity.
 
     A user-defined ``AnnData`` subclass keeps its own methods, slots, and
     ``isinstance`` relationships: the upgrade composes a class with it rather
-    than replacing it. Verbs that derive a *new* object (``copy=True``,
-    ``filter``, ``select``, and friends) return a plain ``TidyAnnData``, which
+    than replacing it. Verbs that derive a *new* object (``filter``, ``select``, and friends) return a plain ``TidyAnnData``, which
     matches upstream ``AnnData``, whose own ``copy`` and ``__getitem__`` also
     return a plain ``AnnData`` for subclasses.
 

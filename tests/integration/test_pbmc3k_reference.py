@@ -525,9 +525,9 @@ def test_working_on_a_view_never_touches_the_parent(_pbmc: AnnData, verb: str) -
     assert view.is_view
 
     if verb == "mutate":
-        view.ap.mutate({"z": ap.lit(1)}, inplace=True)
+        view.ap.mutate({"z": ap.lit(1)})
     elif verb == "add_count":
-        view.ap.add_count(KEY, inplace=True)
+        view.ap.add_count(KEY)
     else:
         view.ap.transmute({"z": ap.lit(1)})
 
@@ -538,7 +538,7 @@ def test_working_on_a_view_never_touches_the_parent(_pbmc: AnnData, verb: str) -
     assert "n" not in parent.obs
 
 
-def test_copy_true_results_do_not_alias_the_input(pbmc: AnnData) -> None:
+def test_subset_results_do_not_alias_the_input(pbmc: AnnData) -> None:
     out = pbmc.ap.filter(ap.col("n_genes") > 0)
     out.X[0, 0] = 12345.0
     out.raw.X.data[0] = 12345.0

@@ -99,7 +99,9 @@ def test_group_local_evaluation_preserves_keys(dense_adata: AnnData, column: str
 
 
 def test_no_predicate_is_the_existing_filter_noop(dense_adata: AnnData) -> None:
-    assert dense_adata.ap.filter() is dense_adata
+    result = dense_adata.ap.filter()
+    assert result is not dense_adata
+    assert result.obs_names.equals(dense_adata.obs_names)
     assert dense_adata.ap.filter(ap.lit(False), source="x").n_obs == 0
 
 

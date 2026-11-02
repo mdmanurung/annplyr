@@ -241,7 +241,7 @@ def test_grouped_var_axis_and_non_group_axis_join_remain_positional() -> None:
     assert joined.group_vars() == ["group"]
 
 
-def test_grouped_shape_verbs_have_explicit_copy_true_signatures() -> None:
+def test_grouped_shape_verbs_have_explicit_signatures() -> None:
     methods = [
         "filter",
         "select",
@@ -262,7 +262,7 @@ def test_grouped_shape_verbs_have_explicit_copy_true_signatures() -> None:
     ]
     for method in methods:
         signature = inspect.signature(getattr(GroupedAnnData, method))
-        assert signature.parameters["copy"].default is True
+        assert "copy" not in signature.parameters
         assert not any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
 
     assert inspect.signature(GroupedAnnData.left_join).parameters["unmatched"].default == "drop"

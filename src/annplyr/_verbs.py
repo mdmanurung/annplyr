@@ -51,6 +51,7 @@ from annplyr._sources import (
     request_dependencies,
     source_adapter,
 )
+from annplyr._tidy import _reclassify
 from annplyr._typing import Axis
 
 
@@ -149,41 +150,54 @@ def _axis_positions(indexer: Any, size: int, *, axis: str) -> np.ndarray:
     return values
 
 
-def _subset_positions(
-    adata: AnnData,
-    obs_positions: Any = None,
-    var_positions: Any = None,
-    *,
-    copy: bool = True,
-) -> AnnData:
+def _subset_positions(adata: AnnData, obs_positions: Any = None, var_positions: Any = None) -> AnnData:
     """Subset every aligned AnnData container using integer axis positions.
 
-    A copied subset of a backed object is explicitly materialized in memory.
-    ``copy=False`` is non-mutating and may return either an AnnData view or a
-    materialized object, as allowed by the v0.3 ownership contract.
+    The result is independent of the input. A backed input returns the view, so
+    a backed ``.h5ad`` can be subset without loading it.
     """
     obs_idx = _axis_positions(obs_positions, adata.n_obs, axis="obs")
     var_idx = _axis_positions(var_positions, adata.n_vars, axis="var")
     selected = adata[obs_idx, var_idx]
-    if not copy:
-        return selected
-    if adata.isbacked:
-        return selected.to_memory(copy=True)
-    return selected.copy()
+    return selected if adata.isbacked else selected.copy()
 
 
-def _subset(adata: AnnData, obs_idx: Any, var_idx: Any, *, copy: bool = True) -> AnnData:
+def _subset(adata: AnnData, obs_idx: Any, var_idx: Any) -> AnnData:
     """Compatibility alias for internal callers; indexers are positions only."""
-    return _subset_positions(adata, obs_idx, var_idx, copy=copy)
+    return _subset_positions(adata, obs_idx, var_idx)
 
 
-def _same_shape_target(adata: AnnData, *, inplace: bool, verb: str) -> AnnData:
+def _same_shape_target(adata: AnnData, *, verb: str) -> AnnData:
+    """Return a new AnnData that shares ``X``, layers and aligned matrices with ``adata``.
+
+    ``obs``, ``var`` and ``uns`` are copied, so a verb can edit them freely. A
+    view is materialized first, so the result never writes through to its parent.
+    """
     _ensure_not_backed(adata, verb)
-    return adata if inplace else adata.copy()
+    source = adata
+    if adata.is_view:
+        adata = adata.copy()
+    out = AnnData(
+        X=adata.X,
+        obs=_obs_table(adata).copy(),
+        var=_var_table(adata).copy(),
+        uns=dict(adata.uns),
+        obsm=cast(Any, dict(adata.obsm)),
+        varm=cast(Any, dict(adata.varm)),
+        layers=cast(Any, dict(adata.layers)),
+        obsp=cast(Any, dict(adata.obsp)),
+        varp=cast(Any, dict(adata.varp)),
+    )
+    raw = adata.raw
+    if raw is not None:
+        out.raw = AnnData(
+            X=raw.X, obs=_obs_table(out).iloc[:, :0], var=raw.var, varm=cast(Any, dict(cast(Any, raw).varm))
+        )
+    return _reclassify(source, out)
 
 
-def _inplace_reorder_axis(adata: AnnData, positions: np.ndarray, *, axis: str) -> None:
-    """Reorder one complete axis while preserving the AnnData object's identity."""
+def _reorder_axis(adata: AnnData, positions: np.ndarray, *, axis: str) -> None:
+    """Reorder one complete axis of a fresh object, which is safe because it shares nothing mutable."""
     expected = adata.n_obs if axis == "obs" else adata.n_vars
     if len(positions) != expected or not np.array_equal(np.sort(positions), np.arange(expected)):
         msg = f"in-place {axis} reorder requires a complete positional permutation"
@@ -223,7 +237,6 @@ def filter_adata(
     adata: AnnData,
     *predicates: Any,
     source: str | None = None,
-    copy: bool = True,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
@@ -244,7 +257,7 @@ def filter_adata(
     """
     items = _as_predicate_list(predicates)
     if not items:
-        return adata
+        return _subset_positions(adata)
     default = resolve.resolve_container(adata, source) if source is not None else None
     buckets = resolve.partition_payload(adata, items, verb="filter", default_source=default)
     planner = RequestPlanner(max_matrix_values)
@@ -266,7 +279,6 @@ def filter_adata(
         adata,
         intersect_ordered(obs_base, *obs_indices),
         intersect_ordered(var_base, *var_indices),
-        copy=copy,
     )
 
 
@@ -303,7 +315,7 @@ def _evaluate_filter_positions(
     return pd.Index(np.concatenate(pieces) if pieces else np.empty(0, dtype=np.intp))
 
 
-def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> AnnData:
+def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None) -> AnnData:
     obs_columns = (
         _selected_real_columns(evaluate_select(obs_frame(adata), obs).columns, _obs_table(adata).columns, source="obs")
         if obs is not None
@@ -320,9 +332,12 @@ def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None
         else list(adata.var_names)
     )
     var_positions = _name_occurrence_positions(adata.var_names, selected_var_names, source="x")
-    out = _subset_positions(adata, None, var_positions, copy=copy)
-    out.obs = _obs_table(out).loc[:, list(obs_columns)].copy()
-    out.var = _var_table(out).loc[:, list(var_columns)].copy()
+    out = _subset_positions(adata, None, var_positions)
+    # assigning to a backed view fails, so only touch a table whose columns change
+    if list(obs_columns) != list(_obs_table(out).columns):
+        out.obs = _obs_table(out).loc[:, list(obs_columns)].copy()
+    if list(var_columns) != list(_var_table(out).columns):
+        out.var = _var_table(out).loc[:, list(var_columns)].copy()
     return out
 
 
@@ -368,13 +383,12 @@ def rename_adata(
     obs: Mapping[str, str] | None = None,
     var: Mapping[str, str] | None = None,
     x: Mapping[str, str] | None = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "rename")
     obs_mapping = _rename_mapping(_obs_table(adata).columns, obs, source="obs") if obs else None
     var_mapping = _rename_mapping(_var_table(adata).columns, var, source="var") if var else None
     x_names = _renamed_names(adata.var_names, x, source="x") if x else None
-    out = _same_shape_target(adata, inplace=inplace, verb="rename")
+    out = _same_shape_target(adata, verb="rename")
     if obs_mapping:
         out.obs = _obs_table(out).rename(columns=obs_mapping).copy()
     if var_mapping:
@@ -391,7 +405,6 @@ def rename_with_adata(
     obs: Any = None,
     var: Any = None,
     x: Any = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "rename_with")
     obs_mapping = (
@@ -405,7 +418,7 @@ def rename_with_adata(
         else None
     )
     x_mapping = _rename_with_mapping(x_frame(adata), x, func, adata.var_names, source="x") if x is not None else None
-    return rename_adata(adata, obs=obs_mapping, var=var_mapping, x=x_mapping, inplace=inplace)
+    return rename_adata(adata, obs=obs_mapping, var=var_mapping, x=x_mapping)
 
 
 def _rename_with_mapping(
@@ -464,7 +477,6 @@ def relocate_adata(
     x: Any = None,
     before: str | None = None,
     after: str | None = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "relocate")
     obs_order = (
@@ -488,13 +500,13 @@ def relocate_adata(
         else None
     )
     x_positions = _relocated_feature_positions(adata, x, before=before, after=after) if x is not None else None
-    out = _same_shape_target(adata, inplace=inplace, verb="relocate")
+    out = _same_shape_target(adata, verb="relocate")
     if obs_order is not None:
         out.obs = _obs_table(out).loc[:, obs_order].copy()
     if var_order is not None:
         out.var = _var_table(out).loc[:, var_order].copy()
     if x_positions is not None:
-        _inplace_reorder_axis(out, x_positions, axis="var")
+        _reorder_axis(out, x_positions, axis="var")
     return out
 
 
@@ -583,7 +595,6 @@ def distinct_adata(
     x: Any = None,
     axis: str = "obs",
     keep_all: bool = False,
-    copy: bool = True,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
@@ -604,7 +615,7 @@ def distinct_adata(
             selected,
             _group_positions if _group_axis == "obs" else None,
         )
-        return _subset(adata, obs_idx, slice(None), copy=copy)
+        return _subset(adata, obs_idx, slice(None))
     RequestPlanner(max_matrix_values).validate()
     if axis == "obs":
         frame, selector, available = _distinct_source(adata, obs=obs, x=x, axis=axis)
@@ -613,7 +624,7 @@ def distinct_adata(
             selected,
             _group_positions if _group_axis == "obs" else None,
         )
-        out = _subset(adata, obs_idx, slice(None), copy=copy)
+        out = _subset(adata, obs_idx, slice(None))
         if not keep_all and obs is not None:
             out.obs = _obs_table(out).loc[:, _real_columns(selected.columns, available)].copy()
         return out
@@ -624,7 +635,7 @@ def distinct_adata(
         selected,
         _group_positions if _group_axis == "var" else None,
     )
-    out = _subset(adata, slice(None), var_idx, copy=copy)
+    out = _subset(adata, slice(None), var_idx)
     if not keep_all and var is not None:
         out.var = _var_table(out).loc[:, _real_columns(selected.columns, available)].copy()
     return out
@@ -715,7 +726,6 @@ def arrange_adata(
     adata: AnnData,
     *by: Any,
     source: str | None = None,
-    copy: bool = True,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
@@ -728,7 +738,7 @@ def arrange_adata(
     """
     items = _as_predicate_list(by)
     if not items:
-        return adata
+        return _subset_positions(adata)
     default = resolve.resolve_container(adata, source) if source is not None else None
     buckets = resolve.partition_payload(adata, items, verb="arrange", default_source=default)
     planner = RequestPlanner(max_matrix_values)
@@ -751,7 +761,7 @@ def arrange_adata(
         resolved["var"],
         _group_positions if _group_axis == "var" else None,
     )
-    return _subset(adata, obs_idx, var_idx, copy=copy)
+    return _subset(adata, obs_idx, var_idx)
 
 
 def _sort_values_for_group_frames(
@@ -809,12 +819,12 @@ def _var_sort_frames(adata: AnnData, *, var: Any = None, varm: Mapping[str, Any]
         yield varm_frame(adata, key), by
 
 
-def slice_adata(adata: AnnData, *indices: Any, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_adata(adata: AnnData, *indices: Any, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     selector = _slice_selector(indices)
     if axis == "obs":
-        return _subset(adata, selector, slice(None), copy=copy)
-    return _subset(adata, slice(None), selector, copy=copy)
+        return _subset(adata, selector, slice(None))
+    return _subset(adata, slice(None), selector)
 
 
 def _slice_selector(indices: tuple[Any, ...]) -> Any:
@@ -829,16 +839,16 @@ def _slice_selector(indices: tuple[Any, ...]) -> Any:
     return list(indices)
 
 
-def slice_head_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_head_adata(adata: AnnData, n: int = 5, *, axis: str = "obs") -> AnnData:
     _validate_slice_n(n)
-    return slice_adata(adata, slice(0, n), axis=axis, copy=copy)
+    return slice_adata(adata, slice(0, n), axis=axis)
 
 
-def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs") -> AnnData:
     _validate_slice_n(n)
     if n == 0:
-        return slice_adata(adata, slice(0, 0), axis=axis, copy=copy)
-    return slice_adata(adata, slice(-n, None), axis=axis, copy=copy)
+        return slice_adata(adata, slice(0, 0), axis=axis)
+    return slice_adata(adata, slice(-n, None), axis=axis)
 
 
 def _validate_slice_n(n: int) -> None:
@@ -847,29 +857,21 @@ def _validate_slice_n(n: int) -> None:
         raise SelectionError(msg)
 
 
-def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     _validate_slice_n(n)
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
     positions = _sort_values_for_frame(frame, resolve.bare_key(by, axis=axis)).to_numpy(dtype=np.intp)[:n]
-    return (
-        _subset_positions(adata, positions, None, copy=copy)
-        if axis == "obs"
-        else _subset_positions(adata, None, positions, copy=copy)
-    )
+    return _subset_positions(adata, positions, None) if axis == "obs" else _subset_positions(adata, None, positions)
 
 
-def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     _validate_slice_n(n)
     by_desc = _desc_order_by(resolve.bare_key(by, axis=axis))
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
     positions = _sort_values_for_frame(frame, by_desc).to_numpy(dtype=np.intp)[:n]
-    return (
-        _subset_positions(adata, positions, None, copy=copy)
-        if axis == "obs"
-        else _subset_positions(adata, None, positions, copy=copy)
-    )
+    return _subset_positions(adata, positions, None) if axis == "obs" else _subset_positions(adata, None, positions)
 
 
 def _desc_order_by(by: Any) -> Any:
@@ -886,7 +888,6 @@ def slice_sample_adata(
     replace: bool = False,
     random_state: int | None = None,
     axis: str = "obs",
-    copy: bool = True,
 ) -> AnnData:
     axis = _axis(axis)
     size = adata.n_obs if axis == "obs" else adata.n_vars
@@ -906,7 +907,7 @@ def slice_sample_adata(
         raise SelectionError(msg)
     rng = np.random.default_rng(random_state)
     selected = rng.choice(size, size=n, replace=replace)
-    return slice_adata(adata, selected.tolist(), axis=axis, copy=copy)
+    return slice_adata(adata, selected.tolist(), axis=axis)
 
 
 #: Assignments that name no container all evaluate against the obs frame, so
@@ -1097,7 +1098,6 @@ def mutate_adata(
     assignments: Mapping[str, Any] | None = None,
     *,
     into: str = "obs",
-    inplace: bool = False,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
@@ -1122,7 +1122,7 @@ def mutate_adata(
         group_positions=_group_positions,
         group_axis=_group_axis,
     )
-    out = _same_shape_target(adata, inplace=inplace, verb="mutate")
+    out = _same_shape_target(adata, verb="mutate")
     table = _obs_table(out) if destination == "obs" else _var_table(out)
     for values in results:
         for column in values.columns:
@@ -1142,8 +1142,8 @@ def transmute_adata(
     """Keep only the assigned columns of the destination metadata table.
 
     Same container syntax and sequential semantics as :func:`mutate_adata`, but
-    every other column of the destination table is dropped. The result is always
-    independent of the input.
+    every other column of the destination table is dropped. A backed input is
+    loaded into memory first.
     """
     destination = _axis(into)
     if destination not in {"obs", "var"}:
@@ -1159,7 +1159,7 @@ def transmute_adata(
         group_axis=_group_axis,
     )
     columns = [str(column) for values in results for column in values.columns]
-    out = adata.to_memory(copy=True) if adata.isbacked else adata.copy()
+    out = adata.to_memory(copy=True) if adata.isbacked else _same_shape_target(adata, verb="transmute")
     table = _obs_table(out) if destination == "obs" else _var_table(out)
     for values in results:
         for column in values.columns:
@@ -1461,7 +1461,6 @@ def add_count_adata(
     sort: bool = False,
     axis: str = "obs",
     name: str = "n",
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "add_count")
     axis = _axis(axis)
@@ -1472,13 +1471,13 @@ def add_count_adata(
         if sort
         else np.arange(len(values), dtype=np.intp)
     )
-    out = _same_shape_target(adata, inplace=inplace, verb="add_count")
+    out = _same_shape_target(adata, verb="add_count")
     if axis == "obs":
         _assign_positional(_obs_table(out), name, values)
     else:
         _assign_positional(_var_table(out), name, values)
     if sort:
-        _inplace_reorder_axis(out, positions, axis=axis)
+        _reorder_axis(out, positions, axis=axis)
     return out
 
 
@@ -1540,7 +1539,6 @@ def left_join_adata(
     unmatched: str = "drop",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1553,7 +1551,6 @@ def left_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1568,7 +1565,6 @@ def inner_join_adata(
     unmatched: str = "drop",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1581,7 +1577,6 @@ def inner_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1596,7 +1591,6 @@ def right_join_adata(
     unmatched: str = "error",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1609,7 +1603,6 @@ def right_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1624,7 +1617,6 @@ def full_join_adata(
     unmatched: str = "error",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1637,7 +1629,6 @@ def full_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1648,13 +1639,12 @@ def semi_join_adata(
     by: str | Sequence[str] | None = None,
     axis: str = "obs",
     na_matches: str = "na",
-    copy: bool = True,
 ) -> AnnData:
     mask = _join_filter_mask(adata, other, by=by, axis=axis, keep_matches=True, na_matches=na_matches)
     return (
-        _subset(adata, mask.to_numpy(), slice(None), copy=copy)
+        _subset(adata, mask.to_numpy(), slice(None))
         if _axis(axis) == "obs"
-        else _subset(adata, slice(None), mask.to_numpy(), copy=copy)
+        else _subset(adata, slice(None), mask.to_numpy())
     )
 
 
@@ -1665,13 +1655,12 @@ def anti_join_adata(
     by: str | Sequence[str] | None = None,
     axis: str = "obs",
     na_matches: str = "na",
-    copy: bool = True,
 ) -> AnnData:
     mask = _join_filter_mask(adata, other, by=by, axis=axis, keep_matches=False, na_matches=na_matches)
     return (
-        _subset(adata, mask.to_numpy(), slice(None), copy=copy)
+        _subset(adata, mask.to_numpy(), slice(None))
         if _axis(axis) == "obs"
-        else _subset(adata, slice(None), mask.to_numpy(), copy=copy)
+        else _subset(adata, slice(None), mask.to_numpy())
     )
 
 
@@ -1687,7 +1676,6 @@ def _join_adata(
     unmatched: str,
     na_matches: str,
     suffixes: tuple[str, str],
-    copy: bool,
 ) -> AnnData:
     axis = _axis(axis)
     _validate_join_unmatched(unmatched)
@@ -1749,11 +1737,7 @@ def _join_adata(
     labels = adata.obs_names.take(positions) if axis == "obs" else adata.var_names.take(positions)
     table.index = labels
     _ensure_unique([str(column) for column in table.columns], source=f"{axis} join")
-    out = (
-        _subset(adata, positions, slice(None), copy=copy)
-        if axis == "obs"
-        else _subset(adata, slice(None), positions, copy=copy)
-    )
+    out = _subset(adata, positions, slice(None)) if axis == "obs" else _subset(adata, slice(None), positions)
     if axis == "obs":
         out.obs = table.copy()
     else:

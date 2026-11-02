@@ -12,52 +12,24 @@ def _parameters(obj: object) -> dict[str, inspect.Parameter]:
     return dict(inspect.signature(obj).parameters)
 
 
-def test_v03_changed_signatures_are_consistent() -> None:
-    for name in [
-        "filter",
-        "select",
-        "arrange",
-        "distinct",
-        "slice",
-        "slice_head",
-        "slice_tail",
-        "slice_min",
-        "slice_max",
-        "slice_sample",
-        "left_join",
-        "inner_join",
-        "right_join",
-        "full_join",
-        "semi_join",
-        "anti_join",
-    ]:
-        assert _parameters(getattr(AnnplyrAccessor, name))["copy"].default is True
+def test_no_verb_takes_copy_or_inplace() -> None:
+    callables = [
+        value
+        for cls in [AnnplyrAccessor, GroupedAnnData]
+        for name, value in inspect.getmembers(cls, predicate=callable)
+        if not name.startswith("_")
+    ]
+    callables += [getattr(ap, name) for name in ap.__all__ if callable(getattr(ap, name))]
+    for obj in callables:
+        if inspect.isclass(obj):
+            continue
+        assert not {"copy", "inplace"} & set(_parameters(obj)), obj
 
     for name in ["left_join", "inner_join", "right_join", "full_join", "semi_join", "anti_join"]:
         assert (
             _parameters(getattr(AnnplyrAccessor, name))["other"].annotation
             == _parameters(getattr(GroupedAnnData, name))["other"].annotation
         )
-
-    for name in ["mutate", "rename", "rename_with", "relocate", "add_count"]:
-        parameters = _parameters(getattr(AnnplyrAccessor, name))
-        assert "copy" not in parameters
-        assert parameters["inplace"].default is False
-
-    transmute = _parameters(AnnplyrAccessor.transmute)
-    assert "copy" not in transmute
-    assert "inplace" not in transmute
-
-    for name in [
-        "rename_obs_names",
-        "rename_var_names",
-        "add_name_prefix",
-        "replace_name_suffix",
-        "store_palette",
-    ]:
-        parameters = _parameters(getattr(ap, name))
-        assert "copy" not in parameters
-        assert parameters["inplace"].default is False
 
 
 def test_every_public_callable_has_a_docstring() -> None:

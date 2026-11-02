@@ -85,29 +85,14 @@ class GroupedAnnData:
     def _wrap(self, adata: AnnData, *, spec: GroupSpec | None = None) -> GroupedAnnData:
         return GroupedAnnData(adata, spec=spec or self._spec)
 
-    def _same_shape_result(
-        self,
-        adata: AnnData,
-        *,
-        inplace: bool,
-        spec: GroupSpec | None = None,
-    ) -> GroupedAnnData:
-        updated = spec or self._spec
-        if inplace:
-            if adata is not self._adata:
-                raise AnnplyrError("grouped in-place verb returned a replacement AnnData object")
-            self._spec = updated
-            return self
-        return self._wrap(adata, spec=updated)
-
     def __iter__(self) -> Iterator[tuple[dict[str, Any], AnnDataWithAnnplyr]]:
         plan = self._plan()
         for row, positions in zip(range(len(plan.keys)), plan.positions, strict=True):
             key = {column: plan.keys.iloc[row][column] for column in self._spec.columns}
             if self._axis == "obs":
-                group = _subset_positions(self._adata, positions, None, copy=False)
+                group = self._adata[positions]
             else:
-                group = _subset_positions(self._adata, None, positions, copy=False)
+                group = self._adata[:, positions]
             yield key, cast(AnnDataWithAnnplyr, TidyAnnData.wrap(group))
 
     def group_vars(self) -> list[str]:
@@ -127,7 +112,6 @@ class GroupedAnnData:
         self,
         *predicates: Expression | Sequence[Expression],
         source: str | None = None,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         """Subset within groups, one predicate per argument, combined with AND.
@@ -140,8 +124,6 @@ class GroupedAnnData:
         ----------
         *predicates
             See the annotated public signature.
-        copy
-            See the annotated public signature.
         max_matrix_values
             See the annotated public signature.
 
@@ -151,7 +133,7 @@ class GroupedAnnData:
 
         Ownership
         ---------
-        Returns an independent result by default; ``copy=False`` may be a view or materialized.
+        Returns an independent object; a backed input returns the view.
 
         Raises
         ------
@@ -171,19 +153,18 @@ class GroupedAnnData:
             self._adata,
             *predicates,
             source=source,
-            copy=copy,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
             _group_axis=self._axis,
         )
         return self._wrap(result)
 
-    def select(self, *names: Selector, copy: bool = True) -> GroupedAnnData:
+    def select(self, *names: Selector) -> GroupedAnnData:
         self._spec.validate(self._adata)
         kwargs = container_kwargs(self._adata, names, verb="select", allowed=META_AND_X, negation=True)
         if self._axis in kwargs:
             kwargs[self._axis] = self._retain_group_keys(kwargs[self._axis], axis=self._axis)
-        return self._wrap(select_adata(self._adata, **kwargs, copy=copy))
+        return self._wrap(select_adata(self._adata, **kwargs))
 
     def _retain_group_keys(self, selector: Selector, *, axis: Axis) -> list[str]:
         frame = obs_frame(self._adata) if axis == "obs" else var_frame(self._adata)
@@ -191,33 +172,29 @@ class GroupedAnnData:
         omitted = [column for column in self._spec.columns if column not in selected]
         return [*omitted, *selected]
 
-    def rename(
-        self, mapping: Mapping[str, Any] | None = None, /, *, inplace: bool = False, **new_to_old: Any
-    ) -> GroupedAnnData:
+    def rename(self, mapping: Mapping[str, Any] | None = None, /, **new_to_old: Any) -> GroupedAnnData:
         kwargs = rename_kwargs(self._adata, mapping, new_to_old)
         update = {old: new for new, old in kwargs.get(self._axis, {}).items()}
-        result = rename_adata(self._adata, **kwargs, inplace=inplace)
-        return self._same_shape_result(result, inplace=inplace, spec=self._spec.renamed(update))
+        result = rename_adata(self._adata, **kwargs)
+        return self._wrap(result, spec=self._spec.renamed(update))
 
     def rename_with(
         self,
         func: Callable[[str], str],
         *names: Selector,
-        inplace: bool = False,
     ) -> GroupedAnnData:
         before = list(cast(pd.DataFrame, self._adata.obs if self._axis == "obs" else self._adata.var).columns)
         kwargs = container_kwargs(self._adata, names, verb="rename_with", allowed=META_AND_X) or {"obs": everything()}
-        result = rename_with_adata(self._adata, func, **kwargs, inplace=inplace)
+        result = rename_with_adata(self._adata, func, **kwargs)
         after = list(cast(pd.DataFrame, result.obs if self._axis == "obs" else result.var).columns)
         spec = self._spec.renamed(dict(zip(before, after, strict=True)))
-        return self._same_shape_result(result, inplace=inplace, spec=spec)
+        return self._wrap(result, spec=spec)
 
     def relocate(
         self,
         *names: Selector,
         before: str | AnnplyrExpr | None = None,
         after: str | AnnplyrExpr | None = None,
-        inplace: bool = False,
     ) -> GroupedAnnData:
         kwargs = container_kwargs(self._adata, names, verb="relocate", allowed=META_AND_X, negation=True)
         result = relocate_adata(
@@ -225,9 +202,8 @@ class GroupedAnnData:
             **kwargs,
             before=relocate_anchor(self._adata, before, kwargs),
             after=relocate_anchor(self._adata, after, kwargs),
-            inplace=inplace,
         )
-        return self._same_shape_result(result, inplace=inplace)
+        return self._wrap(result)
 
     def transmute(
         self,
@@ -262,7 +238,6 @@ class GroupedAnnData:
         /,
         *,
         into: str = "obs",
-        inplace: bool = False,
         max_matrix_values: int | None = None,
         **named: Any,
     ) -> GroupedAnnData:
@@ -271,12 +246,11 @@ class GroupedAnnData:
             self._adata,
             merge_named(assignments, named, verb="mutate"),
             into=into,
-            inplace=inplace,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
             _group_axis=self._axis,
         )
-        return self._same_shape_result(result, inplace=inplace)
+        return self._wrap(result)
 
     def summarize(
         self,
@@ -322,7 +296,6 @@ class GroupedAnnData:
         wt: Expression | None = None,
         sort: bool = False,
         name: str = "n",
-        inplace: bool = False,
     ) -> GroupedAnnData:
         self._plan()
         result = add_count_adata(
@@ -332,15 +305,13 @@ class GroupedAnnData:
             sort=sort,
             axis=self._axis,
             name=name,
-            inplace=inplace,
         )
-        return self._same_shape_result(result, inplace=inplace)
+        return self._wrap(result)
 
     def arrange(
         self,
         *by: Expression | Sequence[Expression],
         source: str | None = None,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         plan = self._plan()
@@ -349,7 +320,6 @@ class GroupedAnnData:
                 self._adata,
                 *by,
                 source=source,
-                copy=copy,
                 max_matrix_values=max_matrix_values,
                 _group_positions=plan.positions,
                 _group_axis=self._axis,
@@ -360,7 +330,6 @@ class GroupedAnnData:
         self,
         *names: Selector,
         keep_all: bool = False,
-        copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
         kwargs = container_kwargs(self._adata, names, verb="distinct", allowed=META_AND_X, negation=True)
@@ -375,14 +344,13 @@ class GroupedAnnData:
             **kwargs,
             axis=self._axis,
             keep_all=keep_all,
-            copy=copy,
             max_matrix_values=max_matrix_values,
             _group_positions=plan.positions,
             _group_axis=self._axis,
         )
         return self._wrap(result)
 
-    def slice(self, *indices: Any, copy: bool = True) -> GroupedAnnData:
+    def slice(self, *indices: Any) -> GroupedAnnData:
         plan = self._plan()
         selector = _slice_selector(indices)
         pieces: list[np.ndarray] = []
@@ -398,23 +366,23 @@ class GroupedAnnData:
                     normalized[normalized < 0] += len(positions)
                     local = normalized[(normalized >= 0) & (normalized < len(positions))]
             pieces.append(positions[local])
-        return self._subset_group_positions(pieces, copy=copy)
+        return self._subset_group_positions(pieces)
 
-    def slice_head(self, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+    def slice_head(self, n: int = 5) -> GroupedAnnData:
         _validate_slice_n(n)
-        return self.slice(slice(0, n), copy=copy)
+        return self.slice(slice(0, n))
 
-    def slice_tail(self, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
+    def slice_tail(self, n: int = 5) -> GroupedAnnData:
         _validate_slice_n(n)
-        return self.slice(slice(0, 0) if n == 0 else slice(-n, None), copy=copy)
+        return self.slice(slice(0, 0) if n == 0 else slice(-n, None))
 
-    def slice_min(self, by: Expression, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
-        return self._slice_ordered(by, n=n, descending=False, copy=copy)
+    def slice_min(self, by: Expression, n: int = 5) -> GroupedAnnData:
+        return self._slice_ordered(by, n=n, descending=False)
 
-    def slice_max(self, by: Expression, n: int = 5, *, copy: bool = True) -> GroupedAnnData:
-        return self._slice_ordered(by, n=n, descending=True, copy=copy)
+    def slice_max(self, by: Expression, n: int = 5) -> GroupedAnnData:
+        return self._slice_ordered(by, n=n, descending=True)
 
-    def _slice_ordered(self, by: Expression, *, n: int, descending: bool, copy: bool) -> GroupedAnnData:
+    def _slice_ordered(self, by: Expression, *, n: int, descending: bool) -> GroupedAnnData:
         _validate_slice_n(n)
         plan = self._plan()
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
@@ -425,7 +393,7 @@ class GroupedAnnData:
             local = frame.iloc[positions, :].reset_index(drop=True)
             ordered = _sort_values_for_frame(local, order_by).to_numpy(dtype=np.intp)[:n]
             pieces.append(positions[ordered])
-        return self._subset_group_positions(pieces, copy=copy)
+        return self._subset_group_positions(pieces)
 
     def slice_sample(
         self,
@@ -434,7 +402,6 @@ class GroupedAnnData:
         prop: float | None = None,
         replace: bool = False,
         random_state: int | None = None,
-        copy: bool = True,
     ) -> GroupedAnnData:
         if n is not None and prop is not None:
             raise SelectionError("slice_sample accepts n and prop as mutually exclusive arguments")
@@ -450,14 +417,14 @@ class GroupedAnnData:
             if not replace and take > len(positions):
                 raise SelectionError("slice_sample n cannot be larger than a group size unless replace=True")
             pieces.append(positions[rng.choice(len(positions), size=take, replace=replace)])
-        return self._subset_group_positions(pieces, copy=copy)
+        return self._subset_group_positions(pieces)
 
-    def _subset_group_positions(self, pieces: list[np.ndarray], *, copy: bool) -> GroupedAnnData:
+    def _subset_group_positions(self, pieces: list[np.ndarray]) -> GroupedAnnData:
         positions = np.concatenate(pieces) if pieces else np.empty(0, dtype=np.intp)
         result = (
-            _subset_positions(self._adata, positions, None, copy=copy)
+            _subset_positions(self._adata, positions, None)
             if self._axis == "obs"
-            else _subset_positions(self._adata, None, positions, copy=copy)
+            else _subset_positions(self._adata, None, positions)
         )
         return self._wrap(result)
 
@@ -472,7 +439,6 @@ class GroupedAnnData:
         unmatched: JoinUnmatched = "drop",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> GroupedAnnData:
         return self._join(
             "left",
@@ -484,7 +450,6 @@ class GroupedAnnData:
             unmatched=unmatched,
             na_matches=na_matches,
             suffixes=suffixes,
-            copy=copy,
         )
 
     def inner_join(
@@ -498,7 +463,6 @@ class GroupedAnnData:
         unmatched: JoinUnmatched = "drop",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> GroupedAnnData:
         return self._join(
             "inner",
@@ -510,7 +474,6 @@ class GroupedAnnData:
             unmatched=unmatched,
             na_matches=na_matches,
             suffixes=suffixes,
-            copy=copy,
         )
 
     def right_join(
@@ -524,7 +487,6 @@ class GroupedAnnData:
         unmatched: JoinUnmatched = "error",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> GroupedAnnData:
         return self._join(
             "right",
@@ -536,7 +498,6 @@ class GroupedAnnData:
             unmatched=unmatched,
             na_matches=na_matches,
             suffixes=suffixes,
-            copy=copy,
         )
 
     def full_join(
@@ -550,7 +511,6 @@ class GroupedAnnData:
         unmatched: JoinUnmatched = "error",
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> GroupedAnnData:
         return self._join(
             "full",
@@ -562,7 +522,6 @@ class GroupedAnnData:
             unmatched=unmatched,
             na_matches=na_matches,
             suffixes=suffixes,
-            copy=copy,
         )
 
     def semi_join(
@@ -572,9 +531,8 @@ class GroupedAnnData:
         by: JoinBy = None,
         axis: Axis = "obs",
         na_matches: NaMatches = "na",
-        copy: bool = True,
     ) -> GroupedAnnData:
-        return self._join("semi", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+        return self._join("semi", other, by=by, axis=axis, na_matches=na_matches)
 
     def anti_join(
         self,
@@ -583,9 +541,8 @@ class GroupedAnnData:
         by: JoinBy = None,
         axis: Axis = "obs",
         na_matches: NaMatches = "na",
-        copy: bool = True,
     ) -> GroupedAnnData:
-        return self._join("anti", other, by=by, axis=axis, na_matches=na_matches, copy=copy)
+        return self._join("anti", other, by=by, axis=axis, na_matches=na_matches)
 
     def _join(
         self,
@@ -599,7 +556,6 @@ class GroupedAnnData:
         unmatched: JoinUnmatched | None = None,
         na_matches: NaMatches = "na",
         suffixes: tuple[str, str] = ("", "_right"),
-        copy: bool = True,
     ) -> GroupedAnnData:
         self._plan()
         functions = {
@@ -610,7 +566,7 @@ class GroupedAnnData:
             "semi": semi_join_adata,
             "anti": anti_join_adata,
         }
-        kwargs: dict[str, Any] = {"by": by, "axis": axis, "na_matches": na_matches, "copy": copy}
+        kwargs: dict[str, Any] = {"by": by, "axis": axis, "na_matches": na_matches}
         if kind not in {"semi", "anti"}:
             kwargs.update(
                 relationship=relationship,

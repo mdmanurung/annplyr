@@ -77,6 +77,7 @@ EPILOGUE = """
 SHADOWED_VERBS: dict[str, str]
 
 def install_verbs(accessor_cls: type[AnnplyrAccessor]) -> None: ...
+def _reclassify(source: Any, result: Any) -> Any: ...
 """
 
 #: Declared by hand in the stub preamble, so they must not also be rendered.

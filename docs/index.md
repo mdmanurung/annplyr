@@ -28,10 +28,10 @@ print(summary.round(2))
 ```{testoutput}
              louvain  cells  median_genes  mean_MS4A1  mean_LYZ
 0        CD4 T cells   1144         809.0        0.03      0.43
-1            B cells    342         677.0        0.99      0.39
-2    CD14+ Monocytes    480         859.0        0.04      3.55
-3           NK cells    154         890.0        0.04      0.35
-4        CD8 T cells    316         824.5        0.04      0.36
+1    CD14+ Monocytes    480         859.0        0.04      3.55
+2            B cells    342         677.0        0.99      0.39
+3        CD8 T cells    316         824.5        0.04      0.36
+4           NK cells    154         890.0        0.04      0.35
 5  FCGR3A+ Monocytes    150        1272.0        0.06      2.24
 6    Dendritic cells     37        1544.0        0.06      3.91
 7     Megakaryocytes     15         364.0        0.05      0.60

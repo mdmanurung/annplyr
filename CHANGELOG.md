@@ -77,6 +77,11 @@ has the side-by-side table with the R packages.
   functions take `adata` positional-only so the dict can be positional-only too.
   `mutate` and `transmute` write one destination per call, chosen by
   `into="obs"|"var"`.
+- **Breaking:** `summarize` (with `by=` or on a grouped object) and `count` list
+  groups in key order, as dplyr does, where they listed them in first-seen order.
+  A categorical key follows its level order, missing keys come last, and
+  `count(sort=True)` keeps key order within ties. `group_keys`, `nest`,
+  `aggregate_cells` and the AnnData-returning verbs keep first-seen order.
 - **Breaking:** `group_by`, `count`, `nest` and `aggregate_cells` accept a column
   expression with a single source column as a key. A computed key such as
   `obs.a + 1` raises `SelectionError` that names `mutate`.

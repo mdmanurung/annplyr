@@ -210,10 +210,10 @@ print(
 ```{testoutput}
              louvain  cells  mean_MS4A1
 0        CD4 T cells   1144       0.034
-1            B cells    342       0.993
-2    CD14+ Monocytes    480       0.036
-3           NK cells    154       0.036
-4        CD8 T cells    316       0.040
+1    CD14+ Monocytes    480       0.036
+2            B cells    342       0.993
+3        CD8 T cells    316       0.040
+4           NK cells    154       0.036
 5  FCGR3A+ Monocytes    150       0.060
 6    Dendritic cells     37       0.056
 7     Megakaryocytes     15       0.046

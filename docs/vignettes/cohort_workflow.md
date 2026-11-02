@@ -188,15 +188,15 @@ print(summary.round(3).head(8))
 ```
 
 ```{testoutput}
-    condition            louvain  cells  mean_b_score  mean_LYZ
-0  stimulated        CD4 T cells    648         0.030     0.442
-1     control    CD14+ Monocytes    118         0.029     3.733
-2  stimulated           NK cells     89         0.019     0.373
-3  stimulated        CD8 T cells    159         0.027     0.387
-4     control  FCGR3A+ Monocytes     44         0.039     2.108
-5  stimulated            B cells    183         1.239     0.425
-6     control        CD4 T cells    337         0.043     0.462
-7  stimulated    CD14+ Monocytes    231         0.038     3.755
+  condition            louvain  cells  mean_b_score  mean_LYZ
+0   control        CD4 T cells    337         0.043     0.462
+1   control    CD14+ Monocytes    118         0.029     3.733
+2   control            B cells     84         1.286     0.355
+3   control        CD8 T cells     70         0.015     0.310
+4   control           NK cells     46         0.045     0.376
+5   control  FCGR3A+ Monocytes     44         0.039     2.108
+6   control    Dendritic cells     10         0.035     4.103
+7   control     Megakaryocytes      2         0.173     1.546
 ```
 
 The B-cell score and monocyte `LYZ` track cell type, not condition. That is what
@@ -223,8 +223,8 @@ print(b_cells.round(3).to_string(index=False))
 
 ```{testoutput}
 donor_id  condition louvain  cells  mean_b_score
- donor_2 stimulated B cells     93         1.198
  donor_1    control B cells     84         1.286
+ donor_2 stimulated B cells     93         1.198
  donor_3 stimulated B cells     90         1.282
 ```
 

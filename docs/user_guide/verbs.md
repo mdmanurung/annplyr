@@ -248,10 +248,10 @@ print(summary.round(3))
 ```{testoutput}
              louvain  cells  median_genes  mean_mito  mean_NKG7
 0        CD4 T cells   1144         809.0      0.019      0.119
-1            B cells    342         677.0      0.022      0.061
-2    CD14+ Monocytes    480         859.0      0.023      0.162
-3           NK cells    154         890.0      0.021      3.102
-4        CD8 T cells    316         824.5      0.023      1.877
+1    CD14+ Monocytes    480         859.0      0.023      0.162
+2            B cells    342         677.0      0.022      0.061
+3        CD8 T cells    316         824.5      0.023      1.877
+4           NK cells    154         890.0      0.021      3.102
 5  FCGR3A+ Monocytes    150        1272.0      0.025      0.303
 6    Dendritic cells     37        1544.0      0.020      0.303
 7     Megakaryocytes     15         364.0      0.022      0.285
@@ -264,7 +264,7 @@ print(summary.round(3))
 ```{testcode}
 import pandas as pd
 
-grouped = adata.obs.groupby("louvain", sort=False, observed=True)
+grouped = adata.obs.groupby("louvain", sort=True, observed=True)
 nkg7 = sc.get.obs_df(adata, keys=["NKG7"], use_raw=True)["NKG7"]
 
 summary_ref = pd.DataFrame(
@@ -272,7 +272,7 @@ summary_ref = pd.DataFrame(
         "cells": grouped.size(),
         "median_genes": grouped["n_genes"].median(),
         "mean_mito": grouped["percent_mito"].mean(),
-        "mean_NKG7": nkg7.groupby(adata.obs["louvain"], sort=False, observed=True).mean(),
+        "mean_NKG7": nkg7.groupby(adata.obs["louvain"], sort=True, observed=True).mean(),
     }
 ).reset_index()
 
@@ -282,10 +282,10 @@ print(summary_ref.round(3))
 ```{testoutput}
              louvain  cells  median_genes  mean_mito  mean_NKG7
 0        CD4 T cells   1144         809.0      0.019      0.119
-1            B cells    342         677.0      0.022      0.061
-2    CD14+ Monocytes    480         859.0      0.023      0.162
-3           NK cells    154         890.0      0.021      3.102
-4        CD8 T cells    316         824.5      0.023      1.877
+1    CD14+ Monocytes    480         859.0      0.023      0.162
+2            B cells    342         677.0      0.022      0.061
+3        CD8 T cells    316         824.5      0.023      1.877
+4           NK cells    154         890.0      0.021      3.102
 5  FCGR3A+ Monocytes    150        1272.0      0.025      0.303
 6    Dendritic cells     37        1544.0      0.020      0.303
 7     Megakaryocytes     15         364.0      0.022      0.285

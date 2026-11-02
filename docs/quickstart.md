@@ -224,10 +224,10 @@ print(summary.round(3))
              louvain  cells  median_genes  mean_b_score  mean_LYZ
 0        CD4 T cells    985         824.0         0.035     0.449
 1    CD14+ Monocytes    349         923.0         0.035     3.747
-2           NK cells    135         892.0         0.028     0.374
+2            B cells    267         713.0         1.254     0.403
 3        CD8 T cells    229         838.0         0.023     0.363
-4  FCGR3A+ Monocytes    114        1272.0         0.049     2.227
-5            B cells    267         713.0         1.254     0.403
+4           NK cells    135         892.0         0.028     0.374
+5  FCGR3A+ Monocytes    114        1272.0         0.049     2.227
 6    Dendritic cells     35        1567.0         0.111     3.878
 7     Megakaryocytes      3         984.0         0.116     1.030
 ```
@@ -240,14 +240,14 @@ print(summary.round(3))
 import pandas as pd
 
 lyz = sc.get.obs_df(qc_ref, keys=["LYZ"], use_raw=True)["LYZ"]
-grouped = qc_ref.obs.groupby("louvain", sort=False, observed=True)
+grouped = qc_ref.obs.groupby("louvain", sort=True, observed=True)
 
 summary_ref = pd.DataFrame(
     {
         "cells": grouped.size(),
         "median_genes": grouped["n_genes"].median(),
         "mean_b_score": grouped["b_score"].mean(),
-        "mean_LYZ": lyz.groupby(qc_ref.obs["louvain"], sort=False, observed=True).mean(),
+        "mean_LYZ": lyz.groupby(qc_ref.obs["louvain"], sort=True, observed=True).mean(),
     }
 ).reset_index()
 
@@ -258,10 +258,10 @@ print(summary_ref.round(3))
              louvain  cells  median_genes  mean_b_score  mean_LYZ
 0        CD4 T cells    985         824.0         0.035     0.449
 1    CD14+ Monocytes    349         923.0         0.035     3.747
-2           NK cells    135         892.0         0.028     0.374
+2            B cells    267         713.0         1.254     0.403
 3        CD8 T cells    229         838.0         0.023     0.363
-4  FCGR3A+ Monocytes    114        1272.0         0.049     2.227
-5            B cells    267         713.0         1.254     0.403
+4           NK cells    135         892.0         0.028     0.374
+5  FCGR3A+ Monocytes    114        1272.0         0.049     2.227
 6    Dendritic cells     35        1567.0         0.111     3.878
 7     Megakaryocytes      3         984.0         0.116     1.030
 ```
@@ -285,10 +285,10 @@ print(by_type.summarize(mean_MS4A1=ap.mean(raw.MS4A1)).round(3))
              louvain  mean_MS4A1
 0        CD4 T cells       0.036
 1    CD14+ Monocytes       0.042
-2           NK cells       0.041
+2            B cells       1.016
 3        CD8 T cells       0.031
-4  FCGR3A+ Monocytes       0.061
-5            B cells       1.016
+4           NK cells       0.041
+5  FCGR3A+ Monocytes       0.061
 6    Dendritic cells       0.059
 7     Megakaryocytes       0.000
 ```

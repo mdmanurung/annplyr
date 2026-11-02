@@ -144,8 +144,9 @@ summarise, `slice_max(by=)`, `join_features` long, rename with `if_else`,
 Two details:
 - **Fixed during this check.** `aggregate_cells` summed float32 data in
   float32, which drifted by 1.2e-6; it now accumulates floats in float64.
-- **Still different.** `count` and grouped `summarize` return groups in
-  first-seen order, where dplyr sorts them by key; the values are identical.
+- **Fixed after this check.** `count` and grouped `summarize` returned groups in
+  first-seen order, where dplyr sorts them by key. They now list groups in key
+  order, and the row order matches R.
 
 anndataR did not build here, because its `rhdf5filters` dependency fails to
 compile, so the scripts pass the matrix to R as Matrix Market + CSV.

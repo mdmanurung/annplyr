@@ -34,9 +34,12 @@ print(by_type.group_keys())
 7     Megakaryocytes
 ```
 
-Groups follow **first-seen** order. `CD4 T cells` and `B cells` lead because
-those are the first two cells in the object, not because of an alphabetical or
-frequency rule. Grouping also includes NA values, preserves categorical dtype
+`group_keys()` follows **first-seen** order. `CD4 T cells` and `B cells` lead
+because those are the first two cells in the object, not because of an
+alphabetical or frequency rule. `summarize` and `count` tables list groups in
+key order instead, as dplyr does: a categorical key follows its level order,
+missing keys come last, and `count(sort=True)` keeps key order within ties.
+Grouping also includes NA values, preserves categorical dtype
 and order, and omits unobserved categories.
 
 `group_data()` adds a `.rows` column of zero-based integer positions, not axis
@@ -140,10 +143,10 @@ print(by_type.summarize(cells=ap.n(), mean_genes=ap.mean(obs.n_genes)).round(1))
 ```{testoutput}
              louvain  cells  mean_genes
 0        CD4 T cells   1144       810.3
-1            B cells    342       725.4
-2    CD14+ Monocytes    480       866.7
-3           NK cells    154       905.5
-4        CD8 T cells    316       837.6
+1    CD14+ Monocytes    480       866.7
+2            B cells    342       725.4
+3        CD8 T cells    316       837.6
+4           NK cells    154       905.5
 5  FCGR3A+ Monocytes    150      1228.8
 6    Dendritic cells     37      1466.9
 7     Megakaryocytes     15       577.3

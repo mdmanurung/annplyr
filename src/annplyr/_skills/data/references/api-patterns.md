@@ -32,8 +32,8 @@ Names are positional and carry their container (`obs.x`, `var.x`, `X.x`, `raw.x`
 - `mutate(name=value, ..., into="obs")` — write one metadata column per keyword, in order; a later value may read an earlier result. `into="var"` writes the feature axis. Matrix values are read-only. A dict is accepted for names that are not identifiers.
 - `transmute(name=value, ..., into="obs")` — like `mutate` but drops all columns not produced by the call.
 - `group_by(*by)` — return a persistent `GroupedAnnData` wrapper; call `ungroup()` for AnnData.
-- `summarize(name=agg, ..., by=...)` — aggregate by grouping key, one aggregate per keyword; also callable as `summarise`. A grouped object takes no `by=`.
-- `count(*by, wt=..., sort=False, name="n")` — count rows, optionally weighted; returns a DataFrame. Use `summarize(n=ap.n())` for no key.
+- `summarize(name=agg, ..., by=...)` — aggregate by grouping key, one aggregate per keyword; also callable as `summarise`. A grouped object takes no `by=`. Rows come in key order, missing keys last.
+- `count(*by, wt=..., sort=False, name="n")` — count rows, optionally weighted; returns a DataFrame with groups in key order, missing keys last (`sort=True` orders by count, ties keep key order). Use `summarize(n=ap.n())` for no key.
 - `add_count(*by, wt=..., name="n")` — append a count column to AnnData and return AnnData.
 
 **Joins:**

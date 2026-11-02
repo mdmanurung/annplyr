@@ -51,10 +51,10 @@ print(adata.summarize(cells=ap.n(), mean_genes=ap.mean(obs.n_genes), by=obs.louv
 ```{testoutput}
              louvain  cells  mean_genes
 0        CD4 T cells   1144       810.3
-1            B cells    342       725.4
-2    CD14+ Monocytes    480       866.7
-3           NK cells    154       905.5
-4        CD8 T cells    316       837.6
+1    CD14+ Monocytes    480       866.7
+2            B cells    342       725.4
+3        CD8 T cells    316       837.6
+4           NK cells    154       905.5
 5  FCGR3A+ Monocytes    150      1228.8
 6    Dendritic cells     37      1466.9
 7     Megakaryocytes     15       577.3

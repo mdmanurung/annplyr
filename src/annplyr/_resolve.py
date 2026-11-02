@@ -44,6 +44,9 @@ RESERVED_QUALIFIERS = frozenset({"obs", "var", "x", "raw", "obsm", "varm", "obsp
 #: than falling through to the bare-name ``obs`` default.
 _VIRTUAL_AXIS = {OBS_NAMES: "obs", VAR_NAMES: "var"}
 
+#: Reserved prefixes followed by a container key, as in ``obsm:X_pca:0``.
+_KEYED_QUALIFIERS = frozenset({"obsm", "varm", "obsp", "varp", "uns"})
+
 #: Which AnnData axis each source subsetting touches.
 _AXIS_BY_KIND = {
     "obs": "obs",
@@ -97,6 +100,10 @@ def resolve_source(adata: AnnData, text: str) -> ResolvedSource:
     literal column name, which is almost always a mistyped qualifier.
     """
     qualifier, name = split_qualifier(text)
+    if qualifier in _KEYED_QUALIFIERS:
+        # "obsm:X_pca:0" names the key and then the column, like "X_pca:0".
+        key, _, name = name.partition(":")
+        return ResolvedSource(qualifier, key, _AXIS_BY_KIND[qualifier], ((text, name),))
     if qualifier is None:
         qualifier = _dynamic_qualifier(adata, text)
         if qualifier is not None:
@@ -129,8 +136,6 @@ def _classify(adata: AnnData, qualifier: str | None, text: str) -> tuple[str | N
         return "x", None
     if qualifier == "raw":
         return "raw", None
-    if qualifier in {"obsm", "varm", "obsp", "varp", "uns"}:
-        return qualifier, text.partition(":")[0]
     if qualifier in adata.layers:
         return "layer", qualifier
     if qualifier in adata.obsm:

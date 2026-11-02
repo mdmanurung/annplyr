@@ -190,3 +190,11 @@ def test_label_frame_renames_bare_column_to_the_written_reference() -> None:
 
     assert list(labelled.columns) == ["raw:MS4A1"]
     assert labelled["raw:MS4A1"].tolist() == [1, 2]
+
+
+def test_reserved_obsm_prefix_reads_the_named_key(sourced: AnnData) -> None:
+    resolved = R.resolve_source(sourced, "obsm:X_pca:0")
+    assert (resolved.kind, resolved.key, resolved.bare_names) == ("obsm", "X_pca", ("0",))
+    explicit = sourced.ap.filter(ap.col("obsm:X_pca:0") > 0)
+    implicit = sourced.ap.filter(ap.col("X_pca:0") > 0)
+    assert explicit.obs_names.equals(implicit.obs_names)

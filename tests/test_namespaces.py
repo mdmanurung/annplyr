@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 from anndata import AnnData
@@ -109,3 +110,27 @@ def test_glimpse_prints_obs_and_container_names(adata: AnnData, capsys: pytest.C
     assert adata.glimpse() is None
     out = capsys.readouterr().out
     assert "cell_type" in out and "layers: counts" in out and "obsm: X_pca" in out and "raw: yes" in out
+
+
+def test_a_layer_with_a_reserved_name_reads_the_layer_not_obs() -> None:
+    import anndata as ad
+
+    adata = ad.AnnData(
+        np.arange(6.0).reshape(3, 2),
+        obs=pd.DataFrame({"g0": [9.0, 9.0, 9.0]}, index=["c0", "c1", "c2"]),
+        var=pd.DataFrame(index=["g0", "g1"]),
+    )
+    adata.layers["obs"] = adata.X * 100
+    assert adata.ap.pull(ap.layer("obs").g0).tolist() == [0.0, 200.0, 400.0]
+    assert adata.ap.pull("layers:obs:g0").tolist() == [0.0, 200.0, 400.0]
+    assert adata.ap.aggregate_cells("g0", source=ap.layer("obs")).X.tolist() == [[600.0, 900.0]]
+    with pytest.raises(ap.AnnplyrError):
+        adata.ap.pull(ap.layer("cnts").g0)
+
+
+def test_aggregate_cells_takes_a_source_object(dense_adata) -> None:
+    from annplyr.data import X
+
+    by_object = dense_adata.ap.aggregate_cells("batch", source=X)
+    by_name = dense_adata.ap.aggregate_cells("batch", source="x")
+    np.testing.assert_array_equal(np.asarray(by_object.X), np.asarray(by_name.X))

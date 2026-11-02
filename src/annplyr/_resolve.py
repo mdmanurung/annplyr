@@ -38,7 +38,7 @@ from annplyr._typing import Axis
 #: Prefixes that mean a specific container without needing the AnnData object.
 #: The virtual axis-name columns are deliberately absent: they are already
 #: ordinary columns of the obs/var frames, so they need no special handling.
-RESERVED_QUALIFIERS = frozenset({"obs", "var", "x", "raw", "obsm", "varm", "obsp", "varp", "uns"})
+RESERVED_QUALIFIERS = frozenset({"obs", "var", "x", "raw", "layers", "obsm", "varm", "obsp", "varp", "uns"})
 
 #: The virtual axis-name columns are ordinary columns of the obs/var frames,
 #: but they must still resolve to the right axis, so they are named here rather
@@ -46,7 +46,7 @@ RESERVED_QUALIFIERS = frozenset({"obs", "var", "x", "raw", "obsm", "varm", "obsp
 _VIRTUAL_AXIS = {OBS_NAMES: "obs", VAR_NAMES: "var"}
 
 #: Reserved prefixes followed by a container key, as in ``obsm:X_pca:0``.
-_KEYED_QUALIFIERS = frozenset({"obsm", "varm", "obsp", "varp", "uns"})
+_KEYED_QUALIFIERS = frozenset({"layers", "obsm", "varm", "obsp", "varp", "uns"})
 
 #: Which AnnData axis each source subsetting touches.
 _AXIS_BY_KIND = {
@@ -104,7 +104,11 @@ def resolve_source(adata: AnnData, text: str) -> ResolvedSource:
     if qualifier in _KEYED_QUALIFIERS:
         # "obsm:X_pca:0" names the key and then the column, like "X_pca:0".
         keyed, _, name = name.partition(":")
-        return ResolvedSource(qualifier, keyed, _AXIS_BY_KIND[qualifier], ((text, name),))
+        # "layers:obs:MS4A1" reaches a layer even when its name is reserved, such as "obs"
+        keyed_kind = "layer" if qualifier == "layers" else qualifier
+        if keyed_kind == "layer" and keyed not in adata.layers:
+            raise UnknownSourceError(_unknown_message(adata, text))
+        return ResolvedSource(keyed_kind, keyed, _AXIS_BY_KIND[keyed_kind], ((text, name),))
     if qualifier is None:
         qualifier = _dynamic_qualifier(adata, text)
         if qualifier is not None:

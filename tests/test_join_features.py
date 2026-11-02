@@ -35,7 +35,7 @@ def test_wide_adds_features_to_obs_and_refuses_a_clash(cells: AnnData) -> None:
 
 
 def test_metadata_is_not_a_feature(cells: AnnData) -> None:
-    with pytest.raises(ap.IncompatibleAxisError, match="raw:"):
+    with pytest.raises(ap.IncompatibleAxisError, match=r"raw\.score"):
         join_features_adata(cells, "score")
 
 

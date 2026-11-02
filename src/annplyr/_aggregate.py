@@ -15,12 +15,18 @@ import scipy.sparse as sp
 from anndata import AnnData
 
 from annplyr._errors import AnnplyrError, UnknownSourceError
+from annplyr._expr import Source
 from annplyr._groups import GroupPlan, GroupSpec
 
 
 def _source_matrix(adata: AnnData, source: Any) -> tuple[Any, Any]:
     """Return the matrix and its feature table for ``"x"``, ``"raw"`` or a layer."""
-    name = getattr(source, "prefix", source)  # an annplyr.data Source carries its prefix
+    name = source._prefix if isinstance(source, Source) else source
+    if isinstance(name, str) and name.startswith("layers:"):
+        name = name.removeprefix("layers:")
+        if name not in adata.layers:
+            raise UnknownSourceError(f"aggregate_cells source layer {name!r} does not exist")
+        return adata.layers[name], adata.var
     if name in {"x", "X"}:
         return adata.X, adata.var
     if name == "raw":

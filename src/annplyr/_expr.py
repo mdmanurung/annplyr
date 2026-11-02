@@ -689,7 +689,10 @@ class Source:
         return self[name]
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        msg = f"{self._prefix!r} is a container, not a function: write {self._prefix}.x or {self._prefix}['x']"
+        prefix = self._prefix
+        shown = "X" if prefix == "x" else f"ap.layer({prefix[7:]!r})" if prefix.startswith("layers:") else prefix
+        name = args[0] if args else "MS4A1"
+        msg = f"{shown} is a container, not a function: write {shown}.{name} or {shown}[{name!r}]"
         raise TypeError(msg)
 
     def __repr__(self) -> str:
@@ -697,11 +700,13 @@ class Source:
 
 
 def layer(name: str) -> Source:
-    """Return the :class:`Source` for the layer, obsm key or varm key ``name``.
+    """Return the :class:`Source` for the layer ``name``, whatever it is called.
 
-    Use it when the name clashes with an annplyr export, such as a layer called ``mean``.
+    ``from annplyr.data import counts`` covers most layers. Use ``ap.layer`` when
+    the name is not importable or is reserved, such as a layer called ``obs`` or
+    ``raw``: ``ap.layer("obs").MS4A1`` reads the layer, never obs metadata.
     """
-    return Source(name)
+    return Source(f"layers:{name}")
 
 
 def lit(value: Any) -> AnnplyrExpr:

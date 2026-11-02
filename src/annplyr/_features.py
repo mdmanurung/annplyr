@@ -40,7 +40,8 @@ def _by_source(adata: AnnData, features: tuple[Any, ...]) -> dict[tuple[str, str
         text = _feature_text(feature)
         resolved = resolve_source(adata, text)
         if resolved.kind not in _MATRIX_KINDS:
-            msg = f"join_features reads X, raw or a layer; {text!r} is {resolved.context}. Name the matrix, e.g. raw:{text}"
+            bare = resolved.bare_names[0]
+            msg = f"join_features reads X, raw or a layer; {text!r} is {resolved.context}. Name the matrix, e.g. raw.{bare}"
             raise IncompatibleAxisError(msg)
         groups.setdefault((resolved.kind, resolved.key), []).extend(resolved.bare_names)
     return groups

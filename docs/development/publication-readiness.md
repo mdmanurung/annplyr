@@ -16,7 +16,7 @@ Each blocker is fixed on this branch unless marked open.
 
 | Blocker | Evidence | Status |
 |---|---|---|
-| Docs used the pre-0.5.0 API | `docs:doctest`: 36 of 69 failed, e.g. `filter() got an unexpected keyword argument 'obs'`. README and the 3 notebooks had the same problem. | Fixed: 70 of 70 pass |
+| Docs used the pre-0.5.0 API | `docs:doctest`: 36 of 69 failed, e.g. `filter() got an unexpected keyword argument 'obs'`. README and the 3 notebooks had the same problem. | Fixed: 78 of 78 pass |
 | Notebooks never ran at build | `nb_execution_mode` was `"off"` in `docs/conf.py` | Fixed: `cache` mode, and errors fail the build |
 | ASV benchmarks used the old API | `bench_smoke.py:33` called `group_by(obs=...)`, so the `benchmark-smoke` CI job failed | Fixed: all 48 benchmark methods run |
 | anndata 0.13 broke `TidyAnnData` | `test_chaining.py`: `'super' object has no attribute 'concatenate'` | Fixed: the override only exists when anndata has the method |
@@ -33,8 +33,8 @@ Unit tests and their environments:
 
 | Check | Command | Outcome |
 |---|---|---|
-| Unit tests, 5 envs | `uvx hatch test --all -n auto` | Pass: 379 passed and 1 skipped in each of py3.12/3.13/3.14 stable, 3.14 pre and 3.12 min |
-| Integration | `uvx hatch run integration:run` | Pass: 65 of 65 |
+| Unit tests, 5 envs | `uvx hatch test --all -n auto` | Pass: 392 passed and 2 skipped in each of py3.12/3.13/3.14 stable, 3.14 pre and 3.12 min |
+| Integration | `uvx hatch run integration:run` | Pass: 64 of 64, including `aggregate_cells` against `sc.get.aggregate` |
 | Coverage | `uvx hatch test -py 3.12 -i deps=stable --cover`, then `cov-combine` and `cov-report` | Pass: 87% against `fail_under = 85`; `_verbs.py` is lowest at 80% |
 | Clean wheel install | Fresh py3.12 venv, wheel plus pytest and scanpy, tests run against site-packages | Pass: 371 of 371, before later tests were added |
 | Lowest dependency versions | `uvx hatch test -py 3.12 -i deps=min` | Pass: anndata 0.12.4, narwhals 2.22.0, numpy 2.0.0, pandas 2.2.2, scipy 1.13.0 |
@@ -55,10 +55,10 @@ Docs, build and benchmarks:
 | Check | Command | Outcome |
 |---|---|---|
 | Docs build | `uvx hatch run docs:build`, which runs with `-W` | Pass: 0 warnings, notebooks executed |
-| Doctests | `uvx hatch run docs:doctest` | Pass: 70 of 70 |
+| Doctests | `uvx hatch run docs:doctest` | Pass: 78 of 78, on a fresh `-E` build |
 | Build | `uvx hatch build -c`, then `uvx twine check dist/annplyr-0.5.0*` | Pass |
 | Benchmark smoke, run directly | Every `time_*` and `peakmem_*` method run once in the hatch env | Pass: 48 of 48 |
-| Benchmark smoke through ASV | `asv_local.py run --quick -E existing -b "^bench_smoke"`, in a scratch copy with the CI benchmark stack | Pass: 5 of 5, after the port. It had failed on the old API. |
+| Benchmark smoke through ASV | `asv_local.py run --quick -E existing -b "^bench_smoke"`, in a scratch copy with the CI benchmark stack | Passed 5 of 5 before the API redesign. **Not rerun** since; the direct run above covers the same methods. |
 | CITATION.cff | `uvx cffconvert --validate -i CITATION.cff` | Pass: schema 1.2.0 |
 | JOSS PDF | `.github/workflows/draft-pdf.yml` | **Unverified**: runs in GitHub Actions only |
 | Workflow audit | `uvx zizmor@1.29.0 --offline --persona pedantic .github/workflows/` | Pass: 0 findings, after adding `concurrency` to `draft-pdf.yml`. The action is now in `ci-security.md`. |
@@ -106,6 +106,33 @@ claim.
 | Trailing-whitespace hook skips docs Markdown | `docs:doctest`. The hook had broken 14 doctests. |
 | JOSS `paper.md`/`paper.bib`, `.zenodo.json`, `CITATION.cff`, README citation section | `cffconvert --validate` |
 | Donor-level tutorial section | `docs:doctest` on `docs/vignettes/cohort_workflow.md` |
+
+## API redesign for R parity
+
+After the audit, the 0.5.0 API was reworked to match tidyseurat,
+tidySingleCellExperiment and tidytof as closely as Python allows. The full
+side-by-side table is in `docs/user_guide/coming_from_r.md`, and the migration
+table is in the CHANGELOG.
+
+- Container namespaces: `obs.percent_mito`, `raw.MS4A1`, `counts.MS4A1`,
+  `raw["HLA-DRA"]`, from `annplyr.data`.
+- Positional names in every verb, keyword assignments in `mutate` and
+  `summarize`, and `by=` on the slice verbs.
+- New verbs: `join_features`, `aggregate_cells`, `nest`/`unnest`, `glimpse`, and
+  `ap.tidy`.
+- Removed: duplicate verbs, `copy=`/`inplace=`, and per-container keywords. The
+  pandas tidyr helpers moved to `annplyr.tidyr`.
+
+The API review found and fixed these bugs, each with a regression test:
+- `ap.layer("obs")` read obs metadata instead of the layer;
+- the `obsm:` prefix used the wrong key;
+- grouped `summarize(by=)` was ignored;
+- `annplyr.data` minted fake names for Sphinx, which broke a fresh docs build.
+
+A fresh agent that had read only the docs did ten tidySCE vignette tasks on
+PBMC3k, and all ten worked on the first try. R parity of the numbers is
+**unverified**: R 4.5.2 is on this host, but tidySingleCellExperiment and
+anndataR are not installed.
 
 ## Maintainer gaps
 

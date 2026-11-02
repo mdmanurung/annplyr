@@ -20,7 +20,7 @@ bibliography: paper.bib
 
 # Summary
 
-`annplyr` adds dplyr-style verbs to AnnData [@virshup2024anndata]. Importing the package registers an `adata.ap` accessor. Through it, users filter, select, mutate, join, group and summarize cells and features. Verbs that return AnnData keep `obs` aligned with `X`, layers, `.raw`, embeddings, loadings and pairwise matrices. Verbs that return tables give pandas DataFrames. The boundary between the two is explicit.
+`annplyr` adds dplyr-style verbs to AnnData [@virshup2024anndata]. One call to `ap.tidy(adata)` makes the verbs methods of the object. Users then filter, select, mutate, join, group and summarize cells and features. Verbs that return AnnData keep `obs` aligned with `X`, layers, `.raw`, embeddings, loadings and pairwise matrices. Verbs that return tables give pandas DataFrames. The boundary between the two is explicit.
 
 # Statement of need
 
@@ -46,19 +46,20 @@ Python has no equivalent for AnnData. The usual options are listed below.
 
 # Functionality
 
-The main verbs are listed below. Each is available as an accessor method, as a method on the returned object, and as a free function that takes the AnnData first.
+The main verbs are listed below. Each is available as a method on a tidied object, as an `adata.ap` accessor method, and as a free function that takes the AnnData first. Every verb returns a new object.
 
 - `filter`, `select`, `mutate`, `transmute`, `rename`, `relocate`, `arrange`, `distinct` and the `slice_*` family.
 - `left_join`, `inner_join`, `semi_join` and `anti_join` for sample sheets and feature annotations. A `relationship` argument states the expected key cardinality. The default is many-to-one, so a duplicated key raises `JoinRelationshipError` instead of duplicating cells.
 - `group_by` returns a persistent grouped object for ranking, filtering, mutation and summaries within groups.
-- `summarize`, `count` and `tally` return DataFrames.
-- `to_wide`, `to_tidy` and `pivot_longer` extract plot-ready tables.
+- `summarize` and `count` return DataFrames.
+- `to_wide`, `join_features`, `pivot_longer` and `pull` extract plot-ready tables.
+- `aggregate_cells` returns a pseudobulk AnnData, and `nest` returns one object per group.
 
-Expressions name the container they read from. A bare name is `obs` metadata. A prefix selects another source: `x:` for `X`, `raw:` for `.raw`, a layer name such as `counts:`, or an `obsm` key such as `X_pca:`. One expression cannot mix containers. It fails with `IncompatibleAxisError` and names both.
+Every name carries its container, as in tidyseurat and tidySingleCellExperiment, whose verbs these follow. `from annplyr.data import obs, var, X, raw` gives the fixed containers. Any other name is a layer or an `obsm` key, so `obs.percent_mito`, `raw.MS4A1`, `counts.MS4A1` and `X_umap[0]` each read one column. Verbs take names positionally, and new columns are keywords, as in `mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)`. One expression cannot mix containers. It fails with `IncompatibleAxisError` and names both.
 
 Several design choices target the misalignment risk. Axis operations use integer position, so duplicate cell or feature names stay distinct. Sparse matrices stay sparse during projection. Only the requested features are read. An optional `max_matrix_values` argument sets a cumulative limit, and the planner rejects a request that would exceed it before any read. AnnData-returning verbs return `TidyAnnData`, a subclass of `AnnData`, so `isinstance` checks and Scanpy calls keep working.
 
-The package also ships helpers to check marker panels against `var_names` (`feature_present`), summarize per sample, and store plotting palettes. It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation examples run on the PBMC3k dataset as doctests, so a stale example fails the build.
+The package also ships helpers to check marker panels against `var_names` (`feature_present`), extract sample metadata, store plotting palettes, and reshape the returned DataFrames (`annplyr.tidyr`). It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation examples run on the PBMC3k dataset as doctests, so a stale example fails the build.
 
 # Example
 
@@ -68,18 +69,18 @@ This example summarizes the processed PBMC3k dataset by cluster. Cell counts and
 import scanpy as sc
 
 import annplyr as ap
+from annplyr.data import obs, raw
 
-adata = sc.datasets.pbmc3k_processed()
+adata = ap.tidy(sc.datasets.pbmc3k_processed())
 
-summary = adata.ap.summarize(
-    {
-        "cells": ap.n(),
-        "median_genes": ap.median("n_genes"),
-        "mean_MS4A1": ap.mean("raw:MS4A1"),
-        "mean_LYZ": ap.mean("raw:LYZ"),
-    },
-    by="louvain",
+summary = adata.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_MS4A1=ap.mean(raw.MS4A1),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=obs.louvain,
 )
+
 print(summary.round(2))
 ```
 

@@ -289,5 +289,5 @@ def test_join_and_count_keep_categorical_key_dtype_and_order(dense_adata: AnnDat
 
     counted = adata.ap.count("batch")
     assert counted["batch"].dtype == adata.obs["batch"].dtype
-    assert counted["batch"].tolist() == ["A", "B"]  # first-seen order, not category order
-    assert counted["n"].tolist() == [3, 2]
+    assert counted["batch"].tolist() == ["B", "A"]  # category order, not first-seen order
+    assert counted["n"].tolist() == [2, 3]

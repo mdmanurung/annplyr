@@ -189,3 +189,14 @@ class GroupPlan:
         result = self.keys.copy()
         result[".rows"] = pd.Series([positions.tolist() for positions in self.positions], dtype=object)
         return result
+
+
+def sort_by_keys(table: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
+    """Order summary rows by their group keys, as dplyr does.
+
+    A categorical key sorts by level order and missing keys go last. The sort is
+    stable, so a later ``sort=True`` by count keeps key order within ties.
+    """
+    if not columns or table.empty:
+        return table
+    return table.sort_values(list(columns), kind="stable", na_position="last").reset_index(drop=True)

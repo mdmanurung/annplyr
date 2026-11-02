@@ -175,8 +175,8 @@ def test_summarize_ungrouped_and_grouped_match_pandas(pbmc: AnnData, source: str
 
     grouped = pbmc.ap.group_by(KEY).summarize(stats)
     frame = pd.DataFrame({"v": values, KEY: pbmc.obs[KEY], "g": pbmc.obs["n_genes"]})
-    ref = frame.groupby(KEY, sort=False, observed=True)
-    assert grouped[KEY].tolist() == list(ref.size().index)  # first-seen order
+    ref = frame.groupby(KEY, sort=True, observed=True)
+    assert grouped[KEY].tolist() == list(ref.size().index)  # key (category) order
     for name, series in {
         "n": ref.size(), "mean": ref["v"].mean(), "sd": ref["v"].std(ddof=1), "median": ref["v"].median(),
         "total": ref["v"].sum(), "lo": ref["v"].min(), "hi": ref["v"].max(), "distinct": ref["g"].nunique(),
@@ -189,7 +189,8 @@ def test_summarize_ungrouped_and_grouped_match_pandas(pbmc: AnnData, source: str
 
 
 def test_count_and_add_count_match_value_counts(pbmc: AnnData) -> None:
-    ref = pbmc.obs[KEY].value_counts(sort=False).reindex(pbmc.obs[KEY].unique())
+    ref = pbmc.obs[KEY].value_counts(sort=False)  # category order
+    ref = ref[ref > 0]
 
     counted = pbmc.ap.count(KEY)
     assert counted[KEY].tolist() == ref.index.tolist()
@@ -198,7 +199,7 @@ def test_count_and_add_count_match_value_counts(pbmc: AnnData) -> None:
     assert pbmc.ap.count()["n"].iloc[0] == pbmc.n_obs
 
     weighted = pbmc.ap.count(KEY, wt=ap.col("n_counts"))
-    np.testing.assert_allclose(weighted["n"], pbmc.obs.groupby(KEY, sort=False, observed=True)["n_counts"].sum())
+    np.testing.assert_allclose(weighted["n"], pbmc.obs.groupby(KEY, sort=True, observed=True)["n_counts"].sum())
 
     added = pbmc.ap.add_count(KEY)
     assert added.obs["n"].tolist() == pbmc.obs[KEY].map(ref).tolist()
@@ -306,7 +307,7 @@ def test_x_and_raw_sources_are_read_independently(_slice600: AnnData, layout: st
 
     summary = adata.ap.group_by(KEY).summarize({"x": ap.mean("x:CST3"), "raw": ap.mean("raw:CST3")})
     frame = pd.DataFrame({KEY: _slice600.obs[KEY], "x": ref_x, "raw": ref_raw})
-    expected = frame.groupby(KEY, sort=False, observed=True).mean()
+    expected = frame.groupby(KEY, sort=True, observed=True).mean()
     np.testing.assert_allclose(summary["x"], expected["x"], rtol=RTOL_AGG)
     np.testing.assert_allclose(summary["raw"], expected["raw"], rtol=RTOL_AGG)
     assert not np.allclose(summary["x"], summary["raw"])  # raw: did not silently read X
@@ -411,8 +412,8 @@ def test_shuffled_summaries_agree_after_sorting_by_group(pbmc: AnnData) -> None:
     mixed = shuffled.ap.group_by(KEY).summarize(stats).set_index(KEY).sort_index()
 
     np.testing.assert_allclose(mixed.to_numpy(float), plain.to_numpy(float), rtol=RTOL_AGG)
-    # and the first-seen group order follows the shuffled data, as documented in user_guide/grouping.md
-    assert shuffled.ap.count(KEY)[KEY].tolist() == list(shuffled.obs[KEY].unique())
+    # and the table order is the key order whatever the data order, as documented in user_guide/grouping.md
+    assert shuffled.ap.count(KEY)[KEY].tolist() == pbmc.ap.count(KEY)[KEY].tolist()
 
 
 # ------------------------------------------------------------- 4. silent-failure paths
@@ -439,12 +440,13 @@ def test_unmatched_join_key_is_na_never_a_default(pbmc: AnnData) -> None:
 
 
 def test_unused_categories_and_emptied_groups_follow_the_documented_grouping_contract(pbmc: AnnData) -> None:
-    # docs/user_guide/grouping.md: groups are first-seen, include NA, keep categorical
-    # dtype and order, and omit unobserved categories.
+    # docs/user_guide/grouping.md: groups include NA, keep categorical
+    # dtype and order, and omit unobserved categories; summary tables list them in key order.
     pbmc.obs[KEY] = pbmc.obs[KEY].cat.add_categories("Unused")
     for table in (pbmc.ap.count(KEY), pbmc.ap.group_by(KEY).summarize({"n": ap.n()})):
         assert "Unused" not in table[KEY].tolist()
-        assert table["n"].tolist() == pbmc.obs[KEY].value_counts(sort=False).reindex(pbmc.obs[KEY].unique()).tolist()
+        sizes = pbmc.obs[KEY].value_counts(sort=False)
+        assert table["n"].tolist() == sizes[sizes > 0].tolist()
         assert isinstance(table[KEY].dtype, pd.CategoricalDtype)
 
     emptied = pbmc.ap.filter(ap.col(KEY) != "NK cells")  # anndata prunes unused categories on subset

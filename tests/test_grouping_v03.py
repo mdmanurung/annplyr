@@ -88,8 +88,9 @@ def test_group_fast_paths_canonicalize_mixed_object_null_sentinels() -> None:
     assert pd.isna(keys.loc[0, "group"])
     assert keys.loc[1, "group"] == "a"
     assert grouped.group_data()[".rows"].tolist() == [[0, 1, 2], [3]]
-    assert count["n"].tolist() == [3, 1]
-    assert tally["n"].tolist() == [6, 4]
+    # summary tables list "a" before the missing group, unlike the plan order above
+    assert count["n"].tolist() == [1, 3]
+    assert tally["n"].tolist() == [4, 6]
 
 
 @pytest.mark.filterwarnings("ignore:Observation names are not unique")
@@ -174,14 +175,14 @@ def test_grouped_mutate_scatter_preserves_extension_and_categorical_dtypes() -> 
     assert isinstance(result.obs["category_copy"].dtype, pd.CategoricalDtype)
 
 
-def test_grouped_summary_count_and_weighted_count_share_plan_order_and_key_dtypes() -> None:
+def test_grouped_summary_count_and_weighted_count_share_key_order_and_key_dtypes() -> None:
     grouped = _grouped_fixture().ap.group_by("group")
     summary = grouped.summarize({"mean": ap.mean("value")})
     count = grouped.count()
     tally = grouped.count(wt="value")
-    assert summary["group"].astype(object).where(summary["group"].notna(), "NA").tolist() == ["b", "a", "NA"]
-    assert count["n"].tolist() == [3, 2, 1]
-    assert tally["n"].tolist() == [7, 6, 5]
+    assert summary["group"].astype(object).where(summary["group"].notna(), "NA").tolist() == ["a", "b", "NA"]
+    assert count["n"].tolist() == [2, 3, 1]
+    assert tally["n"].tolist() == [6, 7, 5]
     assert isinstance(summary["group"].dtype, pd.CategoricalDtype)
     assert isinstance(count["group"].dtype, pd.CategoricalDtype)
 
@@ -193,8 +194,8 @@ def test_grouped_weighted_count_does_not_collide_with_internal_column_names() ->
 
     result = adata.ap.group_by(internal_name).count(wt="value")
 
-    assert result[internal_name].astype(object).where(result[internal_name].notna(), "NA").tolist() == ["b", "a", "NA"]
-    assert result["n"].tolist() == [7, 6, 5]
+    assert result[internal_name].astype(object).where(result[internal_name].notna(), "NA").tolist() == ["a", "b", "NA"]
+    assert result["n"].tolist() == [6, 7, 5]
 
 
 def test_all_six_grouped_joins_execute_globally_and_update_suffixed_key() -> None:
@@ -314,3 +315,25 @@ def test_high_cardinality_plan_has_one_nonempty_group_per_first_seen_key() -> No
     assert len(plan.positions) == size
     assert plan.first_positions.tolist() == list(range(size))
     assert all(len(positions) == 1 for positions in plan.positions)
+
+
+def test_summary_and_count_tables_list_groups_in_key_order_with_missing_last() -> None:
+    adata = _grouped_fixture()
+    adata.obs["group"] = pd.Categorical(["b", "a", "b", None, "a", "b"], categories=["b", "a"])
+    adata.obs["plain"] = ["z", "y", "z", None, "y", "z"]
+    grouped = adata.ap.group_by("group")
+
+    def keys(table: pd.DataFrame, column: str = "group") -> list:
+        return table[column].astype(object).where(table[column].notna(), "NA").tolist()
+
+    # categorical key: level order (b before a), not sorted text and not first-seen
+    assert keys(adata.ap.summarize({"n": ap.n()}, by="group")) == ["b", "a", "NA"]
+    assert keys(grouped.summarize({"n": ap.n()})) == ["b", "a", "NA"]
+    assert keys(adata.ap.count("group")) == ["b", "a", "NA"]
+    counted = grouped.count()
+    assert keys(counted) == ["b", "a", "NA"]
+    assert counted["n"].tolist() == [3, 2, 1]
+    # plain key: sorted text although "z" is seen first
+    assert keys(adata.ap.count("plain"), "plain") == ["y", "z", "NA"]
+    # count(sort=True) orders by n, ties keep key order
+    assert keys(adata.ap.count("plain", sort=True), "plain") == ["z", "y", "NA"]

@@ -62,7 +62,7 @@ def test_whole_matrix_needs_allow_all_features(adata: AnnData) -> None:
 
 
 def test_var_names_infer_the_axis_and_mixing_raises(adata: AnnData) -> None:
-    assert adata.count(var.feature_type)["n"].tolist() == [3, 1]
+    assert adata.count(var.feature_type)["n"].tolist() == [1, 3]
     assert adata.group_by(var.feature_type).group_vars() == ["feature_type"]
     with pytest.raises(IncompatibleAxisError):
         adata.group_by(obs.batch, var.feature_type)

@@ -125,9 +125,9 @@ def test_var_axis_chunking_preserves_nullable_groups_and_assignment_order(
     )
     expected = pd.DataFrame(
         {
-            "kind": pd.Categorical(["rna", "protein", None], categories=["protein", "rna"]),
-            "second": np.array([5.5, 8.5, 11.5], dtype=np.float32),
-            "first": np.array([9.0, 15.0, 21.0], dtype=np.float32),
+            "kind": pd.Categorical(["protein", "rna", None], categories=["protein", "rna"]),
+            "second": np.array([8.5, 5.5, 11.5], dtype=np.float32),
+            "first": np.array([15.0, 9.0, 21.0], dtype=np.float32),
         }
     )
     pd.testing.assert_frame_equal(result, expected, check_exact=True)

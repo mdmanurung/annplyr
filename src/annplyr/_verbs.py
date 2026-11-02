@@ -42,7 +42,7 @@ from annplyr._frames import (
     with_row_number,
     x_frame,
 )
-from annplyr._groups import GroupPlan
+from annplyr._groups import GroupPlan, sort_by_keys
 from annplyr._reductions import ReductionPlan, SummaryGroupPlan, summarize_chunked
 from annplyr._resolve import ResolvedSource
 from annplyr._sources import (
@@ -1332,8 +1332,9 @@ def summarize_adata(
 
     if not pieces:
         return count_frame(by_source, by=by, axis=by_axis)
-    result = _merge_summary_pieces(pieces, list(groups.internal_columns))
-    return groups.restore_keys(result)
+    result = groups.restore_keys(_merge_summary_pieces(pieces, list(groups.internal_columns)))
+    # a grouped call sorts after it restores its own keys, see GroupedAnnData.summarize
+    return result if _group_plan is not None else sort_by_keys(result, groups.columns)
 
 
 def _summarize_matrix_source(
@@ -1517,7 +1518,7 @@ def count_frame(
     if not by_columns:
         value = work["__annplyr_wt__"].sum() if wt is not None else len(frame)
         return pd.DataFrame({name: [value]})
-    grouped = work.groupby(by_columns, sort=False, observed=True, dropna=False)
+    grouped = work.groupby(by_columns, sort=True, observed=True, dropna=False)  # key order, as dplyr
     result = (
         grouped["__annplyr_wt__"].sum().reset_index(name=name)
         if wt is not None

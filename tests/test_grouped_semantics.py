@@ -64,7 +64,7 @@ def test_grouped_var_count_and_keys(dense_adata: AnnData) -> None:
 
     pd.testing.assert_frame_equal(
         grouped.count().reset_index(drop=True),
-        pd.DataFrame({"feature_type": ["rna", "protein"], "n": [3, 1]}),
+        pd.DataFrame({"feature_type": ["protein", "rna"], "n": [1, 3]}),
     )
     assert grouped.group_data()[".rows"].tolist() == [[0, 1, 3], [2]]
 

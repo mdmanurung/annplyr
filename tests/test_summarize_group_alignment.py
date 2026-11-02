@@ -4,7 +4,8 @@
 pieces. Those pieces are keyed by group identity rather than by key values, so
 a combining step that reorders rows cannot hand a group another group's
 aggregates. Every fixture here deliberately uses groups whose first-seen order
-differs from their sorted order, which is the case the bug needed.
+differs from their sorted order, which is the case the bug needed. Summaries
+are listed in key order, so the reference is sorted too.
 """
 
 from __future__ import annotations
@@ -52,13 +53,13 @@ def make_adata(matrix: Any = None) -> AnnData:
 
 def expected() -> pd.DataFrame:
     frame = pd.DataFrame({"label": LABELS, "score": np.arange(1.0, 7.0), "g1": VALUES[:, 0]})
-    grouped = frame.groupby("label", sort=False)
+    grouped = frame.groupby("label", sort=True)
     return pd.DataFrame(
         {
-            "label": list(dict.fromkeys(LABELS)),
-            "cells": grouped.size().reindex(dict.fromkeys(LABELS)).to_numpy(),
-            "mean_score": grouped["score"].mean().reindex(dict.fromkeys(LABELS)).to_numpy(),
-            "mean_g1": grouped["g1"].mean().reindex(dict.fromkeys(LABELS)).to_numpy(),
+            "label": sorted(set(LABELS)),
+            "cells": grouped.size().to_numpy(),
+            "mean_score": grouped["score"].mean().to_numpy(),
+            "mean_g1": grouped["g1"].mean().to_numpy(),
         }
     )
 
@@ -104,8 +105,8 @@ def test_missing_group_keys_keep_their_aggregates() -> None:
 
     summary = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
 
-    assert summary["label"].tolist()[0] == "zeta"
-    assert pd.isna(summary["label"].tolist()[1])
+    assert summary["label"].tolist()[:2] == ["mu", "zeta"]  # key order, missing last
+    assert pd.isna(summary["label"].tolist()[2])
     assert summary.loc[summary["label"] == "zeta", "cells"].tolist() == [3]
     assert summary.loc[summary["label"] == "zeta", "mean_g1"].tolist() == pytest.approx([(10 + 40 + 60) / 3])
     assert summary.loc[summary["label"].isna(), "mean_g1"].tolist() == pytest.approx([(20 + 50) / 2])

@@ -11,7 +11,7 @@ from annplyr._aggregate import aggregate_cells_adata
 from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
 from annplyr._expr import AnnplyrExpr, col, everything
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
-from annplyr._groups import GroupPlan, GroupSpec
+from annplyr._groups import GroupPlan, GroupSpec, sort_by_keys
 from annplyr._resolve import META_AND_X, bare_key, container_kwargs, relocate_anchor, rename_kwargs
 from annplyr._tidy import TidyAnnData
 from annplyr._typing import (
@@ -276,7 +276,7 @@ class GroupedAnnData:
         if len(result) == len(plan.keys):
             for column in self._spec.columns:
                 result[column] = pd.Series(plan.keys[column].array, index=result.index)
-        return result
+        return sort_by_keys(result, self._spec.columns)
 
     summarise = summarize
 
@@ -285,7 +285,9 @@ class GroupedAnnData:
         if wt is not None:
             frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
             weights = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"]
-        result = GroupPlan.count_for(self._adata, self._spec, weights=weights, name=name)
+        result = sort_by_keys(
+            GroupPlan.count_for(self._adata, self._spec, weights=weights, name=name), self._spec.columns
+        )
         if sort:
             result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
         return result

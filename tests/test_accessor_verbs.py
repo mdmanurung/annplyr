@@ -138,7 +138,7 @@ def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) 
     )
     pd.testing.assert_frame_equal(
         var_summary.reset_index(drop=True),
-        pd.DataFrame({"feature_type": ["rna", "protein"], "max_loading0": [1.2, 0.3]}),
+        pd.DataFrame({"feature_type": ["protein", "rna"], "max_loading0": [0.3, 1.2]}),
     )
 
 

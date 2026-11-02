@@ -386,7 +386,6 @@ class GroupedAnnData:
         self,
         stats: Mapping[str, Any] | None = None,
         *,
-        by: Selector | None = None,
         source: str | None = None,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:

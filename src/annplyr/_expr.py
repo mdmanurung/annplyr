@@ -674,7 +674,8 @@ class Source:
     """
 
     __slots__ = ("_prefix",)
-    __iter__ = None  # type: ignore[assignment]  # __getitem__ would otherwise make it loop forever
+    _prefix: str
+    __iter__ = None  # __getitem__ would otherwise make it loop forever
 
     def __init__(self, prefix: str):
         object.__setattr__(self, "_prefix", prefix)

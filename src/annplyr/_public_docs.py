@@ -84,12 +84,15 @@ def _fill(
     returns: str,
     ownership: str,
     failures: tuple[str, ...],
+    extend: bool = False,
 ) -> None:
-    if inspect.getdoc(obj):
+    existing = inspect.getdoc(obj)
+    # a hand-written docstring keeps its text and gains the standard contract sections
+    if existing and not (extend and "Parameters\n----------" not in existing):
         return
     obj.__doc__ = _docstring(
         obj,
-        summary=summary,
+        summary=existing or summary,
         returns=returns,
         ownership=ownership,
         failures=failures,
@@ -168,6 +171,7 @@ def _install_methods(cls: type[Any], *, grouped: bool) -> None:
             returns=returns,
             ownership=ownership,
             failures=failures,
+            extend=True,
         )
 
 

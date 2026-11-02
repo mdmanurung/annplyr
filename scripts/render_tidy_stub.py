@@ -38,6 +38,7 @@ from anndata import AnnData
 
 import annplyr
 from annplyr._accessor import AnnplyrAccessor
+from annplyr._expr import AnnplyrExpr
 from annplyr._grouped import GroupedAnnData
 from annplyr._typing import (
     Axis,

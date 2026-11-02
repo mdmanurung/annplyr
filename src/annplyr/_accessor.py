@@ -6,9 +6,17 @@ from typing import Any, TypeVar, cast, overload
 import pandas as pd
 from anndata import AnnData
 
-from annplyr._errors import AnnplyrError
+from annplyr._errors import AnnplyrError, IncompatibleAxisError
+from annplyr._expr import AnnplyrExpr, everything
 from annplyr._extensions import register_anndata_accessor
 from annplyr._grouped import GroupedAnnData
+from annplyr._resolve import (
+    META_AND_X,
+    container_kwargs,
+    key_names,
+    relocate_anchor,
+    rename_kwargs,
+)
 from annplyr._tidy import TidyAnnData, install_verbs
 from annplyr._typing import (
     AnnDataWithAnnplyr,
@@ -22,10 +30,8 @@ from annplyr._typing import (
     NaMatches,
     Selector,
     Source,
-    SourceSelectors,
 )
 from annplyr._verbs import (
-    _axis,
     _validate_filter_scope,
     add_count_adata,
     add_tally_adata,
@@ -63,6 +69,10 @@ from annplyr._verbs import (
 )
 
 T = TypeVar("T")
+
+_TABLE = frozenset({"obs", "x", "raw", "layer", "obsm", "obsp"})
+
+_PULLABLE = _TABLE | {"var", "varm", "varp", "uns"}
 
 
 def _with_annplyr_accessor(adata: AnnData) -> AnnDataWithAnnplyr:
@@ -243,68 +253,85 @@ class AnnplyrAccessor:
         _validate_filter_scope(self._obj, predicates, source=source, expression=True)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
 
-    def select(
-        self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        copy: bool = True,
-    ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(select_adata(self._obj, obs=obs, var=var, x=x, copy=copy))
+    def select(self, *names: Selector, copy: bool = True) -> AnnDataWithAnnplyr:
+        """Keep the named columns and features; ``-obs.x`` drops one instead.
+
+        Names are strings, container columns (``obs.louvain``, ``var.gene_ids``,
+        ``X.MS4A1``) or selectors (``ap.starts_with("n_")``, read as ``obs``).
+        Each container is reshaped on its own, so ``select(obs.louvain, X.MS4A1)``
+        keeps one obs column and one feature. A whole ``Source`` such as ``X``
+        keeps every column of it. With no names nothing changes.
+        """
+        kwargs = container_kwargs(self._obj, names, verb="select", allowed=META_AND_X, negation=True)
+        return _with_annplyr_accessor(select_adata(self._obj, **kwargs, copy=copy))
 
     def rename(
         self,
-        obs: Mapping[str, str] | None = None,
-        var: Mapping[str, str] | None = None,
-        x: Mapping[str, str] | None = None,
+        mapping: Mapping[str, Any] | None = None,
+        /,
         *,
         inplace: bool = False,
+        **new_to_old: Any,
     ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(rename_adata(self._obj, obs=obs, var=var, x=x, inplace=inplace))
+        """Rename columns or features, as ``new=old`` where ``old`` is a string or one column.
+
+        ``rename(cell_type=obs.louvain)`` renames an obs column and
+        ``rename({"CD4+": X.CD4})`` takes a name that is not an identifier. The
+        container comes from the old name, so a bare string is ``obs``. A new name
+        that clashes with ``inplace`` goes in the mapping.
+        """
+        return _with_annplyr_accessor(
+            rename_adata(self._obj, **rename_kwargs(self._obj, mapping, new_to_old), inplace=inplace)
+        )
 
     def rename_with(
         self,
         func: Callable[[str], str],
-        *,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
+        *names: Selector,
         inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(rename_with_adata(self._obj, func, obs=obs, var=var, x=x, inplace=inplace))
+        """Rename the named columns with ``func``; with no names, every ``obs`` column."""
+        kwargs = container_kwargs(self._obj, names, verb="rename_with", allowed=META_AND_X) or {"obs": everything()}
+        return _with_annplyr_accessor(rename_with_adata(self._obj, func, **kwargs, inplace=inplace))
 
     def relocate(
         self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        *,
-        before: str | None = None,
-        after: str | None = None,
+        *names: Selector,
+        before: str | AnnplyrExpr | None = None,
+        after: str | AnnplyrExpr | None = None,
         inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
+        """Move the named columns to the front, or before or after an anchor column."""
+        kwargs = container_kwargs(self._obj, names, verb="relocate", allowed=META_AND_X, negation=True)
         return _with_annplyr_accessor(
-            relocate_adata(self._obj, obs=obs, var=var, x=x, before=before, after=after, inplace=inplace)
+            relocate_adata(
+                self._obj,
+                **kwargs,
+                before=relocate_anchor(self._obj, before, kwargs),
+                after=relocate_anchor(self._obj, after, kwargs),
+                inplace=inplace,
+            )
         )
 
     def distinct(
         self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        *,
-        axis: Axis = "obs",
+        *names: Selector,
         keep_all: bool = False,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> AnnDataWithAnnplyr:
+        """Keep the first row for each combination of the named columns.
+
+        The names come from one container. ``var`` names make features the rows.
+        """
+        kwargs = container_kwargs(self._obj, names, verb="distinct", allowed=META_AND_X, negation=True)
+        if len(kwargs) > 1:
+            raise IncompatibleAxisError("distinct takes columns from one container at a time")
         return _with_annplyr_accessor(
             distinct_adata(
                 self._obj,
-                obs=obs,
-                var=var,
-                x=x,
-                axis=axis,
+                **kwargs,
+                axis="var" if "var" in kwargs else "obs",
                 keep_all=keep_all,
                 copy=copy,
                 max_matrix_values=max_matrix_values,
@@ -545,26 +572,25 @@ class AnnplyrAccessor:
     def group_by(self) -> AnnDataWithAnnplyr: ...
 
     @overload
-    def group_by(self, *by: Selector, axis: Axis = "obs") -> GroupedAnnData: ...
+    def group_by(self, *by: Selector) -> GroupedAnnData: ...
 
-    def group_by(self, *by: Selector, axis: Axis = "obs") -> AnnDataWithAnnplyr | GroupedAnnData:
+    def group_by(self, *by: Selector) -> AnnDataWithAnnplyr | GroupedAnnData:
         """Group rows so later verbs run group-locally, one key per argument.
 
-        The keys are positional, matching :meth:`count` and the ``by=`` of
-        :meth:`summarize`, so grouping reads the same as summarizing::
+        The keys are positional, matching :meth:`count`, so grouping reads the
+        same as counting::
 
-            adata.ap.group_by("sample", "cell_type").summarize({"n": ap.n()})
+            adata.ap.group_by(obs.sample, obs.cell_type).summarize({"n": ap.n()})
 
-        A bare name is ``obs`` metadata; qualify a feature name with ``var:``.
-        With no keys the object comes back unchanged, so a chain is never broken
-        by a conditional ``group_by``. ``axis="var"`` groups features instead of
-        observations.
+        A key is a string, a column such as ``obs.louvain`` or a selector.
+        Computed values are not keys: ``mutate`` them first. ``var`` keys group
+        features instead of observations, and mixing the two raises
+        ``IncompatibleAxisError``. With no keys the object comes back unchanged,
+        so a chain is never broken by a conditional ``group_by``.
 
         Parameters
         ----------
         *by
-            See the annotated public signature.
-        axis
             See the annotated public signature.
 
         Returns
@@ -588,12 +614,10 @@ class AnnplyrAccessor:
         AnnplyrError
             If the request violates the corresponding public contract.
         """
-        axis = _axis(axis)
         if not by:
             return _with_annplyr_accessor(self._obj)
-        if axis == "var":
-            return GroupedAnnData(self._obj, var=cast(Selector, by))
-        return GroupedAnnData(self._obj, obs=cast(Selector, by))
+        axis, keys = key_names(self._obj, by, verb="group_by")
+        return GroupedAnnData(self._obj, obs=keys) if axis == "obs" else GroupedAnnData(self._obj, var=keys)
 
     def summarize(
         self,
@@ -617,38 +641,38 @@ class AnnplyrAccessor:
 
     def count(
         self,
-        by: Selector | None = None,
-        *,
+        *by: Selector,
         wt: Expression | None = None,
         sort: bool = False,
-        axis: Axis = "obs",
+        axis: Axis | None = None,
         name: str = "n",
     ) -> pd.DataFrame:
-        return count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
+        resolved, keys = key_names(self._obj, by, verb="count", axis=axis, qualified=True)
+        return count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name)
 
     def tally(
         self,
-        by: Selector | None = None,
-        *,
+        *by: Selector,
         wt: Expression | None = None,
         sort: bool = False,
-        axis: Axis = "obs",
+        axis: Axis | None = None,
         name: str = "n",
     ) -> pd.DataFrame:
-        return tally_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name)
+        resolved, keys = key_names(self._obj, by, verb="tally", axis=axis, qualified=True)
+        return tally_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name)
 
     def add_count(
         self,
-        by: Selector | None = None,
-        *,
+        *by: Selector,
         wt: Expression | None = None,
         sort: bool = False,
-        axis: Axis = "obs",
+        axis: Axis | None = None,
         name: str = "n",
         inplace: bool = False,
     ) -> AnnDataWithAnnplyr:
+        resolved, keys = key_names(self._obj, by, verb="add_count", axis=axis, qualified=True)
         return _with_annplyr_accessor(
-            add_count_adata(self._obj, by=by, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
+            add_count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name, inplace=inplace)
         )
 
     def add_tally(
@@ -664,57 +688,34 @@ class AnnplyrAccessor:
             add_tally_adata(self._obj, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
         )
 
-    def pull(
-        self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        raw: Selector | None = None,
-        obsm: SourceSelectors | None = None,
-        varm: SourceSelectors | None = None,
-        obsp: SourceSelectors | None = None,
-        varp: SourceSelectors | None = None,
-        uns: SourceSelectors | None = None,
-        *,
-        layer: str | None = None,
-        max_matrix_values: int | None = None,
-    ) -> pd.Series:
-        return pull_adata(
-            self._obj,
-            obs=obs,
-            var=var,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            varm=varm,
-            obsp=obsp,
-            varp=varp,
-            uns=uns,
-            layer=layer,
-            max_matrix_values=max_matrix_values,
-        )
+    def pull(self, name: Selector, *, max_matrix_values: int | None = None) -> pd.Series:
+        """Return one column as a Series, such as ``pull(obs.louvain)`` or ``pull(counts.MS4A1)``."""
+        kwargs = container_kwargs(self._obj, [name], verb="pull", allowed=_PULLABLE, whole_matrix=False)
+        return pull_adata(self._obj, **kwargs, max_matrix_values=max_matrix_values)
 
     def to_wide(
         self,
-        obs: Selector | None = None,
-        x: Selector | None = None,
-        raw: Selector | None = None,
-        obsm: SourceSelectors | None = None,
-        obsp: SourceSelectors | None = None,
-        *,
-        layer: str | None = None,
+        *names: Selector,
+        allow_all_features: bool = False,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
-        return to_wide_adata(
-            self._obj,
-            obs=obs,
-            x=x,
-            raw=raw,
-            obsm=obsm,
-            obsp=obsp,
-            layer=layer,
-            max_matrix_values=max_matrix_values,
-        )
+        """Return the named columns from any container as one DataFrame, one row per cell.
+
+        A whole matrix (``X``, ``raw`` or a layer) needs ``allow_all_features=True``.
+        A whole ``obs`` or ``obsm`` key does not.
+        """
+        kwargs = container_kwargs(self._obj, names, verb="to_wide", allowed=_TABLE, whole_matrix=allow_all_features)
+        return to_wide_adata(self._obj, **kwargs, max_matrix_values=max_matrix_values)
+
+    def glimpse(self, n: int = 5) -> None:
+        """Print the first rows of ``obs`` and the names of layers, obsm keys and raw."""
+        adata = self._obj
+        listed = lambda keys: ", ".join(str(k) for k in keys if k is not None) or "none"
+        print(f"{adata.n_obs} cells x {adata.n_vars} features")
+        print(cast(pd.DataFrame, adata.obs).head(n).to_string())
+        print(f"layers: {listed(adata.layers.keys())}")
+        print(f"obsm: {listed(adata.obsm.keys())}")
+        print(f"raw: {'yes' if adata.raw is not None else 'no'}")
 
     def to_tidy(
         self,
@@ -744,23 +745,27 @@ class AnnplyrAccessor:
 
     def pivot_longer(
         self,
-        obs: Selector | None = None,
-        x: Selector | None = None,
-        raw: Selector | None = None,
-        *,
-        layer: str | None = None,
+        *names: Selector,
         obs_name: str = "obs_name",
         names_to: str = "name",
         values_to: str = "value",
         allow_all_features: bool = False,
         max_matrix_values: int | None = None,
     ) -> pd.DataFrame:
+        """Return one row per cell and feature: ``obs`` names ride along, matrix names are pivoted.
+
+        A whole matrix (``X``, ``raw`` or a layer) needs ``allow_all_features=True``.
+        """
+        kwargs = container_kwargs(
+            self._obj,
+            names,
+            verb="pivot_longer",
+            allowed=frozenset({"obs", "x", "raw", "layer"}),
+            whole_matrix=allow_all_features,
+        )
         return pivot_longer_adata(
             self._obj,
-            obs=obs,
-            x=x,
-            raw=raw,
-            layer=layer,
+            **kwargs,
             obs_name=obs_name,
             names_to=names_to,
             values_to=values_to,

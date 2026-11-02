@@ -868,7 +868,7 @@ def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", c
     axis = _axis(axis)
     _validate_slice_n(n)
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
-    positions = _sort_values_for_frame(frame, by).to_numpy(dtype=np.intp)[:n]
+    positions = _sort_values_for_frame(frame, resolve.bare_key(by, axis=axis)).to_numpy(dtype=np.intp)[:n]
     return (
         _subset_positions(adata, positions, None, copy=copy)
         if axis == "obs"
@@ -879,7 +879,7 @@ def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", c
 def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
     axis = _axis(axis)
     _validate_slice_n(n)
-    by_desc = _desc_order_by(by)
+    by_desc = _desc_order_by(resolve.bare_key(by, axis=axis))
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
     positions = _sort_values_for_frame(frame, by_desc).to_numpy(dtype=np.intp)[:n]
     return (

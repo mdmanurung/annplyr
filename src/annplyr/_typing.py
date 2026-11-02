@@ -7,6 +7,7 @@ import narwhals as nw
 import pandas as pd
 
 from annplyr._expr import AnnplyrExpr, AnnplyrSelector
+from annplyr._expr import Source as _Container
 from annplyr._tidy import TidyAnnData
 
 # Verb results are real ``TidyAnnData`` objects, so this alias is the concrete
@@ -17,7 +18,14 @@ AnnDataWithAnnplyr = TidyAnnData
 
 type Axis = Literal["obs", "var"]
 type Expression = str | AnnplyrExpr | nw.Expr
-type Selector = str | AnnplyrSelector | AnnplyrExpr | nw.Expr | Sequence[str | AnnplyrSelector | AnnplyrExpr | nw.Expr]
+type Selector = (
+    str
+    | AnnplyrSelector
+    | AnnplyrExpr
+    | nw.Expr
+    | _Container
+    | Sequence[str | AnnplyrSelector | AnnplyrExpr | nw.Expr | _Container]
+)
 type Source = Literal["obs", "var", "x", "raw", "obsm", "varm", "obsp", "varp", "uns"]
 type SourceSelectors = Mapping[str, Selector]
 type JoinInput = pd.DataFrame | Mapping[str, Any]

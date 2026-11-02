@@ -8,9 +8,10 @@ import pandas as pd
 from anndata import AnnData
 
 from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
-from annplyr._expr import col
+from annplyr._expr import AnnplyrExpr, col, everything
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
 from annplyr._groups import GroupPlan, GroupSpec
+from annplyr._resolve import META_AND_X, bare_key, container_kwargs, relocate_anchor, rename_kwargs
 from annplyr._tidy import TidyAnnData
 from annplyr._typing import (
     AnnDataWithAnnplyr,
@@ -261,20 +262,12 @@ class GroupedAnnData:
         _validate_filter_scope(self._adata, predicates, source=source, expression=True)
         return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
 
-    def select(
-        self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        copy: bool = True,
-    ) -> GroupedAnnData:
+    def select(self, *names: Selector, copy: bool = True) -> GroupedAnnData:
         self._spec.validate(self._adata)
-        if self._axis == "obs" and obs is not None:
-            obs = self._retain_group_keys(obs, axis="obs")
-        elif self._axis == "var" and var is not None:
-            var = self._retain_group_keys(var, axis="var")
-        result = select_adata(self._adata, obs=obs, var=var, x=x, copy=copy)
-        return self._wrap(result)
+        kwargs = container_kwargs(self._adata, names, verb="select", allowed=META_AND_X, negation=True)
+        if self._axis in kwargs:
+            kwargs[self._axis] = self._retain_group_keys(kwargs[self._axis], axis=self._axis)
+        return self._wrap(select_adata(self._adata, **kwargs, copy=copy))
 
     def _retain_group_keys(self, selector: Selector, *, axis: Axis) -> list[str]:
         frame = obs_frame(self._adata) if axis == "obs" else var_frame(self._adata)
@@ -283,58 +276,39 @@ class GroupedAnnData:
         return [*omitted, *selected]
 
     def rename(
-        self,
-        obs: Mapping[str, str] | None = None,
-        var: Mapping[str, str] | None = None,
-        x: Mapping[str, str] | None = None,
-        *,
-        inplace: bool = False,
+        self, mapping: Mapping[str, Any] | None = None, /, *, inplace: bool = False, **new_to_old: Any
     ) -> GroupedAnnData:
-        axis_mapping = obs if self._axis == "obs" else var
-        update = {old: new for new, old in (axis_mapping or {}).items()}
-        spec = self._spec.renamed(update)
-        result = rename_adata(self._adata, obs=obs, var=var, x=x, inplace=inplace)
-        return self._same_shape_result(result, inplace=inplace, spec=spec)
+        kwargs = rename_kwargs(self._adata, mapping, new_to_old)
+        update = {old: new for new, old in kwargs.get(self._axis, {}).items()}
+        result = rename_adata(self._adata, **kwargs, inplace=inplace)
+        return self._same_shape_result(result, inplace=inplace, spec=self._spec.renamed(update))
 
     def rename_with(
         self,
         func: Callable[[str], str],
-        *,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
+        *names: Selector,
         inplace: bool = False,
     ) -> GroupedAnnData:
         before = list(cast(pd.DataFrame, self._adata.obs if self._axis == "obs" else self._adata.var).columns)
-        result = rename_with_adata(
-            self._adata,
-            func,
-            obs=obs,
-            var=var,
-            x=x,
-            inplace=inplace,
-        )
+        kwargs = container_kwargs(self._adata, names, verb="rename_with", allowed=META_AND_X) or {"obs": everything()}
+        result = rename_with_adata(self._adata, func, **kwargs, inplace=inplace)
         after = list(cast(pd.DataFrame, result.obs if self._axis == "obs" else result.var).columns)
         spec = self._spec.renamed(dict(zip(before, after, strict=True)))
         return self._same_shape_result(result, inplace=inplace, spec=spec)
 
     def relocate(
         self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        *,
-        before: str | None = None,
-        after: str | None = None,
+        *names: Selector,
+        before: str | AnnplyrExpr | None = None,
+        after: str | AnnplyrExpr | None = None,
         inplace: bool = False,
     ) -> GroupedAnnData:
+        kwargs = container_kwargs(self._adata, names, verb="relocate", allowed=META_AND_X, negation=True)
         result = relocate_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
-            before=before,
-            after=after,
+            **kwargs,
+            before=relocate_anchor(self._adata, before, kwargs),
+            after=relocate_anchor(self._adata, after, kwargs),
             inplace=inplace,
         )
         return self._same_shape_result(result, inplace=inplace)
@@ -481,28 +455,21 @@ class GroupedAnnData:
 
     def distinct(
         self,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        x: Selector | None = None,
-        *,
+        *names: Selector,
         keep_all: bool = False,
         copy: bool = True,
         max_matrix_values: int | None = None,
     ) -> GroupedAnnData:
-        if self._axis == "obs" and var is not None:
-            raise IncompatibleAxisError("obs-grouped distinct cannot use var selectors")
-        if self._axis == "var" and (obs is not None or x is not None):
-            raise IncompatibleAxisError("var-grouped distinct cannot use obs or x selectors")
-        if not keep_all and self._axis == "obs" and obs is not None:
-            obs = self._retain_group_keys(obs, axis="obs")
-        if not keep_all and self._axis == "var" and var is not None:
-            var = self._retain_group_keys(var, axis="var")
+        kwargs = container_kwargs(self._adata, names, verb="distinct", allowed=META_AND_X, negation=True)
+        wrong = {"obs": ("var", "x"), "var": ("obs", "x")}[self._axis]
+        if any(kind in kwargs for kind in wrong):
+            raise IncompatibleAxisError(f"{self._axis}-grouped distinct cannot use {' or '.join(wrong)} names")
+        if not keep_all and self._axis in kwargs:
+            kwargs[self._axis] = self._retain_group_keys(kwargs[self._axis], axis=self._axis)
         plan = self._plan()
         result = distinct_adata(
             self._adata,
-            obs=obs,
-            var=var,
-            x=x,
+            **kwargs,
             axis=self._axis,
             keep_all=keep_all,
             copy=copy,
@@ -548,6 +515,7 @@ class GroupedAnnData:
         _validate_slice_n(n)
         plan = self._plan()
         frame = obs_frame(self._adata) if self._axis == "obs" else var_frame(self._adata)
+        by = bare_key(by, axis=self._axis)
         order_by = _desc_order_by(by) if descending else by
         pieces: list[np.ndarray] = []
         for positions in plan.positions:

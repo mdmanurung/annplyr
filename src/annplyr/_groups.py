@@ -49,9 +49,13 @@ class GroupSpec:
             raise SelectionError("group_by requires obs or var metadata columns")
         axis: Axis = "obs" if obs is not None else "var"
         keys = _as_keys(obs if obs is not None else var)
-        computed = [key for key in keys if isinstance(key, (AnnplyrExpr, nw.Expr))]
+        computed = [
+            key
+            for key in keys
+            if (isinstance(key, AnnplyrExpr) and key._source_column is None) or isinstance(key, nw.Expr)
+        ]
         if computed:
-            raise SelectionError("group_by accepts existing metadata names or tidy selectors, not computed expressions")
+            raise SelectionError("group_by takes column names, not computed expressions: mutate() the value first")
         frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
         selected = evaluate_select(frame, resolve_grouping_keys(keys))
         columns = tuple(str(column) for column in selected.columns)

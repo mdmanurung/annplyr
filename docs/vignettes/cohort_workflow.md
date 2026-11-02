@@ -21,6 +21,9 @@ present under a different spelling. `feature_present()` reports the whole
 request without touching the object:
 
 ```{testcode}
+from annplyr.data import X, obs, raw
+
+adata = ap.tidy(adata)
 markers = ["MS4A1", "CD79A", "NKG7", "LYZ", "CD4"]
 
 print(ap.feature_present(adata, markers).to_frame())
@@ -73,7 +76,7 @@ sample_sheet = pd.DataFrame(
     }
 )
 
-cohort = adata.ap.left_join(sample_sheet, by="donor_id", relationship="many-to-one")
+cohort = adata.left_join(sample_sheet, by="donor_id", relationship="many-to-one")
 
 print(cohort.obs[["louvain", "donor_id", "condition", "collection_day"]].head(3))
 ```
@@ -97,9 +100,9 @@ QC thresholds stay ordinary expressions over `obs`; every
 predicate must pass:
 
 ```{testcode}
-qc = cohort.ap.filter(
-    ap.col("n_genes") >= 500,
-    ap.col("percent_mito") < 0.03,
+qc = cohort.filter(
+    obs.n_genes >= 500,
+    obs.percent_mito < 0.03,
 )
 
 print(qc.shape, qc.is_view)
@@ -115,12 +118,12 @@ while `qc` moves to the next stage.
 
 ## Derive a marker score without rewriting the matrix
 
-Matrix qualifiers in `mutate()` are read-only sources. This call reads two genes
+Matrix containers in `mutate()` are read-only sources. This call reads two genes
 out of the 13,714 in `.raw` and writes one `obs` column:
 
 ```{testcode}
-scored = qc.ap.mutate(
-    {"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2},
+scored = qc.mutate(
+    b_score=(raw.MS4A1 + raw.CD79A) / 2,
     max_matrix_values=2 * qc.n_obs,
 )
 
@@ -135,9 +138,9 @@ AAACCGTGCTTCCG-1  donor_1     control  CD14+ Monocytes      0.0
 AAACCGTGTATGCG-1  donor_2  stimulated         NK cells      0.0
 ```
 
-Use a layer name such as `counts:` to evaluate the same expression against a
-named layer. `raw:`, keyed `obsm` names such as `X_pca:`, and `varm:` make other
-aligned measurements available without a separate helper API for each.
+Import a layer such as `counts` from `annplyr.data` to evaluate the same
+expression against it. Keyed `obsm` names such as `X_pca` and `varm` keys make
+other aligned measurements available without a separate helper API for each.
 
 ## Keep grouping explicit across related operations
 
@@ -145,11 +148,11 @@ Persistent grouping pays off when several operations share a unit of
 comparison. Here the ranking and the selection both happen within donor:
 
 ```{testcode}
-ranked = scored.ap.group_by("donor_id").mutate(
-    {"depth_rank": ap.min_rank("n_counts", descending=True)}
+ranked = scored.group_by(obs.donor_id).mutate(
+    depth_rank=ap.min_rank(obs.n_counts, descending=True),
 )
 
-deepest = ranked.filter(ap.col("depth_rank") <= 2).ungroup()
+deepest = ranked.filter(obs.depth_rank <= 2).ungroup()
 
 print(deepest.obs[["donor_id", "n_counts", "depth_rank"]])
 ```
@@ -175,12 +178,10 @@ One call crosses condition and cell type, and mixes metadata with expression:
 
 ```{testcode}
 summary = ranked.ungroup().summarize(
-    {
-        "cells": ap.n(),
-        "mean_b_score": ap.mean("b_score"),
-        "mean_LYZ": ap.mean("raw:LYZ"),
-    },
-    by=["condition", "louvain"],
+    cells=ap.n(),
+    mean_b_score=ap.mean(obs.b_score),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=[obs.condition, obs.louvain],
 )
 
 print(summary.round(3).head(8))
@@ -211,11 +212,9 @@ donor is the unit of replication:
 
 ```{testcode}
 per_donor = ranked.ungroup().summarize(
-    {
-        "cells": ap.n(),
-        "mean_b_score": ap.mean("b_score"),
-    },
-    by=["donor_id", "condition", "louvain"],
+    cells=ap.n(),
+    mean_b_score=ap.mean(obs.b_score),
+    by=[obs.donor_id, obs.condition, obs.louvain],
 )
 b_cells = per_donor[per_donor["louvain"] == "B cells"]
 
@@ -239,30 +238,40 @@ choice.
 
 ```{testcode}
 analysis = ranked.ungroup().select(
-    obs=["donor_id", "condition", "louvain", "n_counts", "b_score", "depth_rank"],
-    x=["MS4A1", "CD79A", "NKG7"],
+    obs.donor_id,
+    obs.condition,
+    obs.louvain,
+    obs.n_counts,
+    obs.b_score,
+    obs.depth_rank,
+    X.MS4A1,
+    X.CD79A,
+    X.NKG7,
 )
 
-plot_data = analysis.to_tidy(
-    obs=["donor_id", "condition", "louvain"],
-    raw=["MS4A1", "CD79A", "NKG7"],
+plot_data = analysis.join_features(
+    raw.MS4A1,
+    raw.CD79A,
+    raw.NKG7,
+    shape="long",
     max_matrix_values=3 * analysis.n_obs,
 )
 
 print(analysis.shape)
-print(plot_data.head())
+print(plot_data[[".cell", ".feature", ".abundance_raw", "donor_id", "condition", "louvain"]].head())
 print(plot_data.shape)
 ```
 
 ```{testoutput}
 (2117, 3)
-           obs_name feature  value donor_id   condition          louvain
-0  AAACATTGATCAGC-1   MS4A1    0.0  donor_3  stimulated      CD4 T cells
-1  AAACATTGATCAGC-1   CD79A    0.0  donor_3  stimulated      CD4 T cells
-2  AAACATTGATCAGC-1    NKG7    0.0  donor_3  stimulated      CD4 T cells
-3  AAACCGTGCTTCCG-1   MS4A1    0.0  donor_1     control  CD14+ Monocytes
-4  AAACCGTGCTTCCG-1   CD79A    0.0  donor_1     control  CD14+ Monocytes
-(6351, 6)
+              .cell .feature  .abundance_raw donor_id   condition          louvain
+0  AAACATTGATCAGC-1    MS4A1             0.0  donor_3  stimulated      CD4 T cells
+1  AAACATTGATCAGC-1    CD79A             0.0  donor_3  stimulated      CD4 T cells
+2  AAACATTGATCAGC-1     NKG7             0.0  donor_3  stimulated      CD4 T cells
+3  AAACCGTGCTTCCG-1    MS4A1             0.0  donor_1     control  CD14+ Monocytes
+4  AAACCGTGCTTCCG-1    CD79A             0.0  donor_1     control  CD14+ Monocytes
+(6351, 9)
+
 ```
 
 Seaborn consumes `plot_data` directly:
@@ -273,9 +282,9 @@ import seaborn as sns
 sns.catplot(
     data=plot_data,
     x="louvain",
-    y="value",
+    y=".abundance_raw",
     hue="condition",
-    col="feature",
+    col=".feature",
     kind="strip",
     sharey=False,
 )
@@ -292,7 +301,7 @@ ordinary Python or another scverse package, return whatever the next step needs:
 
 ```{testcode}
 def donor_counts(data):
-    return data.ap.count("donor_id", sort=True)
+    return data.count(obs.donor_id, sort=True)
 
 
 print(analysis.pipe(donor_counts))
@@ -316,20 +325,26 @@ The central steps read as one pipeline:
 
 ```python
 analysis = (
-    adata.ap.left_join(sample_sheet, by="donor_id", relationship="many-to-one")
+    adata.left_join(sample_sheet, by="donor_id", relationship="many-to-one")
     .filter(
-        ap.col("n_genes") >= 500,
-        ap.col("percent_mito") < 0.03,
+        obs.n_genes >= 500,
+        obs.percent_mito < 0.03,
     )
     .mutate(
-        {"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2},
+        b_score=(raw.MS4A1 + raw.CD79A) / 2,
         max_matrix_values=2 * adata.n_obs,
     )
     .select(
-        obs=["donor_id", "condition", "louvain", "b_score"],
-        x=["MS4A1", "CD79A", "NKG7"],
+        obs.donor_id,
+        obs.condition,
+        obs.louvain,
+        obs.b_score,
+        X.MS4A1,
+        X.CD79A,
+        X.NKG7,
     )
 )
+
 ```
 
 Each call stays an ordinary, inspectable operation. Together they state the

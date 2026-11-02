@@ -5,7 +5,16 @@ convenient metadata tables, but their rows are coordinated with `X`, layers,
 `raw`, embeddings, loadings, and pairwise matrices. Every verb is built around
 that relationship.
 
-Examples run against Scanpy's PBMC3K.
+Examples run against Scanpy's PBMC3K. Each container has a name in
+`annplyr.data`, and `ap.tidy(adata)` makes the verbs methods of the object:
+
+```{testcode}
+from annplyr.data import X, X_pca, obs, raw, var
+
+adata = ap.tidy(adata)
+```
+
+Coming from R's tidyseurat or tidySCE? See {doc}`coming_from_r`.
 
 ## Read a pipeline by its return type
 
@@ -18,9 +27,9 @@ Most annplyr workflows alternate between two kinds of result:
 | summarize, count, extraction | pandas object | Plot, report, model, or export |
 
 ```{testcode}
-print(type(adata.ap.filter(ap.col("louvain") == "B cells")).__name__)
-print(type(adata.ap.group_by("louvain")).__name__)
-print(type(adata.ap.count(by="louvain")).__name__)
+print(type(adata.filter(obs.louvain == "B cells")).__name__)
+print(type(adata.group_by(obs.louvain)).__name__)
+print(type(adata.count(obs.louvain)).__name__)
 ```
 
 ```{testoutput}
@@ -38,14 +47,16 @@ long expression table is deliberately pandas.
 genes, proteins, or peaks. Row-like operations default to cells, and `axis="var"`
 switches the same verb to features.
 
-A column name carries its **source**: a bare name is `obs` metadata, and a matrix
-needs a qualifier such as `x:` or `raw:`. One call can filter cells by metadata
-while selecting genes from the matrix:
+A column name carries its **container**: `obs.percent_mito` is `obs` metadata,
+`X.MS4A1` is a gene in `X`, and `raw.MS4A1` the same gene in `.raw`. One call can
+filter cells by metadata while selecting genes from the matrix:
 
 ```{testcode}
-subset = adata.ap.filter(ap.col("percent_mito") < 0.03).select(
-    var=["n_cells"],
-    x=["MS4A1", "CD79A", "NKG7"],
+subset = adata.filter(obs.percent_mito < 0.03).select(
+    var.n_cells,
+    X.MS4A1,
+    X.CD79A,
+    X.NKG7,
 )
 
 print(subset.shape)
@@ -55,23 +66,35 @@ print(subset.shape)
 (2257, 3)
 ```
 
-Qualifying the source is what prevents a gene called `n_counts` from colliding with
-the `obs` column of the same name.
+Naming the container is what prevents a gene called `n_counts` from colliding
+with the `obs` column of the same name. Strings still work for names computed in
+a loop: `"percent_mito"` is an `obs` column and `"raw:MS4A1"` a gene in `.raw`.
+
+## Containers are importable names
+
+| Name | Container | Example |
+|---|---|---|
+| `obs`, `var` | metadata tables | `obs.louvain` |
+| `X` | the main matrix | `X.MS4A1` |
+| `raw` | the `.raw` snapshot | `raw["HLA-DRA"]` |
+| any other name | a layer, an `obsm` key or a `varm` key | `X_pca[0]` |
+
+Import the layers and keys you use: `from annplyr.data import counts, X_umap`.
+Brackets cover names that are not identifiers. A mistyped layer fails at the
+verb with `UnknownSourceError`, which lists the layers and keys that exist. For
+a layer named like an annplyr function or a container, use `ap.layer("mean")`.
 
 ## Sources stay attached to AnnData
 
 Expressions can read from `obs` and `var` metadata, selected features in `X` or
-a named layer through `x:` or `<layer>:`, the immutable snapshot through `raw:`, and keyed
-`obsm`/`varm` matrices. `as_frame()` additionally reaches `obsp`, `varp`, and
-tabular `uns`.
+a named layer, the immutable snapshot in `raw`, and keyed `obsm`/`varm`
+matrices. `pull()` additionally reaches `obsp`, `varp`, and tabular `uns`.
 
 ```{testcode}
-annotated = adata.ap.mutate(
-    {
-        "deep": ap.col("n_counts") >= 2000,
-        "ms4a1_detected": ap.col("raw:MS4A1") > 0,
-        "pc1": ap.col("X_pca:0"),
-    }
+annotated = adata.mutate(
+    deep=obs.n_counts >= 2000,
+    ms4a1_detected=raw.MS4A1 > 0,
+    pc1=X_pca[0],
 )
 
 print(annotated.obs[["louvain", "deep", "ms4a1_detected", "pc1"]].head(3).round(3))
@@ -85,33 +108,30 @@ AAACATTGAGCTAC-1      B cells  True            True  7.210
 AAACATTGATCAGC-1  CD4 T cells  True           False  2.694
 ```
 
-Three derived columns from three different sources in one call. Every
+Three derived columns from three different containers in one call. Every
 matrix-like input is read-only: `mutate()` writes to metadata and leaves `X`,
 `raw`, and `X_pca` untouched.
 
 ## Ownership is predictable
 
-Axis-changing and ordering verbs return independent AnnData objects by default.
-Same-shape metadata operations return a new object too, unless `inplace=True`
-asks for exact input identity:
+Every verb returns a new object, and the input is never changed:
 
 ```{testcode}
-copied = adata.ap.mutate({"flag": ap.lit(1)})
-print(copied is adata, "flag" in adata.obs)
-
-same = adata.ap.mutate({"flag": ap.lit(1)}, inplace=True)
-print(same is adata, "flag" in adata.obs)
+flagged = adata.mutate(flag=ap.lit(1))
+print(flagged is adata, "flag" in adata.obs, "flag" in flagged.obs)
 ```
 
 ```{testoutput}
-False False
-True True
+False False True
 ```
 
-Validation completes before the first write, so a failing `inplace=True` call
-leaves the object as it was. `copy=False` asks annplyr to avoid a guaranteed
-copy, but the result may be a view or a materialized object depending on what
-is safe. Do not branch on `is_view` after it.
+There are no `copy=` or `inplace=` keywords. To keep a result, assign it:
+`adata = adata.mutate(...)`. A verb that keeps the shape, such as `mutate()`,
+copies `obs`, `var` and `uns` but shares `X`, layers and the aligned matrices
+with its input, so an in-place edit of a matrix shows in both objects. A
+subsetting verb on a backed file returns a view, so call `.to_memory()` before
+you change the result.
+
 
 ## Positional identity protects duplicate names
 
@@ -120,13 +140,13 @@ integer positions for filtering, ordering, joins, and grouped operations, so
 duplicate labels never collapse distinct cells:
 
 ```{testcode}
-duplicated = sc.datasets.pbmc3k_processed()
+duplicated = ap.tidy(sc.datasets.pbmc3k_processed())
 names = duplicated.obs_names.to_numpy().copy()
 names[1] = names[0]
 duplicated.obs_names = names
 
 print(duplicated.obs_names[:3].tolist())
-print(duplicated.ap.filter(ap.col("louvain") == "CD4 T cells").n_obs)
+print(duplicated.filter(obs.louvain == "CD4 T cells").n_obs)
 ```
 
 ```{testoutput}
@@ -144,22 +164,22 @@ raised. All aligned containers use the same positional subset.
 built once and reused:
 
 ```{testcode}
-qc_rule = (ap.col("n_genes") >= 500) & (ap.col("percent_mito") < 0.03)
-panel = ap.any_of(["MS4A1", "CD79A", "MISSING_GENE"])
+qc_rule = (obs.n_genes >= 500) & (obs.percent_mito < 0.03)
 
-analysis = adata.ap.filter(qc_rule).select(x=panel)
+analysis = adata.filter(qc_rule).select(ap.starts_with("n_"), X.MS4A1, X.CD79A)
 
-print(analysis.shape, analysis.var_names.tolist())
+print(analysis.shape, analysis.obs.columns.tolist(), analysis.var_names.tolist())
 ```
 
 ```{testoutput}
-(2117, 2) ['MS4A1', 'CD79A']
+(2117, 2) ['n_genes', 'n_counts'] ['MS4A1', 'CD79A']
 ```
 
-`any_of()` tolerated the absent gene; `all_of()` would have raised. `where()` is
-a schema selector. Its predicate receives a zero-length typed Series and should
-inspect dtype, not values. Call `to_narwhals()` only when an external API needs
-a raw Narwhals expression.
+Selectors such as `ap.starts_with()`, `ap.any_of()` and `ap.where()` choose
+`obs` columns. `any_of()` tolerates an absent name; `all_of()` would raise.
+`where()` is a schema selector. Its predicate receives a zero-length typed Series
+and should inspect dtype, not values. Call `to_narwhals()` only when an external
+API needs a raw Narwhals expression.
 
 ## Grouping can persist
 
@@ -176,13 +196,14 @@ first read:
 
 ```{testcode}
 try:
-    adata.ap.to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=100)
+    adata.join_features(raw.MS4A1, raw.CD79A, max_matrix_values=100)
+
 except ap.AnnplyrError as error:
     print(error)
 ```
 
 ```{testoutput}
-planned source(s) (to_tidy) would materialize 5276 matrix values, which exceeds max_matrix_values=100
+planned source(s) (join_features) would materialize 5276 matrix values, which exceeds max_matrix_values=100
 ```
 
 Canonical scalar summaries then use deterministic internal chunks for dense,

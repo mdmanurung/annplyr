@@ -7,17 +7,20 @@ The practical rules are short:
 2. select matrix features explicitly;
 3. use a finite budget for potentially large projections;
 4. call `.to_memory()` before mutating backed objects;
-5. use `inplace=True` only when shared mutation is intentional.
+5. assign the result of every verb, because none of them changes its input.
 
 ## Ownership and alignment
 
-Axis-changing verbs return independent objects by default and subset every
-aligned container by integer position. PBMC3K carries `X`, `raw`, four
-embeddings, PCA loadings, and two pairwise graphs. One filter keeps all of them
-consistent:
+Every verb returns a new object. Subsetting verbs return an independent object
+and subset every aligned container by integer position. PBMC3K carries `X`,
+`raw`, four embeddings, PCA loadings, and two pairwise graphs. One filter keeps
+all of them consistent:
 
 ```{testcode}
-subset = adata.ap.filter(ap.col("louvain") == "B cells")
+from annplyr.data import obs, raw
+
+adata = ap.tidy(adata)
+subset = adata.filter(obs.louvain == "B cells")
 
 print(subset.shape, subset.raw.shape)
 print(subset.obsm["X_umap"].shape, subset.obsp["connectivities"].shape)
@@ -32,11 +35,11 @@ print(adata.n_obs)
 
 The pairwise graph was subset on **both** axes, `raw` kept all 13,714 genes for
 the 342 retained cells, and the original object still has its 2,638 cells.
-`copy=False` remains non-mutating but may produce a view or a materialized
-selection, so do not branch on `is_view` after it.
 
-Same-shape mutations use `inplace=True` only when exact input identity is
-required. Validation completes before the first write.
+Verbs that keep the shape, such as `mutate()` and `rename()`, copy `obs`, `var`
+and `uns` and share `X`, layers and the aligned matrices with their input.
+Validation completes before anything is built, so a failing call leaves no
+partial result.
 
 ## Sparse matrices stay sparse
 
@@ -45,7 +48,7 @@ pandas sparse columns, and AnnData-returning projections retain the input
 CSR/CSC format:
 
 ```{testcode}
-print(adata.ap.to_wide(raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs).dtypes)
+print(adata.to_wide(raw.MS4A1, raw.CD79A, max_matrix_values=2 * adata.n_obs).dtypes)
 ```
 
 ```{testoutput}
@@ -62,13 +65,14 @@ exported frames above keep their subtype.
 ## Backed AnnData
 
 Read-only projection, filtering, ordering, and export are supported for backed
-dense, CSR, and CSC sources. `copy=True` axis operations return an independent
-in-memory AnnData. Same-shape mutation is rejected while the object is backed;
-load it explicitly when mutation is intended:
+dense, CSR, and CSC sources. A subsetting verb on a backed input returns the
+view, so a large `.h5ad` can be subset without loading it. A metadata-changing
+verb is rejected while the object is backed; load it explicitly when that is
+intended:
 
 ```python
 memory = backed.to_memory()
-memory.ap.mutate({"new": ap.col("old")}, inplace=True)
+renamed = memory.mutate(new=obs.old)
 ```
 
 This keeps the move from disk-backed analysis to in-memory mutation visible in
@@ -78,10 +82,10 @@ the workflow rather than implicit.
 
 `raw` is an explicit, read-only expression and extraction source. Pairwise
 `obsp`/`varp` matrices and tabular `uns` entries are extraction-only through
-`pull()` or `as_frame()`; they are not mutation targets or join keys.
+`pull()`; they are not mutation targets or join keys.
 
 ```{testcode}
-print(adata.ap.to_wide(raw=["MS4A1"], max_matrix_values=adata.n_obs).shape)
+print(adata.to_wide(raw.MS4A1, max_matrix_values=adata.n_obs).shape)
 ```
 
 ```{testoutput}
@@ -97,13 +101,13 @@ before its first adapter read:
 
 ```{testcode}
 try:
-    adata.ap.to_tidy(raw=["MS4A1", "CD79A"], max_matrix_values=100)
+    adata.join_features(raw.MS4A1, raw.CD79A, max_matrix_values=100)
 except ap.AnnplyrError as error:
     print(error)
 ```
 
 ```{testoutput}
-planned source(s) (to_tidy) would materialize 5276 matrix values, which exceeds max_matrix_values=100
+planned source(s) (join_features) would materialize 5276 matrix values, which exceeds max_matrix_values=100
 ```
 
 Canonical matrix summaries then read deterministic row or feature chunks rather
@@ -114,5 +118,6 @@ finalized before the next batch is read. Opaque raw Narwhals or cross-row
 custom summary expressions keep their eager compatibility path, so give those a
 finite `max_matrix_values=` budget.
 
-Whole-matrix long exports additionally require `allow_all_features=True`. Set
-both the opt-in and a finite budget when full materialization is deliberate.
+Naming a whole matrix in `to_wide()` or `pivot_longer()` additionally requires
+`allow_all_features=True`. Set both the opt-in and a finite budget when full
+materialization is deliberate.

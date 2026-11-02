@@ -38,17 +38,14 @@ print(presence.found_features, presence.missing_features)
 
 ## Summarize per sample
 
-`sample_summary()` is `summarize()` with a sample key, for the common
-per-sample table:
+`summarize()` with the sample as `by` gives the common per-sample table:
 
 ```{testcode}
-print(
-    ap.sample_summary(
-        adata,
-        "louvain",
-        {"cells": ap.n(), "mean_genes": ap.mean("n_genes")},
-    ).round(1)
-)
+from annplyr.data import obs
+
+adata = ap.tidy(adata)
+
+print(adata.summarize(cells=ap.n(), mean_genes=ap.mean(obs.n_genes), by=obs.louvain).round(1))
 ```
 
 ```{testoutput}
@@ -78,13 +75,13 @@ except ap.AnnplyrError as error:
 Column(s) are not sample-constant for 'louvain': n_genes
 ```
 
-`add_sample_meta(..., inplace=False)` returns an independent object; an
-explicit in-place call validates the sample relationship before writing and
-returns the identical AnnData.
+To attach a sample table to the cells, use `left_join(table, by="sample")`. It
+checks the sample relationship before it builds the result.
 
 ## Edit and audit axis names
 
-Name writers return independent objects unless `inplace=True` is explicit:
+Name writers return a new object and leave the input as it was:
+
 
 ```{testcode}
 prefixed = ap.add_name_prefix(adata, "donorA", axis="obs")

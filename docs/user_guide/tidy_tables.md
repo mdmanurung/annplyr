@@ -8,18 +8,26 @@ preserves alignment and avoids copying matrix values nobody asked for.
 The examples extract from Scanpy's PBMC3K. Its `X` holds scaled values, so the
 log-normalised counts come from `raw`.
 
+```{testcode}
+from annplyr.data import PCs, X_pca, obs, raw
+
+adata = ap.tidy(adata)
+```
+
 ## Wide tables for models and inspection
 
-`to_wide()` returns one row per observation, one column per requested value.
+`to_wide()` returns one row per observation, one column per requested name.
 
 ::::{tab-set}
 
 :::{tab-item} annplyr
 
 ```{testcode}
-wide = adata.ap.to_wide(
-    obs=["louvain", "n_genes"],
-    raw=["MS4A1", "CD79A"],
+wide = adata.to_wide(
+    obs.louvain,
+    obs.n_genes,
+    raw.MS4A1,
+    raw.CD79A,
     max_matrix_values=2 * adata.n_obs,
 )
 
@@ -65,16 +73,17 @@ AAACCGTGTATGCG-1         NK cells      522  0.00000  0.000000
 ::::
 
 Two differences. annplyr prefixes matrix columns with their
-source (`raw_MS4A1`), so a gene can never be confused with an `obs` column of
+container (`raw_MS4A1`), so a gene can never be confused with an `obs` column of
 the same name. And its columns stay pandas *sparse*, which is why the zeros
 print as `0.0`. A wide export of many genes stays cheap.
 
-Embeddings come from the same call through a keyed mapping:
+Embeddings come from the same call. `X_pca[0]` is the first component:
 
 ```{testcode}
-model_frame = adata.ap.to_wide(
-    obs=["louvain"],
-    obsm={"X_pca": ["0", "1"]},
+model_frame = adata.to_wide(
+    obs.louvain,
+    X_pca[0],
+    X_pca[1],
     max_matrix_values=2 * adata.n_obs,
 )
 
@@ -93,28 +102,30 @@ AAACCGTGTATGCG-1         NK cells   -1.113   -8.153
 
 ## Long tables for faceted plots
 
-`to_tidy()` returns stable `obs_name`, `feature`, and `value` columns, with the
-requested metadata carried along.
+`join_features()` returns every `obs` column plus `.cell`, `.feature` and one
+`.abundance_<container>` column per container, so `raw` gives `.abundance_raw`.
+The dotted names cannot collide with a metadata column.
 
 ```{testcode}
-long = adata.ap.to_tidy(
-    obs=["louvain"],
-    raw=["MS4A1", "CD79A"],
+long = adata.join_features(
+    raw.MS4A1,
+    raw.CD79A,
+    shape="long",
     max_matrix_values=2 * adata.n_obs,
 )
 
-print(long.head())
+print(long.drop(columns=["percent_mito", "n_counts"]).head())
 print(long.shape)
 ```
 
 ```{testoutput}
-           obs_name feature     value      louvain
-0  AAACATACAACCAC-1   MS4A1       0.0  CD4 T cells
-1  AAACATACAACCAC-1   CD79A       0.0  CD4 T cells
-2  AAACATTGAGCTAC-1   MS4A1   1.94591      B cells
-3  AAACATTGAGCTAC-1   CD79A  1.386294      B cells
-4  AAACATTGATCAGC-1   MS4A1       0.0  CD4 T cells
-(5276, 4)
+              .cell .feature  .abundance_raw  n_genes      louvain
+0  AAACATACAACCAC-1    MS4A1             0.0      781  CD4 T cells
+1  AAACATACAACCAC-1    CD79A             0.0      781  CD4 T cells
+2  AAACATTGAGCTAC-1    MS4A1         1.94591     1352      B cells
+3  AAACATTGAGCTAC-1    CD79A        1.386294     1352      B cells
+4  AAACATTGATCAGC-1    MS4A1             0.0     1131  CD4 T cells
+(5276, 7)
 ```
 
 Those column names map straight onto a plotting grammar:
@@ -122,8 +133,26 @@ Those column names map straight onto a plotting grammar:
 ```python
 import seaborn as sns
 
-sns.catplot(data=long, x="louvain", y="value", col="feature", kind="violin", sharey=False)
+sns.catplot(data=long, x="louvain", y=".abundance_raw", col=".feature", kind="violin", sharey=False)
 ```
+
+Pass `shape="wide"` to get the object back with the genes added to `obs`
+instead, the form tidyseurat users know as `join_features(shape = "wide")`:
+
+```{testcode}
+with_genes = adata.join_features(raw.MS4A1, raw.CD79A, shape="wide")
+
+print(with_genes.obs[["louvain", "MS4A1", "CD79A"]].head(3))
+```
+
+```{testoutput}
+                      louvain    MS4A1     CD79A
+index                                           
+AAACATACAACCAC-1  CD4 T cells  0.00000  0.000000
+AAACATTGAGCTAC-1      B cells  1.94591  1.386294
+AAACATTGATCAGC-1  CD4 T cells  0.00000  0.000000
+```
+
 
 ## Budgets are checked before the first read
 
@@ -132,32 +161,32 @@ requested matrix source, and the check happens **before** any adapter read:
 
 ```{testcode}
 try:
-    adata.ap.to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=100)
+    adata.join_features(raw.MS4A1, raw.CD79A, max_matrix_values=100)
 except ap.AnnplyrError as error:
     print(error)
 ```
 
 ```{testoutput}
-planned source(s) (to_tidy) would materialize 5276 matrix values, which exceeds max_matrix_values=100
+planned source(s) (join_features) would materialize 5276 matrix values, which exceeds max_matrix_values=100
 ```
 
 The error arrives with the arithmetic already done, so the number is a real
 count of what the request would have cost, not an estimate discovered halfway
 through.
 
-Whole-matrix long exports need an explicit opt-in *and* survive the same
-budget. PBMC3K's `.raw` is 2,638 × 13,714, so the full melt is nearly five
-million values:
+Naming a whole matrix needs an explicit opt-in *and* survives the same
+budget. PBMC3K's `.raw` is 2,638 × 13,714, so the full melt is 36 million
+values:
 
 ```{testcode}
 try:
-    adata.ap.to_tidy(allow_all_features=True, max_matrix_values=10_000)
+    adata.pivot_longer(obs.louvain, raw, allow_all_features=True, max_matrix_values=10_000)
 except ap.AnnplyrError as error:
     print(error)
 ```
 
 ```{testoutput}
-planned source(s) (to_tidy) would materialize 4848644 matrix values, which exceeds max_matrix_values=10000
+planned source(s) (pivot_longer) would materialize 36177532 matrix values, which exceeds max_matrix_values=10000
 ```
 
 That number is what the opt-in exists to surface. For ordinary single-cell
@@ -170,9 +199,10 @@ summarize before leaving AnnData. No cell-by-gene intermediate is built:
 
 ```{testcode}
 print(
-    adata.ap.summarize(
-        {"cells": ap.n(), "mean_MS4A1": ap.mean("raw:MS4A1")},
-        by="louvain",
+    adata.summarize(
+        cells=ap.n(),
+        mean_MS4A1=ap.mean(raw.MS4A1),
+        by=obs.louvain,
     ).round(3)
 )
 ```
@@ -191,11 +221,14 @@ print(
 
 ## Extract other AnnData containers
 
-`as_frame()` gives controlled access to any container, including the ones that
-have no verb-level shortcut, such as PCA loadings in `varm`:
+`pull()` reads one column from any container, including the ones that have no
+verb-level shortcut, such as PCA loadings in `varm`. Join the columns you want
+with pandas:
 
 ```{testcode}
-loadings = adata.ap.as_frame("varm", key="PCs", select=["0", "1"])
+import pandas as pd
+
+loadings = pd.concat([adata.pull(PCs[0]), adata.pull(PCs[1])], axis=1)
 
 print(loadings.head().round(3))
 print(loadings.shape)
@@ -212,11 +245,49 @@ RER1     0.014  0.027
 (1838, 2)
 ```
 
-The same interface addresses `obs`, `var`, `x`, `raw`, `obsm`, `varm`, `obsp`,
-`varp`, and tabular `uns`. Pairwise and `uns` sources are extraction-only.
+`pull()` addresses `obs`, `var`, `X`, `raw`, `obsm`, `varm`, `obsp`, `varp`, and
+tabular `uns`. Pairwise and `uns` sources are extraction-only.
+
+## Split by group and pool cells
+
+`nest()` returns one row per group, with that group's object in a `data`
+column. `ap.unnest()` stacks the objects back into one AnnData:
+
+```{testcode}
+by_type = adata.nest(obs.louvain)
+
+print(by_type["louvain"].tolist()[:3])
+print(by_type["data"].iloc[0].shape)
+print(ap.unnest(by_type).shape)
+```
+
+```{testoutput}
+['CD4 T cells', 'B cells', 'CD14+ Monocytes']
+(1144, 1838)
+(2638, 1838)
+```
+
+`aggregate_cells()` sums a matrix over each group and returns a pseudobulk
+AnnData: one row per group, the keys and `n_cells` in `obs`. Name the matrix
+with `source=`, because `X` is often scaled:
+
+```{testcode}
+pseudobulk = adata.aggregate_cells(obs.louvain, source=raw)
+
+print(pseudobulk.shape)
+print(pseudobulk.obs["n_cells"].tolist())
+```
+
+```{testoutput}
+(8, 13714)
+[1144, 342, 480, 154, 316, 150, 37, 15]
+
+```
 
 ## Reshape extracted pandas data
 
-These helpers work on plain DataFrames after extraction: `pivot_wider`, `nest`,
-`unnest`, `chop`, `unchop`, `pack`, `unpack`, `separate`, `separate_rows`,
-`extract`, `unite`, `drop_na`, and `fill`.
+These helpers work on plain DataFrames after extraction. They live in
+`ap.tidyr`: `pivot_wider`, `nest`, `unnest`, `chop`, `unchop`, `pack`, `unpack`,
+`separate`, `separate_rows`, `extract`, `unite`, `drop_na`, `fill`, `hoist`,
+`unnest_longer`, and `unnest_wider`. For example,
+`ap.tidyr.pivot_wider(long, names_from=".feature", values_from=".abundance_raw")`.

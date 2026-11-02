@@ -12,7 +12,10 @@ All examples run against Scanpy's PBMC3K, grouped by its Louvain cell-type
 labels.
 
 ```{testcode}
-by_type = adata.ap.group_by("louvain")
+from annplyr.data import obs
+
+adata = ap.tidy(adata)
+by_type = adata.group_by(obs.louvain)
 
 print(by_type.group_vars())
 print(by_type.group_keys())
@@ -68,9 +71,9 @@ selection share one grouping, and the result is only ungrouped at the end.
 
 ```{testcode}
 deepest = (
-    adata.ap.group_by("louvain")
-    .mutate({"depth_rank": ap.min_rank("n_counts", descending=True)})
-    .slice_max(ap.col("n_counts"), n=1)
+    adata.group_by(obs.louvain)
+    .mutate(depth_rank=ap.min_rank(obs.n_counts, descending=True))
+    .slice_max(obs.n_counts, n=1)
     .ungroup()
 )
 
@@ -127,7 +130,7 @@ every step.
 ## Summarize the groups
 
 ```{testcode}
-print(by_type.summarize({"cells": ap.n(), "mean_genes": ap.mean("n_genes")}).round(1))
+print(by_type.summarize(cells=ap.n(), mean_genes=ap.mean(obs.n_genes)).round(1))
 ```
 
 ```{testoutput}
@@ -154,8 +157,8 @@ automatically, so a selection cannot silently destroy the grouping. `rename`
 and `rename_with` update the group specification instead.
 
 ```{testcode}
-print(by_type.select(obs=["n_genes"]).ungroup().obs.columns.tolist())
-print(by_type.rename(obs={"cell_type": "louvain"}).group_vars())
+print(by_type.select(obs.n_genes).ungroup().obs.columns.tolist())
+print(by_type.rename(cell_type=obs.louvain).group_vars())
 ```
 
 ```{testoutput}
@@ -171,6 +174,8 @@ established at its start, and the returned wrapper resolves later verbs from the
 final key values. All six grouped joins run once globally and update suffixed
 key names when necessary.
 
-Grouping is axis-specific. Pass `axis="var"` for feature groups such as chromosome or
-feature type. Computed, virtual-name, cross-axis, and empty grouping
-specifications raise typed selection or axis errors.
+Grouping is axis-specific. Name `var` columns, as in `group_by(var.chromosome)`,
+for feature groups such as chromosome or feature type. A grouped `summarize()`
+takes no `by=`, because the groups are already set. Computed, virtual-name,
+cross-axis, and empty grouping specifications raise typed selection or axis
+errors.

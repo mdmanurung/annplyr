@@ -5,7 +5,14 @@ does one recognizable transformation, and its return type tells you whether the
 pipeline continues as AnnData, grouped AnnData, or pandas.
 
 Every example runs against Scanpy's PBMC3K: 2,638 cells, 1,838 highly variable
-genes in `X`, and 13,714 log-normalised genes in `.raw`.
+genes in `X`, and 13,714 log-normalised genes in `.raw`. Names come from
+`annplyr.data`, and `ap.tidy` makes the verbs methods of the object:
+
+```{testcode}
+from annplyr.data import X, obs, raw, var
+
+adata = ap.tidy(adata)
+```
 
 ## Choose the verb that matches the task
 
@@ -16,11 +23,13 @@ genes in `X`, and 13,714 log-normalised genes in `.raw`.
 | Add derived metadata | `mutate()` |
 | Keep only newly derived metadata | `transmute()` |
 | Reorder or take an axis subset | `arrange()`, `slice_*()` |
-| Reduce groups to a table | `summarize()`, `count()`, `tally()` |
+| Reduce groups to a table | `summarize()`, `count()` |
+| Bring genes next to cell metadata | `join_features()` |
+| Pseudobulk or split by group | `aggregate_cells()`, `nest()` |
 | Pass the result to project code | `pipe()` |
 
-Axis-changing verbs use positional AnnData slicing and return independent
-objects by default.
+Axis-changing verbs use positional AnnData slicing. Every verb returns a new
+object.
 
 ## Filter across several sources at once
 
@@ -32,10 +41,10 @@ source, so different sources can be mixed in the same call. Here metadata and ex
 :::{tab-item} annplyr
 
 ```{testcode}
-b_cells = adata.ap.filter(
-    ap.col("louvain") == "B cells",
-    ap.col("percent_mito") < 0.03,
-    ap.col("raw:MS4A1") > 0,
+b_cells = adata.filter(
+    obs.louvain == "B cells",
+    obs.percent_mito < 0.03,
+    raw.MS4A1 > 0,
 )
 
 print(b_cells.shape)
@@ -69,18 +78,22 @@ Both baseline masks are pandas Series indexed by `obs_names`, but indexing an
 AnnData with their conjunction wants a numpy array. Mixing metadata and
 expression criteria is where hand-written masks go wrong.
 
-Feature predicates use the `var:` qualifier. A layer name such as `counts:`
-reads that layer instead of `X`.
+Feature predicates use the `var` container, as in `var.n_cells > 2000`. A layer
+imported from `annplyr.data`, such as `counts.MS4A1`, reads that layer instead
+of `X`.
 
 ## Select the analysis schema
 
 `select()` keeps metadata columns and matrix features in the requested order:
 
 ```{testcode}
-markers = adata.ap.select(
-    obs=["louvain", ap.starts_with("n_")],
-    var=["n_cells"],
-    x=["MS4A1", "CD79A", "NKG7"],
+markers = adata.select(
+    obs.louvain,
+    ap.starts_with("n_"),
+    var.n_cells,
+    X.MS4A1,
+    X.CD79A,
+    X.NKG7,
 )
 
 print(markers.shape)
@@ -95,9 +108,10 @@ print(markers.var_names.tolist())
 ```
 
 One call subset both axes: three metadata columns and three of 1,838 genes.
+Put a minus sign in front of an `obs` column to drop it: `select(-obs.louvain)`.
 Use `all_of()` for strict configurable names, `any_of()` when absent names are
 acceptable, and helpers such as `starts_with()`, `contains()`, or `where()` for
-schema-driven selection.
+schema-driven selection of `obs` columns.
 
 ## Derive metadata with mutate
 
@@ -106,14 +120,12 @@ layer, `raw`, embedding, and loading qualifiers are read-only sources for the
 derived values:
 
 ```{testcode}
-annotated = adata.ap.mutate(
-    {
-        "deep": ap.col("n_counts") >= 2000,
-        "b_markers": (ap.col("raw:MS4A1") > 0) & (ap.col("raw:CD79A") > 0),
-    }
+annotated = adata.mutate(
+    deep=obs.n_counts >= 2000,
+    b_markers=(raw.MS4A1 > 0) & (raw.CD79A > 0),
 )
 
-print(annotated.count(by=["louvain", "b_markers"], sort=True).head())
+print(annotated.count(obs.louvain, obs.b_markers, sort=True).head())
 ```
 
 ```{testoutput}
@@ -133,8 +145,8 @@ earlier in the same call. `across()` applies one transformation to a selected
 set:
 
 ```{testcode}
-scaled = adata.ap.mutate(
-    {"scaled": ap.across(ap.starts_with("n_"), lambda name: ap.col(name) / 1000, names="{col}_k")}
+scaled = adata.mutate(
+    scaled=ap.across(ap.starts_with("n_"), lambda name: ap.col(name) / 1000, names="{col}_k"),
 )
 
 print(scaled.obs.head(3).round(3))
@@ -148,20 +160,22 @@ AAACATTGAGCTAC-1     1352         0.038    4903.0      B cells      1.352       
 AAACATTGATCAGC-1     1131         0.009    3147.0  CD4 T cells      1.131       3.147
 ```
 
-Use `inplace=True` only when a same-shape metadata update should modify and
-return the exact input object. `transmute()` instead returns an independent
-AnnData containing the grouping keys and the newly produced columns only.
+`transmute()` instead returns an AnnData containing the grouping keys and the
+newly produced columns only. New columns are keyword arguments. A dict is
+accepted as a single positional argument for names that are not identifiers:
+`mutate({"b-score": ...})`.
 
 ## Rename and relocate metadata
 
-Rename mappings use the **new** name as the key and the existing name as the
-value:
+Rename takes the **new** name as the keyword and the existing column as the
+value, like `rename()` in dplyr. A dict handles new names that are not
+identifiers. `relocate()` takes names positionally, with `before=` or `after=`:
 
 ```{testcode}
-renamed = adata.ap.rename(obs={"cell_type": "louvain"})
+renamed = adata.rename(cell_type=obs.louvain)
 
 print(renamed.obs.columns.tolist())
-print(renamed.ap.relocate(obs=["cell_type"], before="n_genes").obs.columns.tolist())
+print(renamed.relocate(obs.cell_type, before="n_genes").obs.columns.tolist())
 ```
 
 ```{testoutput}
@@ -182,8 +196,8 @@ alphabetically.
 "most widely detected genes":
 
 ```{testcode}
-print(adata.ap.slice_max(ap.col("n_counts"), n=3).obs[["louvain", "n_counts"]])
-print(adata.ap.slice_max(ap.col("n_cells"), n=5, axis="var").var)
+print(adata.slice_max(obs.n_counts, n=3).obs[["louvain", "n_counts"]])
+print(adata.slice_max(var.n_cells, n=5, axis="var").var)
 ```
 
 ```{testoutput}
@@ -215,14 +229,12 @@ in the same call:
 :::{tab-item} annplyr
 
 ```{testcode}
-summary = adata.ap.summarize(
-    {
-        "cells": ap.n(),
-        "median_genes": ap.median("n_genes"),
-        "mean_mito": ap.mean("percent_mito"),
-        "mean_NKG7": ap.mean("raw:NKG7"),
-    },
-    by="louvain",
+summary = adata.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_mito=ap.mean(obs.percent_mito),
+    mean_NKG7=ap.mean(raw.NKG7),
+    by=obs.louvain,
 )
 
 print(summary.round(3))
@@ -280,11 +292,12 @@ print(summary_ref.round(3))
 
 `NKG7` concentrates in NK and CD8 T cells, which is the cytotoxic signature.
 
-`count()` and `tally()` cover frequency tables; `add_count()` and `add_tally()`
-write aligned counts back to metadata:
+`count()` is the frequency table; `add_count()` writes the aligned counts back to
+metadata. To count without a grouping key, use `summarize(n=ap.n())`:
+
 
 ```{testcode}
-print(adata.ap.add_count(by="louvain").obs.head(3))
+print(adata.add_count(obs.louvain).obs.head(3))
 ```
 
 ```{testoutput}
@@ -309,7 +322,7 @@ def save_analysis(data, path):
     return path
 
 
-output = adata.ap.filter(ap.col("percent_mito") < 0.03).pipe(
+output = adata.filter(obs.percent_mito < 0.03).pipe(
     save_analysis,
     "results/qc_cells.h5ad",
 )

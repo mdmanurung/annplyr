@@ -17,6 +17,10 @@ everyday case of mapping fine-grained cluster names onto a coarser level.
 ```{testcode}
 import pandas as pd
 
+from annplyr.data import obs
+
+adata = ap.tidy(adata)
+
 lineage = pd.DataFrame(
     {
         "louvain": [
@@ -42,9 +46,9 @@ lineage = pd.DataFrame(
     }
 )
 
-annotated = adata.ap.left_join(lineage, by="louvain", axis="obs")
+annotated = adata.left_join(lineage, by="louvain", axis="obs")
 
-print(annotated.count(by="lineage", sort=True))
+print(annotated.count(obs.lineage, sort=True))
 print(annotated.n_obs == adata.n_obs, "lineage" in adata.obs)
 ```
 
@@ -83,9 +87,10 @@ DataFrame**: its index is a fresh `RangeIndex`, so assigning it back with
 the index yourself. That is the class of mistake the join verb removes. The
 result is an AnnData whose every aligned container still matches.
 
-Joins return an independent AnnData by default, the left axis order is stable,
-and the original object is untouched. Pass `copy=False` only when either a view
-or a materialized result is acceptable.
+Joins return a new AnnData, the left axis order is stable, and the original
+object is untouched. Join keys stay strings (`by="louvain"`), because the key
+names a column in both tables.
+
 
 ## Restrict an analysis cohort
 
@@ -96,8 +101,8 @@ external table declares eligible".
 ```{testcode}
 lymphoid = lineage.loc[lineage["lineage"] == "Lymphoid", ["louvain"]]
 
-print(adata.ap.semi_join(lymphoid, by="louvain", axis="obs").shape)
-print(adata.ap.anti_join(lymphoid, by="louvain", axis="obs").count(by="louvain", sort=True))
+print(adata.semi_join(lymphoid, by="louvain", axis="obs").shape)
+print(adata.anti_join(lymphoid, by="louvain", axis="obs").count(obs.louvain, sort=True))
 ```
 
 ```{testoutput}
@@ -124,7 +129,7 @@ panel = pd.DataFrame(
     }
 )
 
-labelled = adata.ap.mutate({"gene": ap.var_names}, into="var")
+labelled = adata.mutate(gene=ap.var_names, into="var")
 with_panel = labelled.left_join(panel, by="gene", axis="var")
 
 print(with_panel.var.loc[["MS4A1", "NKG7", "CD79A"]])
@@ -155,7 +160,7 @@ duplicated = pd.DataFrame(
 )
 
 try:
-    adata.ap.left_join(duplicated, by="louvain", axis="obs")
+    adata.left_join(duplicated, by="louvain", axis="obs")
 except ap.JoinRelationshipError as error:
     print(error)
 ```
@@ -172,7 +177,7 @@ aligned `X`, layer, embedding, or pairwise record exists for it:
 
 ```{testcode}
 try:
-    adata.ap.right_join(pd.DataFrame({"louvain": ["Basophils"]}), by="louvain", axis="obs")
+    adata.right_join(pd.DataFrame({"louvain": ["Basophils"]}), by="louvain", axis="obs")
 except ap.JoinRelationshipError as error:
     print(error)
 ```

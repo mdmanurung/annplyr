@@ -86,6 +86,11 @@ def _sort_axis(by: Any) -> Axis:
     return "var" if name.startswith("var:") else "obs"
 
 
+def _keys(by: Any) -> tuple[Any, ...]:
+    """``by=`` takes one key or a list of keys, as in ``summarize(by=...)``."""
+    return tuple(by) if isinstance(by, (list, tuple)) else (by,)
+
+
 @register_anndata_accessor("ap")
 class AnnplyrAccessor:
     """Dataframe-style AnnData wrangling accessor."""
@@ -377,17 +382,36 @@ class AnnplyrAccessor:
     def slice(self, *indices: Any, axis: Axis = "obs") -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(slice_adata(self._obj, *indices, axis=axis))
 
-    def slice_head(self, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+    def slice_head(self, n: int = 5, *, by: Selector | None = None, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        if by is not None:  # dplyr's slice_head(n, by = g): one call, no ungroup
+            return self.group_by(*_keys(by)).slice_head(n).ungroup()
         return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis))
 
-    def slice_tail(self, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+    def slice_tail(self, n: int = 5, *, by: Selector | None = None, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        if by is not None:
+            return self.group_by(*_keys(by)).slice_tail(n).ungroup()
         return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis))
 
-    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis | None = None) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis or _sort_axis(by)))
+    def slice_min(
+        self, order_by: Expression, n: int = 5, *, by: Selector | None = None, axis: Axis | None = None
+    ) -> AnnDataWithAnnplyr:
+        if by is not None:
+            return self.group_by(*_keys(by)).slice_min(order_by, n).ungroup()
+        resolved = axis or _sort_axis(order_by)
+        return _with_annplyr_accessor(slice_min_adata(self._obj, by=order_by, n=n, axis=resolved))
 
-    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis | None = None) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis or _sort_axis(by)))
+    def slice_max(
+        self, order_by: Expression, n: int = 5, *, by: Selector | None = None, axis: Axis | None = None
+    ) -> AnnDataWithAnnplyr:
+        """Keep the ``n`` rows with the largest ``order_by``, per group with ``by=``.
+
+        ``adata.ap.slice_max(obs.n_counts, n=3, by=obs.louvain)`` keeps the top
+        three cells of every cluster, as dplyr's ``slice_max(n_counts, n = 3, by = louvain)``.
+        """
+        if by is not None:
+            return self.group_by(*_keys(by)).slice_max(order_by, n).ungroup()
+        resolved = axis or _sort_axis(order_by)
+        return _with_annplyr_accessor(slice_max_adata(self._obj, by=order_by, n=n, axis=resolved))
 
     def slice_sample(
         self,
@@ -396,8 +420,12 @@ class AnnplyrAccessor:
         prop: float | None = None,
         replace: bool = False,
         random_state: int | None = None,
+        by: Selector | None = None,
         axis: Axis = "obs",
     ) -> AnnDataWithAnnplyr:
+        if by is not None:
+            grouped = self.group_by(*_keys(by))
+            return grouped.slice_sample(n, prop=prop, replace=replace, random_state=random_state).ungroup()
         return _with_annplyr_accessor(
             slice_sample_adata(
                 self._obj,

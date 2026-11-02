@@ -93,6 +93,10 @@ GGGCCAACCTTGGA-1    Dendritic cells    8415.0         1.0
 ACGAACTGGCTATG-1     Megakaryocytes    8875.0         1.0
 ```
 
+For a single per-group step, `by=` skips the `group_by`/`ungroup` pair, as in
+dplyr: `adata.slice_max(obs.n_counts, n=1, by=obs.louvain)` keeps the same
+cells.
+
 :::
 
 :::{tab-item} scanpy + pandas

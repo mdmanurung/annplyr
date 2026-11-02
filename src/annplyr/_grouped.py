@@ -376,11 +376,11 @@ class GroupedAnnData:
         _validate_slice_n(n)
         return self.slice(slice(0, 0) if n == 0 else slice(-n, None))
 
-    def slice_min(self, by: Expression, n: int = 5) -> GroupedAnnData:
-        return self._slice_ordered(by, n=n, descending=False)
+    def slice_min(self, order_by: Expression, n: int = 5) -> GroupedAnnData:
+        return self._slice_ordered(order_by, n=n, descending=False)
 
-    def slice_max(self, by: Expression, n: int = 5) -> GroupedAnnData:
-        return self._slice_ordered(by, n=n, descending=True)
+    def slice_max(self, order_by: Expression, n: int = 5) -> GroupedAnnData:
+        return self._slice_ordered(order_by, n=n, descending=True)
 
     def _slice_ordered(self, by: Expression, *, n: int, descending: bool) -> GroupedAnnData:
         _validate_slice_n(n)

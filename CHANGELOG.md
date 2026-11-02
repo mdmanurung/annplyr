@@ -110,6 +110,11 @@ has the side-by-side table with the R packages.
 
 ### Added
 
+- `slice_min`, `slice_max`, `slice_head`, `slice_tail` and `slice_sample` take
+  `by=`, as in dplyr 1.1: `slice_max(obs.n_counts, n=3, by=obs.louvain)`. Their
+  first argument is now called `order_by`.
+- `X[ap.any_of(panel)]` and `X[ap.starts_with("CD")]` pick features with a
+  selector inside a container.
 - `ap.tidy(adata)` returns a `TidyAnnData`, a subclass of `AnnData` that carries
   every verb as a method, so `adata.filter(...).select(...)` chains without
   `.ap`. `isinstance(result, AnnData)` still holds, so Scanpy and AnnData are

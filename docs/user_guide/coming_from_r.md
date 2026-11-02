@@ -20,6 +20,8 @@ spelling now. Column three is the R code for the same task.
 | Select | `.select(obs=["louvain", "n_genes"])` | `.select(obs.louvain, obs.n_genes)` | `select(louvain, n_genes)` |
 | Drop a column | none | `.select(-obs.louvain)` | `select(-louvain)` |
 | Select helpers | `.select(obs=ap.starts_with("n_"))` | `.select(ap.starts_with("n_"))` | `select(starts_with("n_"))` |
+| Pick genes from a panel | `.select(x=ap.any_of(panel))` | `.select(X[ap.any_of(panel)])`, keeping the panel genes present in `X` | `sce[intersect(panel, rownames(sce)), ]` |
+| Gene with a dash | `ap.col("raw:HLA-DRA")` | `raw["HLA-DRA"]`, for any name that is not a Python identifier | `` `HLA-DRA` `` |
 | Mutate | `.mutate({"b_score": (ap.col("raw:MS4A1") + ap.col("raw:CD79A")) / 2})` | `.mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)` | `join_features(...) %>% mutate(b_score = (MS4A1 + CD79A) / 2)` |
 | if_else | `.mutate({"cls": ap.if_else(ap.col("louvain").is_in(M), "myeloid", "lymphoid")})` | `.mutate(cls=ap.if_else(obs.louvain.is_in(M), "myeloid", "lymphoid"))` | `mutate(cls = if_else(louvain %in% m, "myeloid", "lymphoid"))` |
 | Rename | `.rename(obs={"cell_type": "louvain"})` | `.rename(cell_type=obs.louvain)` | `rename(cell_type = louvain)` |
@@ -28,7 +30,7 @@ spelling now. Column three is the R code for the same task.
 | Add count | `.add_count(by="louvain")` | `.add_count(obs.louvain)` | `add_count(louvain)` |
 | Grouped summary | `.group_by("louvain").summarize({"n": ap.n(), "ms4a1": ap.mean("raw:MS4A1")})` | `.group_by(obs.louvain).summarize(n=ap.n(), ms4a1=ap.mean(raw.MS4A1))` | `group_by(louvain) %>% summarise(n = n())` |
 | Summary with `.by` | `.summarize({"n": ap.n()}, by="louvain")` | `.summarize(n=ap.n(), by=obs.louvain)` | `summarise(n = n(), .by = louvain)` |
-| Top n per group | `.group_by("louvain").slice_max(ap.col("n_genes"), n=10)` | `.group_by(obs.louvain).slice_max(obs.n_genes, n=10)` | `group_by(louvain) %>% slice_max(n_genes, n = 10)` |
+| Top n per group | `.group_by("louvain").slice_max(ap.col("n_genes"), n=10)` | `.slice_max(obs.n_genes, n=10, by=obs.louvain)` | `slice_max(n_genes, n = 10, by = louvain)` |
 | Join metadata | `.left_join(meta, by="sample")` | unchanged | `left_join(meta, by = "sample")` |
 | Genes, long table | `.to_tidy(obs=["louvain"], raw=["MS4A1", "LYZ"])` | `.join_features(raw.MS4A1, raw.LYZ, shape="long")`, giving `.cell`, `.feature`, `.abundance_raw` | `join_features(c("MS4A1", "LYZ"), shape = "long")` |
 | Genes, wide | `.to_wide(obs=["louvain"], raw=["MS4A1"])`, a DataFrame | `.join_features(raw.MS4A1, shape="wide")`, an object with `MS4A1` in obs | `join_features("MS4A1", shape = "wide")` |

@@ -113,7 +113,10 @@ Use `all_of()` for strict configurable names, `any_of()` when absent names are
 acceptable, and helpers such as `starts_with()`, `contains()`, or `where()` for
 schema-driven selection of `obs` columns. Index a container with a selector to
 pick features the same way: `select(X[ap.any_of(panel)])` keeps the panel genes
-that exist, and `X[ap.starts_with("CD")]` keeps every gene starting with `CD`.
+present in `X`, and `X[ap.starts_with("CD")]` keeps every gene starting with
+`CD`. `any_of` drops absent genes without a message, and on processed data `X`
+often holds only the highly variable genes, so check the panel first with
+`ap.feature_present(adata, panel)`, or read `raw[...]` for every detected gene.
 
 ## Derive metadata with mutate
 

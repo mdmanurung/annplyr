@@ -26,7 +26,7 @@ Names are positional and carry their container (`obs.x`, `var.x`, `X.x`, `raw.x`
 - `relocate(*names, before=..., after=...)` — reorder metadata columns. Raises `SelectionError` when the `before`/`after` anchor is among the columns being moved.
 - `distinct(*names, keep_all=..., max_matrix_values=...)` — deduplicate by selected columns.
 - `arrange(*keys, max_matrix_values=...)` — reorder observations or features, one sort key per argument; wrap a key in `ap.desc` to reverse it.
-- `slice(idx)` / `slice_head(n=...)` / `slice_tail(n=...)` / `slice_min(by, n=...)` / `slice_max(by, n=...)` / `slice_sample(n=..., random_state=...)` — position or rank-based slicing; default `axis="obs"`, pass `axis="var"` for features.
+- `slice(idx)` / `slice_head(n=...)` / `slice_tail(n=...)` / `slice_min(order_by, n=...)` / `slice_max(order_by, n=...)` / `slice_sample(n=..., random_state=...)` — position or rank-based slicing; pass `by=obs.group` for a per-group slice in one call. A `var.` sort key ranks features.
 
 **Mutation and summaries:**
 - `mutate(name=value, ..., into="obs")` — write one metadata column per keyword, in order; a later value may read an earlier result. `into="var"` writes the feature axis. Matrix values are read-only. A dict is accepted for names that are not identifiers.

@@ -283,3 +283,19 @@ def test_keyword_assignments_match_the_dict_form(dense_adata: AnnData) -> None:
     # a non-identifier name still goes through the dict, next to keywords
     mixed = dense_adata.ap.mutate({"CD4+": ap.col("score")}, s2=ap.col("score") * 2)
     assert list(mixed.obs.columns[-2:]) == ["CD4+", "s2"]
+
+
+def test_slice_by_matches_group_by_then_ungroup(dense_adata: AnnData) -> None:
+    grouped = dense_adata.ap.group_by("batch")
+    for one_call, two_calls in [
+        (dense_adata.ap.slice_max("score", n=1, by="batch"), grouped.slice_max("score", n=1).ungroup()),
+        (dense_adata.ap.slice_min("score", n=1, by=["batch"]), grouped.slice_min("score", n=1).ungroup()),
+        (dense_adata.ap.slice_head(1, by="batch"), grouped.slice_head(1).ungroup()),
+        (dense_adata.ap.slice_tail(1, by="batch"), grouped.slice_tail(1).ungroup()),
+        (
+            dense_adata.ap.slice_sample(1, by="batch", random_state=0),
+            grouped.slice_sample(1, random_state=0).ungroup(),
+        ),
+    ]:
+        assert one_call.obs_names.tolist() == two_calls.obs_names.tolist()
+        assert type(one_call).__name__ == "TidyAnnData"

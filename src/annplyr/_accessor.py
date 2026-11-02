@@ -38,6 +38,7 @@ from annplyr._verbs import (
     full_join_adata,
     inner_join_adata,
     left_join_adata,
+    merge_named,
     mutate_adata,
     nest_by_adata,
     pivot_longer_adata,
@@ -505,15 +506,17 @@ class AnnplyrAccessor:
     def mutate(
         self,
         assignments: Mapping[str, Any] | None = None,
+        /,
         *,
         into: str = "obs",
         inplace: bool = False,
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             mutate_adata(
                 self._obj,
-                assignments,
+                merge_named(assignments, named, verb="mutate"),
                 into=into,
                 inplace=inplace,
                 max_matrix_values=max_matrix_values,
@@ -523,14 +526,16 @@ class AnnplyrAccessor:
     def transmute(
         self,
         assignments: Mapping[str, Any] | None = None,
+        /,
         *,
         into: str = "obs",
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             transmute_adata(
                 self._obj,
-                assignments,
+                merge_named(assignments, named, verb="transmute"),
                 into=into,
                 max_matrix_values=max_matrix_values,
             )
@@ -593,14 +598,16 @@ class AnnplyrAccessor:
     def summarize(
         self,
         stats: Mapping[str, Any] | None = None,
+        /,
         *,
         by: Selector | None = None,
         source: str | None = None,
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> pd.DataFrame:
         return summarize_adata(
             self._obj,
-            stats,
+            merge_named(stats, named, verb="summarize"),
             by=by,
             source=source,
             max_matrix_values=max_matrix_values,

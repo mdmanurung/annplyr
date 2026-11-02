@@ -40,6 +40,7 @@ from annplyr._verbs import (
     full_join_adata,
     inner_join_adata,
     left_join_adata,
+    merge_named,
     mutate_adata,
     relocate_adata,
     rename_adata,
@@ -341,10 +342,13 @@ class GroupedAnnData:
     def transmute(
         self,
         assignments: Mapping[str, Any] | None = None,
+        /,
         *,
         into: str = "obs",
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> GroupedAnnData:
+        assignments = merge_named(assignments, named, verb="transmute")
         plan = self._plan()
         # group keys are always retained so future grouped calls keep working
         destination = into if into in {"obs", "var"} else self._axis
@@ -365,15 +369,17 @@ class GroupedAnnData:
     def mutate(
         self,
         assignments: Mapping[str, Any] | None = None,
+        /,
         *,
         into: str = "obs",
         inplace: bool = False,
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> GroupedAnnData:
         plan = self._plan()
         result = mutate_adata(
             self._adata,
-            assignments,
+            merge_named(assignments, named, verb="mutate"),
             into=into,
             inplace=inplace,
             max_matrix_values=max_matrix_values,
@@ -385,14 +391,19 @@ class GroupedAnnData:
     def summarize(
         self,
         stats: Mapping[str, Any] | None = None,
+        /,
         *,
         source: str | None = None,
         max_matrix_values: int | None = None,
+        **named: Any,
     ) -> pd.DataFrame:
+        if "by" in named:
+            msg = "group_by already sets the keys, so the grouped summarize takes no by="
+            raise TypeError(msg)
         plan = self._plan()
         result = summarize_adata(
             self._adata,
-            stats,
+            merge_named(stats, named, verb="summarize"),
             by=list(self._spec.columns),
             source=source,
             max_matrix_values=max_matrix_values,

@@ -258,3 +258,26 @@ def test_arrange_sorts_a_categorical_by_category_order() -> None:
 
     assert adata.ap.arrange("stage").obs_names.tolist() == ["b", "c", "a"]
     assert adata.ap.arrange(ap.desc("stage")).obs_names.tolist() == ["a", "c", "b"]
+
+
+def test_keyword_assignments_match_the_dict_form(dense_adata: AnnData) -> None:
+    by_dict = dense_adata.ap.mutate({"s2": ap.col("score") * 2, "s4": ap.col("s2") * 2})
+    by_kw = dense_adata.ap.mutate(s2=ap.col("score") * 2, s4=ap.col("s2") * 2)
+    pd.testing.assert_frame_equal(by_kw.obs, by_dict.obs)
+
+    grouped = dense_adata.ap.group_by("batch")
+    pd.testing.assert_frame_equal(
+        grouped.summarize(n=ap.n(), m=ap.mean("score")),
+        grouped.summarize({"n": ap.n(), "m": ap.mean("score")}),
+    )
+    pd.testing.assert_frame_equal(
+        dense_adata.ap.summarize(n=ap.n(), by="batch"),
+        dense_adata.ap.summarize({"n": ap.n()}, by="batch"),
+    )
+    pd.testing.assert_frame_equal(
+        dense_adata.ap.transmute(s2=ap.col("score") * 2).obs,
+        ap.transmute(dense_adata, {"s2": ap.col("score") * 2}).obs,
+    )
+    # a non-identifier name still goes through the dict, next to keywords
+    mixed = dense_adata.ap.mutate({"CD4+": ap.col("score")}, s2=ap.col("score") * 2)
+    assert list(mixed.obs.columns[-2:]) == ["CD4+", "s2"]

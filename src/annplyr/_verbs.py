@@ -992,6 +992,24 @@ def _flat_assignment_groups(
     ]
 
 
+def merge_named(assignments: Any, named: Mapping[str, Any], *, verb: str) -> Any:
+    """Merge keyword assignments into the positional dict, which keeps its order.
+
+    The dict stays for names that are not identifiers, such as ``"CD4+"``, so a
+    name given both ways is ambiguous and raises.
+    """
+    if not named:
+        return assignments
+    if assignments is not None and not isinstance(assignments, Mapping):
+        return assignments  # the evaluator raises the typed error
+    base = dict(assignments or {})
+    both = sorted(set(base) & set(named))
+    if both:
+        msg = f"{verb} got {both} both in the dict and as keywords; give each name once"
+        raise DuplicateNameError(msg)
+    return {**base, **named}
+
+
 def _evaluate_flat_assignments(
     adata: AnnData,
     assignments: Mapping[str, Any],
@@ -1010,8 +1028,9 @@ def _evaluate_flat_assignments(
     """
     if not isinstance(assignments, Mapping):
         msg = (
-            f"{verb} takes a dict of new column names to expressions, not {type(assignments).__name__}; "
-            f"write {verb}({{'name': expression}}), for example {verb}({{'scaled': ap.across(...)}})"
+            f"{verb} takes new columns as keywords, not a bare {type(assignments).__name__}; "
+            f"write {verb}(name=expression), or {verb}({{'name': expression}}) for a name "
+            f"that is not an identifier, for example {verb}(scaled=ap.across(...))"
         )
         raise SelectionError(msg)
     groups = _flat_assignment_groups(adata, assignments, verb=verb)

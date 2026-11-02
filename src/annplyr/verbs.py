@@ -43,7 +43,7 @@ def _make_function(name: str, accessor_method: Callable[..., Any]) -> Callable[.
         f"{accessor_method.__doc__ or ''}"
     ).rstrip() + "\n"
     verb.__annotations__ = {"adata": AnnData, "return": Any}
-    parameters = [inspect.Parameter("adata", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=AnnData)]
+    parameters = [inspect.Parameter("adata", inspect.Parameter.POSITIONAL_ONLY, annotation=AnnData)]
     parameters += [p for p in inspect.signature(accessor_method).parameters.values() if p.name != "self"]
     verb.__signature__ = inspect.Signature(parameters)  # type: ignore[attr-defined]
     return verb

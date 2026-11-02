@@ -106,10 +106,15 @@ def test_select_with_a_repeated_name_raises_duplicate_name_error(dense_adata: An
 
 
 def test_mutate_without_a_dict_names_the_fix(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.SelectionError, match=r"mutate\(\{'name': expression\}\)"):
+    with pytest.raises(ap.SelectionError, match=r"mutate\(name=expression\)"):
         dense_adata.ap.mutate(ap.across(ap.everything()))
 
 
 def test_grouped_summarize_has_no_by_because_group_by_sets_the_keys(dense_adata: AnnData) -> None:
     with pytest.raises(TypeError, match="by"):
         dense_adata.ap.group_by("batch").summarize({"n": ap.n()}, by="cell_type")
+
+
+def test_a_name_given_as_dict_and_keyword_raises(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.DuplicateNameError, match="s"):
+        dense_adata.ap.mutate({"s": ap.col("score")}, s=ap.col("score") * 2)

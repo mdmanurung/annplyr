@@ -12,6 +12,7 @@ RTOL = 1e-6  # float32 sums in Python vs float64 in R
 
 
 def both(name: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Read one task's annplyr and tidySCE results."""
     return pd.read_csv(ROOT / "py" / name), pd.read_csv(ROOT / "r" / name)
 
 
@@ -19,6 +20,7 @@ rows = []
 
 
 def record(task: str, same: bool, detail: str) -> None:
+    """Add one row to the summary table."""
     rows.append({"task": task, "match": "yes" if same else "NO", "detail": detail})
 
 
@@ -58,7 +60,11 @@ record(
 
 py, r = both("07_if_else.csv")
 m = py.merge(r, on="cell_class", validate="1:1", suffixes=("_py", "_r"))
-record("7 rename + if_else", m["n_py"].equals(m["n_r"]), "; ".join(f"{k}={v}" for k, v in zip(m.cell_class, m.n_py)))
+record(
+    "7 rename + if_else",
+    m["n_py"].equals(m["n_r"]),
+    "; ".join(f"{k}={v}" for k, v in zip(m.cell_class, m.n_py, strict=True)),
+)
 
 py, r = both("08_left_join.csv")
 m = py.merge(r, on="cell", validate="1:1", suffixes=("_py", "_r"))

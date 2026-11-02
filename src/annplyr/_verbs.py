@@ -2131,9 +2131,12 @@ def _pivot_obs_major(
     result = data.loc[:, list(id_vars)].iloc[positions].reset_index(drop=True)
     result[var_name] = np.tile(np.asarray(value_vars, dtype=object), row_count)
     values = data.loc[:, list(value_vars)]
+    # Long tables are for plotting, and plotnine cannot take pandas sparse columns,
+    # so values come back dense (tidySCE does the same). A dense value costs a few
+    # bytes next to the cell and feature labels each row already carries.
     if value_count and all(isinstance(dtype, pd.SparseDtype) for dtype in values.dtypes):
         flattened = cast(Any, values).sparse.to_coo().reshape((row_count * value_count, 1), order="C")
-        result[value_name] = cast(Any, pd.arrays.SparseArray).from_spmatrix(flattened)
+        result[value_name] = flattened.toarray().ravel()
     else:
         result[value_name] = values.to_numpy().reshape(-1)
     return result

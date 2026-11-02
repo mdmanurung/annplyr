@@ -322,11 +322,11 @@ print(long.shape)
 
 ```{testoutput}
               .cell .feature  .abundance_raw          louvain
-0  AAACATTGATCAGC-1    MS4A1             0.0      CD4 T cells
-1  AAACATTGATCAGC-1    CD79A             0.0      CD4 T cells
+0  AAACATTGATCAGC-1    MS4A1        0.000000      CD4 T cells
+1  AAACATTGATCAGC-1    CD79A        0.000000      CD4 T cells
 2  AAACATTGATCAGC-1      LYZ        1.098612      CD4 T cells
-3  AAACATTGATCAGC-1     NKG7             0.0      CD4 T cells
-4  AAACCGTGCTTCCG-1    MS4A1             0.0  CD14+ Monocytes
+3  AAACATTGATCAGC-1     NKG7        0.000000      CD4 T cells
+4  AAACCGTGCTTCCG-1    MS4A1        0.000000  CD14+ Monocytes
 (8468, 8)
 ```
 
@@ -361,11 +361,10 @@ eight columns where the baseline kept four. `scored` is still a fully aligned
 AnnData object for whatever comes next in the analysis.
 
 ```{note}
-The `.abundance_raw` column comes back as a pandas sparse column, which keeps a
-large export cheap but does not support every pandas method, `.round()` among
-them. Call `long[".abundance_raw"] = long[".abundance_raw"].sparse.to_dense()`
-if you need a plain float column.
-
+The `.abundance_raw` column is a plain float column, so plotnine and seaborn take
+it directly. `to_wide` keeps pandas sparse columns instead, so a wide export of
+many genes stays cheap; call `.sparse.to_dense()` on one of those columns before
+plotting it.
 ```
 
 Next: work through the {doc}`tutorials`, learn the storage and ownership rules

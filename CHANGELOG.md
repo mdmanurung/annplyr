@@ -51,6 +51,10 @@ has the side-by-side table with the R packages.
 
 ### Changed
 
+- `join_features(shape="long")` and `pivot_longer` return dense values in the
+  source dtype, as tidySingleCellExperiment does, so plotnine and seaborn draw them
+  directly. `to_wide` keeps pandas sparse columns for wide exports of many genes.
+
 - **Breaking:** `to_wide` names columns as tidySingleCellExperiment, Seurat and
   ggann do. Genes keep their own names (`MS4A1`, not `raw_MS4A1`), and embedding
   columns are 1-based with a short prefix (`X_umap` gives `UMAP_1`, `UMAP_2`;

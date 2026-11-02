@@ -120,11 +120,11 @@ print(long.shape)
 
 ```{testoutput}
               .cell .feature  .abundance_raw  n_genes      louvain
-0  AAACATACAACCAC-1    MS4A1             0.0      781  CD4 T cells
-1  AAACATACAACCAC-1    CD79A             0.0      781  CD4 T cells
-2  AAACATTGAGCTAC-1    MS4A1         1.94591     1352      B cells
+0  AAACATACAACCAC-1    MS4A1        0.000000      781  CD4 T cells
+1  AAACATACAACCAC-1    CD79A        0.000000      781  CD4 T cells
+2  AAACATTGAGCTAC-1    MS4A1        1.945910     1352      B cells
 3  AAACATTGAGCTAC-1    CD79A        1.386294     1352      B cells
-4  AAACATTGATCAGC-1    MS4A1             0.0     1131  CD4 T cells
+4  AAACATTGATCAGC-1    MS4A1        0.000000     1131  CD4 T cells
 (5276, 7)
 ```
 

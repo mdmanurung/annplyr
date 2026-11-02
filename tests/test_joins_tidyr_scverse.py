@@ -202,11 +202,11 @@ def test_sparse_long_exports_preserve_value_dtype_and_obs_major_order(
     )
 
     value, cell = (".abundance_X", ".cell") if method == "join_features" else ("value", "obs_name")
-    assert isinstance(result[value].dtype, pd.SparseDtype)
+    assert result[value].dtype == sparse_adata.X.dtype  # dense for plotting, source dtype kept
     assert list(result[[cell, feature_column]].itertuples(index=False, name=None)) == [
         (obs_name, feature) for obs_name in sparse_adata.obs_names for feature in ["g0", "g3"]
     ]
-    assert result[value].sparse.to_dense().tolist() == sparse_adata.X[:, [0, 3]].toarray().reshape(-1).tolist()
+    assert result[value].tolist() == sparse_adata.X[:, [0, 3]].toarray().reshape(-1).tolist()
 
 
 def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData) -> None:

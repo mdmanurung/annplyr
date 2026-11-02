@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 import annplyr as ap
+from annplyr.data import X, obs
 
 from .common import SEED, dense_adata, feature_names, realize_frame
 
@@ -35,18 +36,18 @@ class Rectangling:
             }
         )
         self.adata = dense_adata(20_000, 50, metadata_columns=2)
-        self.features = feature_names(50)
+        self.features = [X[name] for name in feature_names(50)]
 
     def time_pivot_wider(self) -> None:
-        out = ap.pivot_wider(self.long, names_from="key", values_from="value", id_cols="id")
+        out = ap.tidyr.pivot_wider(self.long, names_from="key", values_from="value", id_cols="id")
         assert out.shape == (50_000, 3)
 
     def time_nest_unnest(self) -> None:
-        out = ap.unnest_longer(self.nested, "values")
+        out = ap.tidyr.unnest_longer(self.nested, "values")
         assert out.shape[0] == 100_000
 
     def time_chained_extraction(self) -> None:
-        tidy = self.adata.ap.pivot_longer(obs=["m0", "m1"], x=self.features)
-        out = ap.pivot_wider(tidy, names_from="name", values_from="value", id_cols=["obs_name", "m0", "m1"])
+        tidy = self.adata.ap.pivot_longer(obs.m0, obs.m1, *self.features)
+        out = ap.tidyr.pivot_wider(tidy, names_from="name", values_from="value", id_cols=["obs_name", "m0", "m1"])
         assert out.shape == (20_000, 53)
         realize_frame(out)

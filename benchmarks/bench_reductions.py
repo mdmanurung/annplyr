@@ -7,6 +7,7 @@ import hashlib
 import numpy as np
 
 import annplyr as ap
+from annplyr.data import X
 
 from .common import dense_adata
 
@@ -21,14 +22,14 @@ class DenseReductions:
 
     def setup(self) -> None:
         self.adata = dense_adata(100_000, 500)
-        self.assignments = {f"mean_g{position}": ap.mean(f"x:g{position}") for position in range(500)}
+        self.assignments = {f"mean_g{position}": ap.mean(X[f"g{position}"]) for position in range(500)}
         values = np.asarray(self.adata.X)
         expected = np.asarray([values[:, position].mean() for position in range(values.shape[1])])
         self.expected_hash = hashlib.sha256(expected.tobytes()).hexdigest()
         self.result_hash = ""
 
     def time_mean_all_features(self) -> None:
-        out = self.adata.ap.summarize(self.assignments)
+        out = self.adata.ap.summarize(**self.assignments)
         assert out.shape == (1, 500)
         self.result_hash = hashlib.sha256(out.to_numpy(copy=False).tobytes()).hexdigest()
         assert self.result_hash == self.expected_hash

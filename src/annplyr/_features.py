@@ -90,7 +90,6 @@ def join_features_adata(
             context="join_features",
         )
         if long is None:
-
             long = part
             continue
         long[value] = part[value].to_numpy()

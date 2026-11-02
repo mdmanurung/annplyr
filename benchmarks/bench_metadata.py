@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-import annplyr as ap
 from annplyr.data import obs
 
 from .common import SEED, metadata_frame

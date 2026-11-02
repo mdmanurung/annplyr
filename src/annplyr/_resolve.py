@@ -102,8 +102,8 @@ def resolve_source(adata: AnnData, text: str) -> ResolvedSource:
     qualifier, name = split_qualifier(text)
     if qualifier in _KEYED_QUALIFIERS:
         # "obsm:X_pca:0" names the key and then the column, like "X_pca:0".
-        key, _, name = name.partition(":")
-        return ResolvedSource(qualifier, key, _AXIS_BY_KIND[qualifier], ((text, name),))
+        obsm_key, _, name = name.partition(":")
+        return ResolvedSource(qualifier, obsm_key, _AXIS_BY_KIND[qualifier], ((text, name),))
     if qualifier is None:
         qualifier = _dynamic_qualifier(adata, text)
         if qualifier is not None:

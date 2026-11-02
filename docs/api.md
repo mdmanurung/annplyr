@@ -5,43 +5,66 @@ start with {doc}`quickstart` or {doc}`tutorials`.
 
 | If you want to... | Start with... |
 |---|---|
+| wrap an object so verbs are methods | `tidy` |
+| name a container in an expression | `annplyr.data`, `layer`, `Source` |
 | subset or reorder AnnData | `filter`, `select`, `arrange`, `slice*` |
 | derive aligned metadata | `mutate`, `transmute`, `add_count` |
 | reuse group-local operations | `group_by` and `GroupedAnnData` |
 | attach sample or feature tables | the six join methods |
-| produce a pandas table | `summarize`, `to_wide`, `to_tidy`, `as_frame` |
+| produce a pandas table | `summarize`, `count`, `to_wide`, `pivot_longer`, `pull`, `join_features` |
+| pool or split cells by group | `aggregate_cells`, `nest`, `unnest` |
+| reshape an extracted DataFrame | `annplyr.tidyr` |
 | construct expressions or selectors | `col`, `all_of`, `any_of`, `across` |
 
 ## Accessor
 
-The `adata.ap` accessor is registered when `annplyr` is imported. AnnData-returning
+The `adata.ap` accessor is registered when `annplyr` is imported, and
+`ap.tidy(adata)` returns a `TidyAnnData` whose verbs are methods. AnnData-returning
 verbs preserve axis alignment for `X`, layers, `raw`, `obsm`, `varm`, `obsp`,
 and `varp` through positional slicing. Expression sources include metadata,
-selected `X`/layer features, `raw`, `obsm`, and `varm`; controlled extraction
-also exposes `obsp`, `varp`, and tabular `uns` values through `as_frame()`.
+selected `X`/layer features, `raw`, `obsm`, and `varm`; `pull()` also reaches
+`obsp`, `varp`, and tabular `uns` values.
 
 Joins are metadata joins for `obs` or `var`. They may enrich or subset an axis,
 but they raise `JoinRelationshipError` when a requested join would add or
 duplicate cells/features. Long matrix exports materialize data into pandas and
 therefore require explicit feature selection unless `allow_all_features=True`;
 use `max_matrix_values=` on export helpers when a hard materialization budget is
-needed. Backed `copy=True` subsetting returns an independent in-memory object;
-call `.to_memory()` before same-shape mutation.
+needed. Every verb returns a new object. A subsetting verb on a backed input
+returns the view; call `.to_memory()` before a metadata-changing verb.
+
+## Container names
+
+`annplyr.data` holds the container names that expressions and positional
+selections use. `obs`, `var`, `X` and `raw` are fixed. Any other name is a layer
+or an `obsm`/`varm` key, so `from annplyr.data import counts, X_umap` works.
+`ap.layer("name")` reads a layer whose name is reserved or not importable.
+Strings such as `"raw:MS4A1"` and `ap.col` remain available for computed names.
+
+```{eval-rst}
+.. autoclass:: annplyr.Source
+
+
+.. autofunction:: annplyr.layer
+
+.. autofunction:: annplyr.tidy
+```
 
 ## Ownership, materialization, and failures by family
 
 | Public family | Return and ownership | Materialization | Principal typed failures |
 |---|---|---|---|
-| `filter`, `select`, `arrange`, `distinct`, `slice*` | Independent AnnData by default; `copy=False` may be a view or materialized | Projects requested positions/sources; backed `copy=True` loads the selection | `SelectionError`, `UnknownColumnError`, `UnknownSourceError`, `IncompatibleAxisError`, `AnnplyrError` |
-| six accessor joins | Independent AnnData by default; grouped calls return a grouped wrapper | Never manufactures right-only aligned records | `JoinRelationshipError`, `DuplicateNameError`, `IncompatibleAxisError` |
-| `rename`, `rename_with`, `relocate`, `mutate`, `add_count`, `add_tally` | Independent by default; `inplace=True` returns exact input identity | Metadata-only writes; matrix sources are read-only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `AnnplyrError` |
-| `transmute` | Always independent; no ownership argument | Replaces metadata columns while reading projected sources | selection/source/size/budget errors |
-| grouped AnnData verbs | New grouped wrapper, or identical wrapper for explicit in-place calls; `ungroup()` returns AnnData | One shared positional group plan; keys retained or updated | selection, axis, join, size, and budget errors |
-| summaries, count/tally, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Canonical matrix reducers use deterministic bounded chunks; metadata and opaque expressions read their planned sources | selection/source/axis/budget errors |
-| `pull`, `to_wide`, `to_tidy`, `pivot_longer`, `as_frame`, `nest_by` | pandas/Series or nested extraction result; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
+| `filter`, `select`, `arrange`, `distinct`, `slice*` | New independent AnnData; a backed input returns the view | Projects requested positions/sources | `SelectionError`, `UnknownColumnError`, `UnknownSourceError`, `IncompatibleAxisError`, `AnnplyrError` |
+| six accessor joins | New AnnData; grouped calls return a grouped wrapper | Never manufactures right-only aligned records | `JoinRelationshipError`, `DuplicateNameError`, `IncompatibleAxisError` |
+| `rename`, `rename_with`, `relocate`, `mutate`, `add_count` | New object that copies `obs`/`var`/`uns` and shares the matrices | Metadata-only writes; matrix sources are read-only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `AnnplyrError` |
+| `transmute` | New object holding the keys and the new columns | Replaces metadata columns while reading projected sources | selection/source/size/budget errors |
+| `aggregate_cells`, `unnest` | New AnnData (pseudobulk, or the stacked groups) | Reads the named `source` once per group | selection/source/axis/budget errors |
+| grouped AnnData verbs | New grouped wrapper; `ungroup()` returns AnnData | One shared positional group plan; keys retained or updated | selection, axis, join, size, and budget errors |
+| summaries, `count`, and `group_*` inspection | pandas DataFrame/list-like metadata; no AnnData mutation | Canonical matrix reducers use deterministic bounded chunks; metadata and opaque expressions read their planned sources | selection/source/axis/budget errors |
+| `pull`, `to_wide`, `join_features`, `pivot_longer`, `nest` | pandas/Series, `shape="wide"` AnnData, or a table of group objects; input unchanged | Explicit pandas materialization with cumulative budgets | source, selection, name-repair, and budget errors |
 | expressions, selectors, and aggregators | `AnnplyrExpr`, selector, or expansion metadata; input unchanged | Lazy until evaluated; raw Narwhals is opaque and fully charged | `SelectionError`, `UnknownColumnError`, `UnknownSourceError` |
-| dataframe rectangling helpers | New pandas objects; input unchanged | Operates after explicit tabular extraction | `SelectionError`, `DuplicateNameError`, `SizeMismatchError` |
-| single-cell utilities | Readers return tables/reports; writers are independent unless `inplace=True` | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
+| `annplyr.tidyr` helpers | New pandas objects; input unchanged | Operates after explicit tabular extraction | `SelectionError`, `DuplicateNameError`, `SizeMismatchError` |
+| single-cell utilities | Readers return tables/reports; writers return a new object | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
 
 All cumulative `max_matrix_values=` checks plan every source before the first
 adapter read. The mechanically checked callable-level contract is recorded in
@@ -82,12 +105,13 @@ from typing import cast
 
 from anndata import AnnData
 import annplyr as ap
+from annplyr.data import X, obs
 from annplyr.typing import AnnDataWithAnnplyr
 
 
 def select_markers(adata: AnnData) -> AnnDataWithAnnplyr:
     typed = cast(AnnDataWithAnnplyr, adata)
-    return typed.ap.filter(ap.col("qc_pass")).select(x=["MS4A1", "CD79A"])
+    return typed.ap.filter(obs.qc_pass).select(X.MS4A1, X.CD79A)
 ```
 
 `AnnDataWithAnnplyr` is an alias of the concrete `TidyAnnData` class. The cast
@@ -101,7 +125,7 @@ The supported aliases live in `annplyr.typing`:
 |---|---|
 | `Selector` | strings, annplyr selectors/expressions, raw Narwhals expressions, or sequences of those values |
 | `Expression` | a column name, `AnnplyrExpr`, or raw Narwhals expression |
-| `Source` | the exact `as_frame()` source literals |
+| `Source` | the container literals `pull()` reads (`"obs"`, `"var"`, `"x"`, `"raw"`, `"obsm"`, and so on); not the `annplyr.Source` class |
 | `SourceSelectors` | keyed selectors for aligned mapping sources |
 | `JoinInput`, `JoinBy`, and join-option aliases | the exact dataframe/mapping and validated literal choices accepted by joins |
 | `GroupedReturn` | typed AnnData or `GroupedAnnData` |
@@ -118,21 +142,20 @@ symbol, public method signature, overload, return annotation, and alias.
    :toctree: generated
 
    annplyr.add_count
-   annplyr.add_tally
+   annplyr.aggregate_cells
    annplyr.anti_join
    annplyr.arrange
-   annplyr.as_frame
    annplyr.count
    annplyr.distinct
    annplyr.filter
-   annplyr.filter_exp
-   annplyr.filter_obs
    annplyr.full_join
+   annplyr.glimpse
    annplyr.group_by
    annplyr.inner_join
+   annplyr.join_features
    annplyr.left_join
    annplyr.mutate
-   annplyr.nest_by
+   annplyr.nest
    annplyr.pipe
    annplyr.pivot_longer
    annplyr.pull
@@ -150,10 +173,9 @@ symbol, public method signature, overload, return annotation, and alias.
    annplyr.slice_tail
    annplyr.summarise
    annplyr.summarize
-   annplyr.tally
-   annplyr.to_tidy
    annplyr.to_wide
    annplyr.transmute
+   annplyr.unnest
 ```
 
 ## Expressions And Selectors
@@ -239,28 +261,33 @@ schema/dtype selector and must not inspect values.
    annplyr.sum
 ```
 
-## Dataframe Extraction Helpers
+## Dataframe Helpers In `annplyr.tidyr`
+
+These helpers reshape the pandas DataFrames that annplyr returns. They take a
+DataFrame, not an AnnData, so they live in their own module: call
+`ap.tidyr.pivot_wider(df, ...)`. The module's `nest` and `unnest` work on
+DataFrame list columns. `ap.nest` and `ap.unnest` work on AnnData objects.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   annplyr.chop
-   annplyr.drop_na
-   annplyr.extract
-   annplyr.fill
-   annplyr.hoist
-   annplyr.nest
-   annplyr.pack
-   annplyr.pivot_wider
-   annplyr.separate
-   annplyr.separate_rows
-   annplyr.unchop
-   annplyr.unite
-   annplyr.unpack
-   annplyr.unnest
-   annplyr.unnest_longer
-   annplyr.unnest_wider
+   annplyr.tidyr.chop
+   annplyr.tidyr.drop_na
+   annplyr.tidyr.extract
+   annplyr.tidyr.fill
+   annplyr.tidyr.hoist
+   annplyr.tidyr.nest
+   annplyr.tidyr.pack
+   annplyr.tidyr.pivot_wider
+   annplyr.tidyr.separate
+   annplyr.tidyr.separate_rows
+   annplyr.tidyr.unchop
+   annplyr.tidyr.unite
+   annplyr.tidyr.unnest
+   annplyr.tidyr.unnest_longer
+   annplyr.tidyr.unnest_wider
+   annplyr.tidyr.unpack
 ```
 
 ## Single-Cell Utility Helpers
@@ -275,7 +302,6 @@ wrappers, species gene registries, or object conversion workflows.
 
    annplyr.FeaturePresence
    annplyr.add_name_prefix
-   annplyr.add_sample_meta
    annplyr.feature_present
    annplyr.get_palette
    annplyr.name_duplicates
@@ -283,8 +309,8 @@ wrappers, species gene registries, or object conversion workflows.
    annplyr.rename_var_names
    annplyr.replace_name_suffix
    annplyr.sample_meta
-   annplyr.sample_summary
    annplyr.store_palette
+
 ```
 
 ## Errors

@@ -201,7 +201,7 @@ def test_sparse_long_exports_preserve_value_dtype_and_obs_major_order(
         else sparse_adata.ap.pivot_longer("x:g0", "x:g3")
     )
 
-    value, cell = (".abundance_x", ".cell") if method == "join_features" else ("value", "obs_name")
+    value, cell = (".abundance_X", ".cell") if method == "join_features" else ("value", "obs_name")
     assert isinstance(result[value].dtype, pd.SparseDtype)
     assert list(result[[cell, feature_column]].itertuples(index=False, name=None)) == [
         (obs_name, feature) for obs_name in sparse_adata.obs_names for feature in ["g0", "g3"]

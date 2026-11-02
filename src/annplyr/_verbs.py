@@ -1765,7 +1765,19 @@ def _coerce_join_frame(other: pd.DataFrame | Mapping[str, Any]) -> pd.DataFrame:
     return other.copy() if isinstance(other, pd.DataFrame) else pd.DataFrame(other)
 
 
-def _join_by_columns(left: pd.DataFrame, right: pd.DataFrame, by: str | Sequence[str] | None) -> list[str]:
+def _join_key_name(key: Any) -> Any:
+    """Read ``obs.sample`` as the key column ``sample``; strings pass through."""
+    name = getattr(key, "_source_column", None)
+    if name is None:
+        return key
+    return name.partition(":")[2] if name.partition(":")[0] in {"obs", "var"} else name
+
+
+def _join_by_columns(left: pd.DataFrame, right: pd.DataFrame, by: Any) -> list[str]:
+    if by is not None and not isinstance(by, str) and not isinstance(by, Sequence):
+        by = _join_key_name(by)
+    elif isinstance(by, Sequence) and not isinstance(by, str):
+        by = [_join_key_name(key) for key in by]
     if by is None:
         columns = [column for column in left.columns if column in right.columns]
     elif isinstance(by, str):
@@ -2041,13 +2053,13 @@ def to_tidy_adata(
     value: str = "value",
     allow_all_features: bool = False,
     max_matrix_values: int | None = None,
-    context: str = "to_tidy",
+    context: str = "join_features",
 ) -> pd.DataFrame:
     if x is not None and raw is not None:
-        msg = "to_tidy accepts x or raw, not both"
+        msg = "join_features reads one matrix per call: x or raw, not both"
         raise IncompatibleAxisError(msg)
     if x is None and raw is None and not allow_all_features:
-        msg = "to_tidy requires explicit x feature selection; pass allow_all_features=True to export all features"
+        msg = "join_features needs named features; pass allow_all_features=True to export all of them"
         raise SelectionError(msg)
     source = "raw" if raw is not None else "x"
     selector = raw if raw is not None else x
@@ -2074,7 +2086,7 @@ def to_tidy_adata(
         meta,
         wide,
         reserved={obs_name, feature, value},
-        context="to_tidy",
+        context="join_features",
     )
     combined = pd.concat([meta.reset_index(drop=True), wide.reset_index(drop=True)], axis=1)
     combined.insert(0, obs_name, adata.obs_names.to_numpy())

@@ -8,7 +8,7 @@ from anndata import AnnData
 
 from annplyr._aggregate import aggregate_cells_adata
 from annplyr._errors import AnnplyrError, IncompatibleAxisError
-from annplyr._expr import AnnplyrExpr, everything
+from annplyr._expr import AnnplyrExpr, Desc, everything
 from annplyr._extensions import register_anndata_accessor
 from annplyr._features import join_features_adata
 from annplyr._grouped import GroupedAnnData
@@ -77,6 +77,13 @@ def _with_annplyr_accessor(adata: AnnData) -> AnnDataWithAnnplyr:
     Wrapping preserves the identity of the object it is given.
     """
     return cast(AnnDataWithAnnplyr, TidyAnnData.wrap(adata))
+
+
+def _sort_axis(by: Any) -> Axis:
+    """A ``var.`` sort key ranks features, anything else ranks cells."""
+    key = by.expr if isinstance(by, Desc) else by
+    name = key if isinstance(key, str) else getattr(key, "_source_column", None) or ""
+    return "var" if name.startswith("var:") else "obs"
 
 
 @register_anndata_accessor("ap")
@@ -376,11 +383,11 @@ class AnnplyrAccessor:
     def slice_tail(self, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis))
 
-    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis))
+    def slice_min(self, by: Expression, n: int = 5, *, axis: Axis | None = None) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_min_adata(self._obj, by=by, n=n, axis=axis or _sort_axis(by)))
 
-    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis = "obs") -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis))
+    def slice_max(self, by: Expression, n: int = 5, *, axis: Axis | None = None) -> AnnDataWithAnnplyr:
+        return _with_annplyr_accessor(slice_max_adata(self._obj, by=by, n=n, axis=axis or _sort_axis(by)))
 
     def slice_sample(
         self,

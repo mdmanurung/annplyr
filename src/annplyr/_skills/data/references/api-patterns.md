@@ -97,7 +97,7 @@ Prefer:
 ```python
 plot_df = adata.join_features(X.MS4A1, X.CD79A, shape="long")
 raw_plot_df = adata.join_features(raw.MS4A1, shape="long")
-report = ap.tidyr.pivot_wider(plot_df, id_cols=[".cell"], names_from=".feature", values_from=".abundance_x")
+report = ap.tidyr.pivot_wider(plot_df, id_cols=[".cell"], names_from=".feature", values_from=".abundance_X")
 ```
 
 Avoid unbounded matrix-to-long exports unless the user explicitly requests whole-matrix materialization. Use `max_matrix_values=` when the workflow needs a hard budget.

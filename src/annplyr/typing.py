@@ -15,7 +15,7 @@ from annplyr._typing import (
     JoinUnmatched,
     NaMatches,
     Selector,
-    Source,
+    SourceName,
     SourceSelectors,
 )
 
@@ -33,7 +33,7 @@ __all__ = [
     "JoinUnmatched",
     "NaMatches",
     "Selector",
-    "Source",
+    "SourceName",
     "SourceSelectors",
     "TidyAnnData",
 ]

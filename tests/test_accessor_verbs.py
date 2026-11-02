@@ -153,9 +153,9 @@ def test_pull_to_wide_and_join_features_are_plot_friendly(dense_adata: AnnData) 
     assert wide.loc["c3", "X_pca_0"] == 1.0
 
     tidy = dense_adata.ap.join_features("x:g0", "x:g3")
-    assert {"batch", ".cell", ".feature", ".abundance_x"} <= set(tidy.columns)
+    assert {"batch", ".cell", ".feature", ".abundance_X"} <= set(tidy.columns)
     assert len(tidy) == dense_adata.n_obs * 2
-    assert tidy.loc[(tidy[".cell"] == "c4") & (tidy[".feature"] == "g3"), ".abundance_x"].item() == 4.0
+    assert tidy.loc[(tidy[".cell"] == "c4") & (tidy[".feature"] == "g3"), ".abundance_X"].item() == 4.0
 
 
 def test_sparse_anndata_uses_same_expression_semantics(sparse_adata: AnnData) -> None:

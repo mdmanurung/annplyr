@@ -26,7 +26,7 @@ type Selector = (
     | _Container
     | Sequence[str | AnnplyrSelector | AnnplyrExpr | nw.Expr | _Container]
 )
-type Source = Literal["obs", "var", "x", "raw", "obsm", "varm", "obsp", "varp", "uns"]
+type SourceName = Literal["obs", "var", "x", "raw", "obsm", "varm", "obsp", "varp", "uns"]
 type SourceSelectors = Mapping[str, Selector]
 type JoinInput = pd.DataFrame | Mapping[str, Any]
 type JoinBy = str | Sequence[str] | None
@@ -47,7 +47,7 @@ __all__ = [
     "JoinUnmatched",
     "NaMatches",
     "Selector",
-    "Source",
+    "SourceName",
     "SourceSelectors",
     "TidyAnnData",
 ]

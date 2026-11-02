@@ -32,7 +32,7 @@ def test_public_runtime_types_and_typing_aliases_are_complete(dense_adata: AnnDa
         "JoinUnmatched",
         "NaMatches",
         "Selector",
-        "Source",
+        "SourceName",
         "SourceSelectors",
         "TidyAnnData",
     }

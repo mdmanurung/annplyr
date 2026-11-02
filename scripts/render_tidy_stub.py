@@ -50,7 +50,7 @@ from annplyr._typing import (
     JoinUnmatched,
     NaMatches,
     Selector,
-    Source,
+    SourceName,
     SourceSelectors,
 )
 

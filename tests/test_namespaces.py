@@ -134,3 +134,14 @@ def test_aggregate_cells_takes_a_source_object(dense_adata) -> None:
     by_object = dense_adata.ap.aggregate_cells("batch", source=X)
     by_name = dense_adata.ap.aggregate_cells("batch", source="x")
     np.testing.assert_array_equal(np.asarray(by_object.X), np.asarray(by_name.X))
+
+
+def test_var_keys_need_no_axis_and_joins_take_columns(dense_adata) -> None:
+    top = dense_adata.ap.slice_max(var.length, n=2)
+    assert top.n_vars == 2 and top.n_obs == dense_adata.n_obs
+    meta = pd.DataFrame({"batch": dense_adata.obs["batch"].unique(), "site": "s"})
+    by_string = dense_adata.ap.left_join(meta, by="batch")
+    by_column = dense_adata.ap.left_join(meta, by=obs.batch)
+    pd.testing.assert_frame_equal(by_column.obs, by_string.obs)
+    long = dense_adata.ap.join_features(X.g0)
+    assert ".abundance_X" in long.columns

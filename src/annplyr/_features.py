@@ -48,7 +48,9 @@ def _by_source(adata: AnnData, features: tuple[Any, ...]) -> dict[tuple[str, str
 
 
 def _label(kind: str, key: str | None) -> str:
-    return key if kind == "layer" and key is not None else kind
+    if kind == "layer" and key is not None:
+        return key
+    return "X" if kind == "x" else kind  # matches adata.X and the X namespace
 
 
 def join_features_adata(

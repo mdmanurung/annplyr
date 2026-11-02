@@ -82,24 +82,6 @@ def assert_same_cells(actual: AnnData, expected_names: pd.Index) -> None:
             lambda a: gene(a, "CST3", raw=False) > 0,
             id="filter-x",
         ),
-        pytest.param(
-            "filter_obs",
-            [ap.col("percent_mito") < 0.02],
-            lambda a: a.obs["percent_mito"] < 0.02,
-            id="filter_obs",
-        ),
-        pytest.param(
-            "filter_exp",
-            [ap.col("raw:NKG7") > 1.0],
-            lambda a: gene(a, "NKG7", raw=True) > 1.0,
-            id="filter_exp-raw",
-        ),
-        pytest.param(
-            "filter_exp",
-            [ap.col("x:MS4A1") > 0.5],
-            lambda a: gene(a, "MS4A1", raw=False) > 0.5,
-            id="filter_exp-x",
-        ),
     ],
 )
 def test_filter_family_selects_the_same_cells_as_a_boolean_mask(
@@ -206,14 +188,14 @@ def test_summarize_ungrouped_and_grouped_match_pandas(pbmc: AnnData, source: str
     pd.testing.assert_frame_equal(by, grouped)
 
 
-def test_count_tally_and_add_count_match_value_counts(pbmc: AnnData) -> None:
+def test_count_and_add_count_match_value_counts(pbmc: AnnData) -> None:
     ref = pbmc.obs[KEY].value_counts(sort=False).reindex(pbmc.obs[KEY].unique())
 
     counted = pbmc.ap.count(KEY)
     assert counted[KEY].tolist() == ref.index.tolist()
     assert counted["n"].tolist() == ref.tolist()
     assert pbmc.ap.count(KEY, sort=True)["n"].tolist() == sorted(ref.tolist(), reverse=True)
-    assert pbmc.ap.tally()["n"].iloc[0] == pbmc.n_obs
+    assert pbmc.ap.count()["n"].iloc[0] == pbmc.n_obs
 
     weighted = pbmc.ap.count(KEY, wt=ap.col("n_counts"))
     np.testing.assert_allclose(weighted["n"], pbmc.obs.groupby(KEY, sort=False, observed=True)["n_counts"].sum())

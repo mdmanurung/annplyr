@@ -82,7 +82,7 @@ def test_group_fast_paths_canonicalize_mixed_object_null_sentinels() -> None:
 
     keys = grouped.group_keys()
     count = grouped.count()
-    tally = grouped.tally(wt="weight")
+    tally = grouped.count(wt="weight")
 
     assert len(keys) == 2
     assert pd.isna(keys.loc[0, "group"])
@@ -135,7 +135,7 @@ def test_grouped_select_transmute_rename_and_relocate_retain_or_update_keys() ->
     assert relocated.group_vars() == ["BATCH", "id"]
 
 
-def test_grouped_inplace_identity_and_key_mutation_use_old_plan_then_regroup() -> None:
+def test_grouped_key_mutation_uses_old_plan_then_regroups() -> None:
     grouped = _grouped_fixture().ap.group_by("group")
     underlying = grouped.ungroup()
     result = grouped.mutate(
@@ -143,22 +143,19 @@ def test_grouped_inplace_identity_and_key_mutation_use_old_plan_then_regroup() -
             "within": ap.row_number(),
             "group": ap.if_else(ap.row_number() == 1, "first", "rest"),
         },
-        inplace=True,
     )
-    assert result is grouped
-    assert result.ungroup() is underlying
-    assert underlying.obs["within"].tolist() == [1, 1, 2, 1, 2, 3]
+    assert result is not grouped
+    assert "within" not in underlying.obs
+    assert result.ungroup().obs["within"].tolist() == [1, 1, 2, 1, 2, 3]
     assert result.group_keys()["group"].tolist() == ["first", "rest"]
 
-    renamed = grouped.rename(partition="group", inplace=True)
-    assert renamed is grouped
-    assert grouped.group_vars() == ["partition"]
-    relocated = grouped.relocate("partition", after="text", inplace=True)
-    assert relocated is grouped
-    counted = grouped.add_count(sort=True, inplace=True)
-    assert counted is grouped
-    tallied = grouped.add_tally(inplace=True)
-    assert tallied is grouped
+    renamed = grouped.rename(partition="group")
+    assert renamed.group_vars() == ["partition"]
+    assert grouped.group_vars() == ["group"]
+    relocated = renamed.relocate("partition", after="text")
+    assert relocated.group_vars() == ["partition"]
+    counted = grouped.add_count(sort=True)
+    assert counted.group_vars() == ["group"]
 
 
 def test_grouped_mutate_scatter_preserves_extension_and_categorical_dtypes() -> None:
@@ -177,11 +174,11 @@ def test_grouped_mutate_scatter_preserves_extension_and_categorical_dtypes() -> 
     assert isinstance(result.obs["category_copy"].dtype, pd.CategoricalDtype)
 
 
-def test_grouped_summary_count_and_tally_share_plan_order_and_key_dtypes() -> None:
+def test_grouped_summary_count_and_weighted_count_share_plan_order_and_key_dtypes() -> None:
     grouped = _grouped_fixture().ap.group_by("group")
     summary = grouped.summarize({"mean": ap.mean("value")})
     count = grouped.count()
-    tally = grouped.tally(wt="value")
+    tally = grouped.count(wt="value")
     assert summary["group"].astype(object).where(summary["group"].notna(), "NA").tolist() == ["b", "a", "NA"]
     assert count["n"].tolist() == [3, 2, 1]
     assert tally["n"].tolist() == [7, 6, 5]

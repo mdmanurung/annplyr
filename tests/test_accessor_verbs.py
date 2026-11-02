@@ -142,7 +142,7 @@ def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) 
     )
 
 
-def test_pull_to_wide_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> None:
+def test_pull_to_wide_and_join_features_are_plot_friendly(dense_adata: AnnData) -> None:
     pulled = dense_adata.ap.pull("x:g3")
     assert pulled.name == "g3"
     assert pulled.tolist() == [2.0, 1.0, 0.0, 8.0, 4.0]
@@ -152,10 +152,10 @@ def test_pull_to_wide_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> Non
     assert wide.columns.tolist() == ["batch", "g0", "g3", "X_pca_0"]
     assert wide.loc["c3", "X_pca_0"] == 1.0
 
-    tidy = dense_adata.ap.to_tidy(obs=["batch"], x=["g0", "g3"])
-    assert tidy.columns.tolist() == ["obs_name", "feature", "value", "batch"]
+    tidy = dense_adata.ap.join_features("x:g0", "x:g3")
+    assert {"batch", ".cell", ".feature", ".abundance_x"} <= set(tidy.columns)
     assert len(tidy) == dense_adata.n_obs * 2
-    assert tidy.loc[(tidy["obs_name"] == "c4") & (tidy["feature"] == "g3"), "value"].item() == 4.0
+    assert tidy.loc[(tidy[".cell"] == "c4") & (tidy[".feature"] == "g3"), ".abundance_x"].item() == 4.0
 
 
 def test_sparse_anndata_uses_same_expression_semantics(sparse_adata: AnnData) -> None:

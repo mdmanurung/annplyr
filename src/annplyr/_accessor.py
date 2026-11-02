@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TypeVar, cast, overload
+from typing import Any, Literal, TypeVar, cast, overload
 
 import pandas as pd
 from anndata import AnnData
 
+from annplyr._aggregate import aggregate_cells_adata
 from annplyr._errors import AnnplyrError, IncompatibleAxisError
 from annplyr._expr import AnnplyrExpr, everything
 from annplyr._extensions import register_anndata_accessor
+from annplyr._features import join_features_adata
 from annplyr._grouped import GroupedAnnData
+from annplyr._nest import nest_adata
 from annplyr._resolve import (
     META_AND_X,
     container_kwargs,
@@ -29,15 +32,11 @@ from annplyr._typing import (
     JoinUnmatched,
     NaMatches,
     Selector,
-    Source,
 )
 from annplyr._verbs import (
-    _validate_filter_scope,
     add_count_adata,
-    add_tally_adata,
     anti_join_adata,
     arrange_adata,
-    as_frame_adata,
     count_adata,
     distinct_adata,
     filter_adata,
@@ -46,7 +45,6 @@ from annplyr._verbs import (
     left_join_adata,
     merge_named,
     mutate_adata,
-    nest_by_adata,
     pivot_longer_adata,
     pull_adata,
     relocate_adata,
@@ -62,8 +60,6 @@ from annplyr._verbs import (
     slice_sample_adata,
     slice_tail_adata,
     summarize_adata,
-    tally_adata,
-    to_tidy_adata,
     to_wide_adata,
     transmute_adata,
 )
@@ -161,97 +157,6 @@ class AnnplyrAccessor:
                 max_matrix_values=max_matrix_values,
             )
         )
-
-    def filter_obs(
-        self,
-        *predicates: Expression | Sequence[Expression],
-        source: str | None = None,
-        copy: bool = True,
-        max_matrix_values: int | None = None,
-    ) -> AnnDataWithAnnplyr:
-        """Filter cells using only obs metadata, combining predicates with AND.
-
-        Bare names and ``obs:`` references read observation metadata. Sources
-        on the feature axis or in matrices are rejected before reads. Ownership,
-        null handling, and predicate evaluation follow :meth:`filter`, including
-        its no-op behavior when no predicates are supplied.
-
-        Parameters
-        ----------
-        *predicates
-            Boolean expressions, combined with AND.
-        source
-            Container for an expression that names no column.
-        copy
-            Return an independent object rather than a view.
-        max_matrix_values
-            Upper bound on matrix values read; ``None`` means no bound.
-
-        Returns
-        -------
-        AnnData
-            The observations where every predicate is true.
-
-        Ownership
-        ---------
-        Returns an independent result by default; ``copy=False`` may be a view.
-
-        Raises
-        ------
-        IncompatibleAxisError
-            If a predicate reads a source outside this verb's scope.
-        UnknownColumnError
-            If a predicate names a column or feature that does not exist.
-        """
-        _validate_filter_scope(self._obj, predicates, source=source, expression=False)
-        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
-
-    def filter_exp(
-        self,
-        *predicates: Expression | Sequence[Expression],
-        source: str | None = None,
-        copy: bool = True,
-        max_matrix_values: int | None = None,
-    ) -> AnnDataWithAnnplyr:
-        """Filter cells using explicitly qualified gene-expression predicates.
-
-        Use ``ap.col("x:MS4A1")``, ``ap.col("raw:MS4A1")``, or a named layer
-        such as ``ap.col("counts:MS4A1")``. Bare names never guess an expression
-        source. An opaque Narwhals expression needs ``source="x"``, ``"raw"``,
-        or a layer name, and charges the entire source to the matrix budget.
-        Metadata, embeddings, and feature-axis sources are rejected before
-        reads. Evaluation and ownership follow :meth:`filter`, including its
-        no-op behavior when no predicates are supplied.
-
-        Parameters
-        ----------
-        *predicates
-            Boolean expressions, combined with AND.
-        source
-            Container for an expression that names no column.
-        copy
-            Return an independent object rather than a view.
-        max_matrix_values
-            Upper bound on matrix values read; ``None`` means no bound.
-
-        Returns
-        -------
-        AnnData
-            The observations where every predicate is true.
-
-        Ownership
-        ---------
-        Returns an independent result by default; ``copy=False`` may be a view.
-
-        Raises
-        ------
-        IncompatibleAxisError
-            If a predicate reads a source outside this verb's scope.
-        UnknownColumnError
-            If a predicate names a column or feature that does not exist.
-        """
-        _validate_filter_scope(self._obj, predicates, source=source, expression=True)
-        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
 
     def select(self, *names: Selector, copy: bool = True) -> AnnDataWithAnnplyr:
         """Keep the named columns and features; ``-obs.x`` drops one instead.
@@ -650,17 +555,6 @@ class AnnplyrAccessor:
         resolved, keys = key_names(self._obj, by, verb="count", axis=axis, qualified=True)
         return count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name)
 
-    def tally(
-        self,
-        *by: Selector,
-        wt: Expression | None = None,
-        sort: bool = False,
-        axis: Axis | None = None,
-        name: str = "n",
-    ) -> pd.DataFrame:
-        resolved, keys = key_names(self._obj, by, verb="tally", axis=axis, qualified=True)
-        return tally_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name)
-
     def add_count(
         self,
         *by: Selector,
@@ -673,19 +567,6 @@ class AnnplyrAccessor:
         resolved, keys = key_names(self._obj, by, verb="add_count", axis=axis, qualified=True)
         return _with_annplyr_accessor(
             add_count_adata(self._obj, by=keys or None, wt=wt, sort=sort, axis=resolved, name=name, inplace=inplace)
-        )
-
-    def add_tally(
-        self,
-        *,
-        wt: Expression | None = None,
-        sort: bool = False,
-        axis: Axis = "obs",
-        name: str = "n",
-        inplace: bool = False,
-    ) -> AnnDataWithAnnplyr:
-        return _with_annplyr_accessor(
-            add_tally_adata(self._obj, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
         )
 
     def pull(self, name: Selector, *, max_matrix_values: int | None = None) -> pd.Series:
@@ -717,32 +598,6 @@ class AnnplyrAccessor:
         print(f"obsm: {listed(adata.obsm.keys())}")
         print(f"raw: {'yes' if adata.raw is not None else 'no'}")
 
-    def to_tidy(
-        self,
-        obs: Selector | None = None,
-        x: Selector | None = None,
-        raw: Selector | None = None,
-        *,
-        layer: str | None = None,
-        obs_name: str = "obs_name",
-        feature: str = "feature",
-        value: str = "value",
-        allow_all_features: bool = False,
-        max_matrix_values: int | None = None,
-    ) -> pd.DataFrame:
-        return to_tidy_adata(
-            self._obj,
-            obs=obs,
-            x=x,
-            raw=raw,
-            layer=layer,
-            obs_name=obs_name,
-            feature=feature,
-            value=value,
-            allow_all_features=allow_all_features,
-            max_matrix_values=max_matrix_values,
-        )
-
     def pivot_longer(
         self,
         *names: Selector,
@@ -773,29 +628,41 @@ class AnnplyrAccessor:
             max_matrix_values=max_matrix_values,
         )
 
-    def as_frame(
+    def join_features(
         self,
-        source: Source,
-        *,
-        key: str | None = None,
-        select: Selector | None = None,
-        layer: str | None = None,
+        *features: Any,
+        shape: Literal["long", "wide"] = "long",
         max_matrix_values: int | None = None,
-    ) -> pd.DataFrame:
-        return as_frame_adata(
-            self._obj, source=source, key=key, select=select, layer=layer, max_matrix_values=max_matrix_values
-        )
+    ) -> Any:
+        """Bring matrix features next to the cell metadata, as tidySCE does.
 
-    def nest_by(
-        self,
-        *,
-        by: Selector,
-        obs: Selector | None = None,
-        var: Selector | None = None,
-        axis: Axis = "obs",
-        name: str = "data",
-    ) -> pd.DataFrame:
-        return nest_by_adata(self._obj, by=by, obs=obs, var=var, axis=axis, name=name)
+        ``shape="long"`` returns a DataFrame of every obs column plus ``.cell``,
+        ``.feature`` and one ``.abundance_<source>`` column per source:
+        ``adata.ap.join_features(raw.MS4A1, counts.MS4A1)``. ``shape="wide"``
+        returns the object with each feature added to ``obs`` under its own name.
+        """
+        if shape == "wide":
+            return _with_annplyr_accessor(
+                join_features_adata(self._obj, *features, shape="wide", max_matrix_values=max_matrix_values)
+            )
+        return join_features_adata(self._obj, *features, shape="long", max_matrix_values=max_matrix_values)
+
+    def aggregate_cells(self, *by: Selector, source: Any, fun: Literal["sum", "mean"] = "sum") -> AnnDataWithAnnplyr:
+        """Pseudobulk: sum ``source`` over each observed combination of ``by``.
+
+        ``adata.ap.aggregate_cells(obs.donor, obs.cell_type, source=counts)``
+        returns an AnnData with one row per donor and cell type, the keys plus
+        ``n_cells`` in ``obs``. ``source`` has no default because ``X`` is often
+        scaled; sum raw counts for differential expression.
+        """
+        return _with_annplyr_accessor(aggregate_cells_adata(self._obj, *by, source=source, fun=fun))
+
+    def nest(self, *by: Selector, name: str = "data") -> pd.DataFrame:
+        """Return one row per observed group with that group's object in ``name``.
+
+        ``ap.unnest(table)`` stacks the objects back into one AnnData.
+        """
+        return nest_adata(self._obj, *by, name=name)
 
     def pipe(self, func: Callable[..., T] | tuple[Callable[..., T], str], *args: Any, **kwargs: Any) -> T:
         if isinstance(func, tuple):

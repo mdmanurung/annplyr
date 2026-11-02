@@ -64,7 +64,9 @@ def join_features_adata(
         if clashes:
             msg = f"join_features(shape='wide') would write {clashes} twice; name them with mutate(new=raw.GENE)"
             raise DuplicateNameError(msg)
-        return mutate_adata(adata, {b: col(n) for b, n in zip(bare, names, strict=True)}, max_matrix_values=max_matrix_values)
+        return mutate_adata(
+            adata, {b: col(n) for b, n in zip(bare, names, strict=True)}, max_matrix_values=max_matrix_values
+        )
     if shape != "long":
         raise SelectionError(f"join_features shape= must be 'long' or 'wide', not {shape!r}")
 

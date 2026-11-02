@@ -13,7 +13,6 @@ from annplyr.typing import (
     GroupedReturn,
     JoinInput,
     Selector,
-    Source,
 )
 
 
@@ -27,7 +26,6 @@ def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
 
     predicate: Expression = ap.col("score") > 0
     columns: Selector = ap.all_of(["batch", "score"])
-    source: Source = "x"
     join_input: JoinInput = metadata
 
     filtered = typed.ap.filter(predicate)
@@ -51,7 +49,7 @@ def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
 
     ungrouped = joined.ungroup()
     assert_type(ungrouped, AnnDataWithAnnplyr)
-    wide = ungrouped.ap.as_frame(source, select=["GATA3", "MS4A1"])
+    wide = ungrouped.ap.to_wide(X.GATA3, X.MS4A1)
     assert_type(wide, pd.DataFrame)
     pulled = ungrouped.ap.pull(obs.score)
     layer_series = ungrouped.ap.pull(counts.GATA3)

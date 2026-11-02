@@ -62,8 +62,8 @@ def test_transmute_keeps_only_new_metadata_columns(dense_adata: AnnData) -> None
     assert transmuted.obs["g0_counts"].tolist() == [10.0, 20.0, 0.0, 50.0, 30.0]
 
 
-def test_tally_and_add_count(dense_adata: AnnData) -> None:
-    tally = dense_adata.ap.tally("batch")
+def test_count_and_add_count(dense_adata: AnnData) -> None:
+    tally = dense_adata.ap.count("batch")
     pd.testing.assert_frame_equal(
         tally.reset_index(drop=True),
         pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),

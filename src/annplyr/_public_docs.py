@@ -10,8 +10,6 @@ _AXIS_METHODS = {
     "arrange",
     "distinct",
     "filter",
-    "filter_exp",
-    "filter_obs",
     "select",
     "slice",
     "slice_head",
@@ -21,8 +19,8 @@ _AXIS_METHODS = {
     "slice_tail",
 }
 _JOIN_METHODS = {"anti_join", "full_join", "inner_join", "left_join", "right_join", "semi_join"}
-_INPLACE_METHODS = {"add_count", "add_tally", "mutate", "relocate", "rename", "rename_with"}
-_EXTRACTION_METHODS = {"as_frame", "nest_by", "pivot_longer", "pull", "to_tidy", "to_wide"}
+_INPLACE_METHODS = {"add_count", "mutate", "relocate", "rename", "rename_with"}
+_EXTRACTION_METHODS = {"aggregate_cells", "join_features", "nest", "pivot_longer", "pull", "to_wide"}
 _TABLE_METHODS = {
     "count",
     "group_data",
@@ -30,7 +28,6 @@ _TABLE_METHODS = {
     "group_vars",
     "summarise",
     "summarize",
-    "tally",
 }
 
 

@@ -69,9 +69,8 @@ def test_every_public_matrix_reading_accessor_exposes_the_cumulative_budget() ->
         "summarise",
         "pull",
         "to_wide",
-        "to_tidy",
+        "join_features",
         "pivot_longer",
-        "as_frame",
     ]
     accessor = type(AnnData(X=np.zeros((1, 1))).ap)
     for method in methods:
@@ -264,16 +263,15 @@ def test_public_projection_reads_only_requested_columns_in_requested_order(monke
     sentinel = _ReadSentinel()
     monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: sentinel)
     adata = AnnData(X=np.zeros((5, 4)), obs=pd.DataFrame(index=[f"c{i}" for i in range(5)]))
-    result = adata.ap.to_tidy(x=["d", "b"], max_matrix_values=10)
+    result = adata.ap.join_features("x:d", "x:b", max_matrix_values=10)
     assert sentinel.reads == 1
     assert sentinel.last_rows == [0, 1, 2, 3, 4]
     assert sentinel.last_columns == [3, 1]
-    assert result["feature"].drop_duplicates().tolist() == ["d", "b"]
+    assert result[".feature"].drop_duplicates().tolist() == ["d", "b"]
 
 
-def test_public_opaque_expression_charges_full_source_and_where_reads_only_schema(monkeypatch) -> None:
+def test_public_opaque_expression_charges_full_source(monkeypatch) -> None:
     import annplyr._sources as sources
-    import annplyr._verbs as verbs
 
     opaque = _ReadSentinel()
     monkeypatch.setattr(sources, "source_adapter", lambda *args, **kwargs: opaque)
@@ -281,14 +279,6 @@ def test_public_opaque_expression_charges_full_source_and_where_reads_only_schem
     with pytest.raises(AnnplyrError, match="materialize 20 matrix values"):
         adata.ap.filter(nw.col("a") > 0, source="x", max_matrix_values=5)
     assert opaque.reads == 0
-
-    schema_only = _ReadSentinel()
-    monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: schema_only)
-    with pytest.raises(AnnplyrError, match="materialize 20 matrix values"):
-        adata.ap.as_frame(
-            "x", select=ap.where(lambda series: pd.api.types.is_numeric_dtype(series.dtype)), max_matrix_values=0
-        )
-    assert schema_only.reads == 0
 
 
 @pytest.mark.parametrize("storage", ["dense", "csr", "csc"])

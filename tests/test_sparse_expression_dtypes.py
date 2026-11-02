@@ -70,10 +70,10 @@ def test_exports_keep_the_source_sparse_subtype() -> None:
     adata = sparse_adata(np.float32)
 
     wide = adata.ap.to_wide("x:g1", "x:g2")
-    long = adata.ap.to_tidy(obs=["group"], x=["g1", "g2"], max_matrix_values=2 * adata.n_obs)
+    long = adata.ap.join_features("x:g1", "x:g2", max_matrix_values=2 * adata.n_obs)
 
     assert [str(dtype) for dtype in wide.dtypes] == ["Sparse[float32, 0.0]", "Sparse[float32, 0.0]"]
-    assert str(long["value"].dtype) == "Sparse[float32, 0.0]"
+    assert str(long[".abundance_x"].dtype) == "Sparse[float32, 0.0]"
 
 
 def test_promotion_does_not_write_through_to_the_source_matrix() -> None:

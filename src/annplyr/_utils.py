@@ -17,7 +17,7 @@ from annplyr._errors import (
     UnknownSourceError,
 )
 from annplyr._frames import evaluate_select, obs_frame
-from annplyr._verbs import _axis, _ensure_not_backed, _same_shape_target, left_join_adata, summarize_adata
+from annplyr._verbs import _axis, _ensure_not_backed, _same_shape_target
 
 
 @dataclass(frozen=True)
@@ -83,59 +83,6 @@ def sample_meta(
 
     rows = work.drop_duplicates(subset=[sample], keep="first").reset_index(drop=True)
     return rows.loc[:, columns]
-
-
-def sample_summary(
-    adata: AnnData,
-    sample: str,
-    stats: Mapping[str, Any] | None = None,
-    *,
-    source: str | None = None,
-    max_matrix_values: int | None = None,
-) -> pd.DataFrame:
-    """Summarize observation metadata and selected expression by sample.
-
-    ``stats`` uses the same flat aggregate syntax as
-    :meth:`annplyr.AnnplyrAccessor.summarize`, so a matrix aggregate is named
-    with a qualifier such as ``ap.mean("raw:LYZ")``.
-    """
-    _check_obs_column(adata, sample)
-    return summarize_adata(
-        adata,
-        stats,
-        by=sample,
-        source=source,
-        max_matrix_values=max_matrix_values,
-    )
-
-
-def add_sample_meta(
-    adata: AnnData,
-    meta: pd.DataFrame | Mapping[str, Any],
-    *,
-    sample: str,
-    by: str | None = None,
-    inplace: bool = False,
-    suffixes: tuple[str, str] = ("", "_meta"),
-) -> AnnData:
-    """Add sample-level metadata to ``adata.obs`` without changing observation order."""
-    _ensure_not_backed(adata, "add_sample_meta")
-    _check_obs_column(adata, sample)
-    by = sample if by is None else by
-    metadata = _coerce_sample_metadata(meta)
-    if by not in metadata.columns:
-        msg = f"Unknown metadata join column: {by}"
-        raise UnknownColumnError(msg)
-    if by != sample:
-        if sample in metadata.columns:
-            msg = f"Metadata already contains target sample column {sample!r}"
-            raise DuplicateNameError(msg)
-        metadata = metadata.rename(columns={by: sample})
-    planned = left_join_adata(adata, metadata, by=sample, axis="obs", suffixes=suffixes, copy=True)
-    if not inplace:
-        return planned
-    adata.obs = planned.obs.copy()
-    return adata
 
 
 def feature_present(

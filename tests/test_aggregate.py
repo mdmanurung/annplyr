@@ -31,7 +31,9 @@ def test_aggregate_matches_a_pandas_groupby(cells: AnnData, fun: str) -> None:
     pb = aggregate_cells_adata(cells, "donor", "cell_type", source="counts", fun=fun)
 
     dense = pd.DataFrame(cells.layers["counts"].toarray(), columns=cells.var_names)
-    reference = getattr(dense.groupby([cells.obs["donor"].to_numpy(), cells.obs["cell_type"].to_numpy()], sort=False), fun)()
+    reference = getattr(
+        dense.groupby([cells.obs["donor"].to_numpy(), cells.obs["cell_type"].to_numpy()], sort=False), fun
+    )()
     got = pd.DataFrame(pb.X.toarray(), index=pd.MultiIndex.from_frame(pb.obs[["donor", "cell_type"]].astype(str)))
     np.testing.assert_allclose(got.to_numpy(), reference.loc[got.index].to_numpy())
     assert pb.obs["n_cells"].tolist() == [2] * 6

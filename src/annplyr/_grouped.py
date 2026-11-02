@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from typing import Any, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 
+from annplyr._aggregate import aggregate_cells_adata
 from annplyr._errors import AnnplyrError, IncompatibleAxisError, SelectionError
 from annplyr._expr import AnnplyrExpr, col, everything
 from annplyr._frames import evaluate_assignments, evaluate_select, obs_frame, var_frame
@@ -31,7 +32,6 @@ from annplyr._verbs import (
     _slice_selector,
     _sort_values_for_frame,
     _subset_positions,
-    _validate_filter_scope,
     _validate_slice_n,
     add_count_adata,
     anti_join_adata,
@@ -178,90 +178,6 @@ class GroupedAnnData:
         )
         return self._wrap(result)
 
-    def filter_obs(
-        self,
-        *predicates: Expression | Sequence[Expression],
-        source: str | None = None,
-        copy: bool = True,
-        max_matrix_values: int | None = None,
-    ) -> GroupedAnnData:
-        """Filter cells on obs metadata using the existing grouped evaluation.
-
-        Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_obs`.
-        Grouping keys and the grouped filter's first-seen order are preserved.
-
-        Parameters
-        ----------
-        *predicates
-            Boolean expressions, combined with AND.
-        source
-            Container for an expression that names no column.
-        copy
-            Return an independent object rather than a view.
-        max_matrix_values
-            Upper bound on matrix values read; ``None`` means no bound.
-
-        Returns
-        -------
-        GroupedAnnData
-            The observations where every predicate is true, still grouped.
-
-        Ownership
-        ---------
-        Returns an independent result by default; ``copy=False`` may be a view.
-
-        Raises
-        ------
-        IncompatibleAxisError
-            If a predicate reads a source outside this verb's scope.
-        UnknownColumnError
-            If a predicate names a column or feature that does not exist.
-        """
-        _validate_filter_scope(self._adata, predicates, source=source, expression=False)
-        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
-
-    def filter_exp(
-        self,
-        *predicates: Expression | Sequence[Expression],
-        source: str | None = None,
-        copy: bool = True,
-        max_matrix_values: int | None = None,
-    ) -> GroupedAnnData:
-        """Filter cells on expression using the existing grouped evaluation.
-
-        Sources are restricted as in :meth:`annplyr.AnnplyrAccessor.filter_exp`.
-        Grouping keys and the grouped filter's first-seen order are preserved.
-
-        Parameters
-        ----------
-        *predicates
-            Boolean expressions, combined with AND.
-        source
-            Container for an expression that names no column.
-        copy
-            Return an independent object rather than a view.
-        max_matrix_values
-            Upper bound on matrix values read; ``None`` means no bound.
-
-        Returns
-        -------
-        GroupedAnnData
-            The observations where every predicate is true, still grouped.
-
-        Ownership
-        ---------
-        Returns an independent result by default; ``copy=False`` may be a view.
-
-        Raises
-        ------
-        IncompatibleAxisError
-            If a predicate reads a source outside this verb's scope.
-        UnknownColumnError
-            If a predicate names a column or feature that does not exist.
-        """
-        _validate_filter_scope(self._adata, predicates, source=source, expression=True)
-        return self.filter(*predicates, source=source, copy=copy, max_matrix_values=max_matrix_values)
-
     def select(self, *names: Selector, copy: bool = True) -> GroupedAnnData:
         self._spec.validate(self._adata)
         kwargs = container_kwargs(self._adata, names, verb="select", allowed=META_AND_X, negation=True)
@@ -400,9 +316,6 @@ class GroupedAnnData:
             result = result.sort_values(name, ascending=False, kind="mergesort").reset_index(drop=True)
         return result
 
-    def tally(self, *, wt: Expression | None = None, sort: bool = False, name: str = "n") -> pd.DataFrame:
-        return self.count(wt=wt, sort=sort, name=name)
-
     def add_count(
         self,
         *,
@@ -422,16 +335,6 @@ class GroupedAnnData:
             inplace=inplace,
         )
         return self._same_shape_result(result, inplace=inplace)
-
-    def add_tally(
-        self,
-        *,
-        wt: Expression | None = None,
-        sort: bool = False,
-        name: str = "n",
-        inplace: bool = False,
-    ) -> GroupedAnnData:
-        return self.add_count(wt=wt, sort=sort, name=name, inplace=inplace)
 
     def arrange(
         self,
@@ -750,6 +653,12 @@ class GroupedAnnData:
         spec = self._spec.renamed(update)
         spec.validate(result)
         return spec
+
+    def aggregate_cells(self, *, source: Any, fun: Literal["sum", "mean"] = "sum") -> TidyAnnData:
+        """Pseudobulk over the grouping keys; see :meth:`AnnplyrAccessor.aggregate_cells`."""
+        if self._axis != "obs":
+            raise IncompatibleAxisError("aggregate_cells groups cells, so group_by obs metadata")
+        return TidyAnnData.wrap(aggregate_cells_adata(self._adata, *self._spec.columns, source=source, fun=fun))
 
     def pipe(self, func: Callable[..., T] | tuple[Callable[..., T], str], *args: Any, **kwargs: Any) -> T:
         if isinstance(func, tuple):

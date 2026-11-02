@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from annplyr import _accessor as _accessor
 from annplyr import data as data
+from annplyr import tidyr as tidyr
 from annplyr import verbs as verbs
 from annplyr._errors import (
     AnnplyrError,
@@ -77,12 +78,12 @@ from annplyr._expr import (
     where,
 )
 from annplyr._grouped import GroupedAnnData
+from annplyr._nest import unnest_adata as unnest
 from annplyr._public_docs import install_public_docstrings as _install_public_docstrings
 from annplyr._tidy import TidyAnnData
 from annplyr._utils import (
     FeaturePresence,
     add_name_prefix,
-    add_sample_meta,
     feature_present,
     get_palette,
     name_duplicates,
@@ -90,26 +91,7 @@ from annplyr._utils import (
     rename_var_names,
     replace_name_suffix,
     sample_meta,
-    sample_summary,
     store_palette,
-)
-from annplyr._verbs import (
-    chop,
-    drop_na,
-    extract,
-    fill,
-    hoist,
-    nest,
-    pack,
-    pivot_wider,
-    separate,
-    separate_rows,
-    unchop,
-    unite,
-    unnest,
-    unnest_longer,
-    unnest_wider,
-    unpack,
 )
 
 __version__ = "0.5.0"
@@ -117,6 +99,9 @@ AnnplyrAccessor = _accessor.AnnplyrAccessor
 tidy = TidyAnnData.wrap
 
 __all__ = [
+    "aggregate_cells",
+    "join_features",
+    "tidyr",
     "AnnplyrAccessor",
     "AnnplyrError",
     "AnnplyrExpr",
@@ -135,18 +120,14 @@ __all__ = [
     "across",
     "add_count",
     "add_name_prefix",
-    "add_sample_meta",
-    "add_tally",
     "all_of",
     "anti_join",
     "any_of",
     "arrange",
-    "as_frame",
     "average_rank",
     "between",
     "case_match",
     "case_when",
-    "chop",
     "coalesce",
     "col",
     "contains",
@@ -162,21 +143,15 @@ __all__ = [
     "dense_rank",
     "desc",
     "distinct",
-    "drop_na",
     "ends_with",
     "everything",
-    "extract",
     "feature_present",
-    "fill",
     "filter",
-    "filter_exp",
-    "filter_obs",
     "first",
     "full_join",
     "get_palette",
     "glimpse",
     "group_by",
-    "hoist",
     "if_all",
     "if_any",
     "if_else",
@@ -203,17 +178,14 @@ __all__ = [
     "name_duplicates",
     "near",
     "nest",
-    "nest_by",
     "nth",
     "ntile",
     "num_range",
     "obs_names",
-    "pack",
     "percent_rank",
     "pick",
     "pipe",
     "pivot_longer",
-    "pivot_wider",
     "pull",
     "recode",
     "relocate",
@@ -226,12 +198,9 @@ __all__ = [
     "right_join",
     "row_number",
     "sample_meta",
-    "sample_summary",
     "sd",
     "select",
     "semi_join",
-    "separate",
-    "separate_rows",
     "slice",
     "slice_head",
     "slice_max",
@@ -243,17 +212,10 @@ __all__ = [
     "sum",
     "summarise",
     "summarize",
-    "tally",
     "tidy",
-    "to_tidy",
     "to_wide",
     "transmute",
-    "unchop",
-    "unite",
     "unnest",
-    "unnest_longer",
-    "unnest_wider",
-    "unpack",
     "var_names",
     "where",
 ]

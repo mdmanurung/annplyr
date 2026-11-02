@@ -39,7 +39,7 @@ def test_v03_changed_signatures_are_consistent() -> None:
             == _parameters(getattr(GroupedAnnData, name))["other"].annotation
         )
 
-    for name in ["mutate", "rename", "rename_with", "relocate", "add_count", "add_tally"]:
+    for name in ["mutate", "rename", "rename_with", "relocate", "add_count"]:
         parameters = _parameters(getattr(AnnplyrAccessor, name))
         assert "copy" not in parameters
         assert parameters["inplace"].default is False
@@ -49,7 +49,6 @@ def test_v03_changed_signatures_are_consistent() -> None:
     assert "inplace" not in transmute
 
     for name in [
-        "add_sample_meta",
         "rename_obs_names",
         "rename_var_names",
         "add_name_prefix",

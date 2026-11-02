@@ -162,5 +162,3 @@ def test_same_shape_exported_utilities_use_inplace_identity() -> None:
     assert ap.rename_obs_names(adata, lambda name: f"x_{name}", inplace=True) is adata
     assert ap.add_name_prefix(adata, "v", axis="var", inplace=True) is adata
     assert ap.store_palette(adata, "key", ["#000", "#fff"], inplace=True) is adata
-    meta = pd.DataFrame({"key": ["a", "b"], "treatment": ["drug", "vehicle"]})
-    assert ap.add_sample_meta(adata, meta, sample="key", inplace=True) is adata

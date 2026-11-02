@@ -219,23 +219,6 @@ def _axis(axis: str | int) -> Axis:
     raise IncompatibleAxisError(msg)
 
 
-def _validate_filter_scope(
-    adata: AnnData, predicates: tuple[Any, ...], *, source: str | None, expression: bool
-) -> None:
-    """Validate convenience-filter sources before any matrix read."""
-    default = resolve.resolve_container(adata, source) if source is not None else None
-    buckets = resolve.partition_payload(
-        adata, _as_predicate_list(predicates), verb="filter_exp" if expression else "filter_obs", default_source=default
-    )
-    allowed = {"x", "raw", "layer"} if expression else {"obs"}
-    sources = [*buckets, *([default] if default is not None else [])]
-    for resolved_source in sources:
-        if resolved_source.kind not in allowed:
-            verb = "filter_exp" if expression else "filter_obs"
-            expected = "x:, raw:, or named layer expression columns" if expression else "obs metadata"
-            raise IncompatibleAxisError(f"{verb} accepts only {expected}; got {resolved_source.context!r}")
-
-
 def filter_adata(
     adata: AnnData,
     *predicates: Any,
@@ -1470,18 +1453,6 @@ def count_adata(
     return count_frame(frame, by=by, wt=wt, sort=sort, name=name, axis=axis)
 
 
-def tally_adata(
-    adata: AnnData,
-    by: Any = None,
-    *,
-    wt: Any = None,
-    sort: bool = False,
-    axis: str = "obs",
-    name: str = "n",
-) -> pd.DataFrame:
-    return count_adata(adata, by=by, wt=wt, sort=sort, axis=axis, name=name)
-
-
 def add_count_adata(
     adata: AnnData,
     by: Any = None,
@@ -1509,18 +1480,6 @@ def add_count_adata(
     if sort:
         _inplace_reorder_axis(out, positions, axis=axis)
     return out
-
-
-def add_tally_adata(
-    adata: AnnData,
-    *,
-    wt: Any = None,
-    sort: bool = False,
-    axis: str = "obs",
-    name: str = "n",
-    inplace: bool = False,
-) -> AnnData:
-    return add_count_adata(adata, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
 
 
 def _count_values(frame: pd.DataFrame, by: Any = None, wt: Any = None, *, axis: str | None = None) -> pd.Series:
@@ -2236,38 +2195,6 @@ def pivot_longer_adata(
     )
 
 
-def as_frame_adata(
-    adata: AnnData,
-    source: str,
-    *,
-    key: str | None = None,
-    select: Any = None,
-    layer: str | None = None,
-    max_matrix_values: int | None = None,
-) -> pd.DataFrame:
-    if source not in {"x", "raw", "obsm", "varm", "obsp", "varp"}:
-        RequestPlanner(max_matrix_values).validate()
-        return evaluate_select(source_frame(adata, source, key=key, layer=layer), select)
-    axis = "var" if source in {"varm", "varp"} else "obs"
-    context = f"as_frame {source}" if key is None else f"as_frame {source} {key!r}"
-    planner = RequestPlanner(max_matrix_values)
-    token, _ = _add_matrix_request(
-        planner,
-        adata,
-        source,
-        select,
-        mode="selection",
-        key=key,
-        layer=layer,
-        axis=axis,
-        context=context,
-    )
-    frame = _decorate_projected_frame(planner.execute()[token], adata, axis=axis, request=select)
-    selected = evaluate_select(frame, select)
-    selected.index = adata.obs_names if axis == "obs" else adata.var_names
-    return selected
-
-
 def _check_matrix_materialization(frame: pd.DataFrame, max_matrix_values: int | None, *, context: str) -> None:
     if max_matrix_values is None:
         return
@@ -2299,41 +2226,6 @@ def pivot_wider(
     wide = data.pivot(index=ids, columns=names_from, values=values_from).reset_index()
     wide.columns.name = None
     return wide
-
-
-def nest_by_adata(
-    adata: AnnData,
-    *,
-    by: Any,
-    obs: Any = None,
-    var: Any = None,
-    axis: str = "obs",
-    name: str = "data",
-) -> pd.DataFrame:
-    axis = _axis(axis)
-    if axis == "obs":
-        frame = obs_frame(adata)
-        data_selector = obs
-    else:
-        frame = var_frame(adata)
-        data_selector = var
-    keys = evaluate_select(frame, by)
-    values = evaluate_select(frame, data_selector) if data_selector is not None else drop_axis_virtuals(frame)
-    if name in keys.columns:
-        msg = f"nest_by output column {name!r} collides with a grouping column"
-        raise DuplicateNameError(msg)
-    work = pd.concat([keys, values], axis=1)
-    rows: list[dict[str, Any]] = []
-    key_columns = list(keys.columns)
-    value_columns = list(values.columns)
-    for _, key_row in keys.drop_duplicates().iterrows():
-        mask = pd.Series(True, index=keys.index)
-        for column, value in key_row.items():
-            mask &= keys[column].isna() if pd.isna(value) else keys[column].eq(value)
-        row = {str(column): key_row[column] for column in key_columns}
-        row[name] = work.loc[mask, value_columns].reset_index(drop=True)
-        rows.append(row)
-    return pd.DataFrame(rows, columns=[*key_columns, name])
 
 
 def drop_axis_virtuals(frame: pd.DataFrame) -> pd.DataFrame:

@@ -1,6 +1,6 @@
 ---
 name: annplyr
-description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, raw, obsm, varm, obsp, varp, and tabular uns; plotnine-ready to_wide/to_tidy/as_frame extraction; and alignment, sparse/backed, or matrix-materialization safety."
+description: "Use when writing or reviewing Python AnnData wrangling with annplyr/adata.ap for single-cell workflows: tidyverse-style filter/select/mutate/summarize/count/group_by/join/pivot over obs, var, X/layers, raw, obsm, varm, obsp, varp, and tabular uns; plotnine-ready to_wide/join_features/pull extraction; pseudobulk with aggregate_cells; and alignment, sparse/backed, or matrix-materialization safety."
 license: BSD-3-Clause
 ---
 
@@ -10,7 +10,7 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 
 ## First Moves
 
-1. Import `annplyr as ap`; this registers the `adata.ap` accessor.
+1. Import `annplyr as ap` and the containers you read, such as `from annplyr.data import obs, var, X, raw`; wrap the object with `adata = ap.tidy(adata)` so the verbs are methods. `adata.ap.<verb>` also works on a plain AnnData.
 2. Inspect `adata.n_obs`, `adata.n_vars`, `adata.obs.columns`, `adata.var.columns`, relevant `layers`, `raw`, `obsm`, `varm`, `obsp`, `varp`, and `uns` keys before writing expressions.
 3. Prefer accessor verbs for AnnData-preserving operations and pandas extraction helpers only when tabular materialization is intended.
 4. Keep axis semantics explicit: `obs` operations act on cells/observations, `var` operations act on features/genes.
@@ -18,14 +18,14 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 
 ## Core Rules
 
-- Use `ap.col("name")`, selectors such as `ap.starts_with(...)`, and helpers such as `ap.mean(...)`, `ap.if_else(...)`, and `ap.case_when(...)` instead of pandas string queries.
-- `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like sources (`x`, layers, `raw`, `obsm`, `varm`) are read-only expression sources.
+- Name every column with its container: `obs.percent_mito`, `raw.MS4A1`, `X.MS4A1`, `counts.MS4A1` (any layer imported from `annplyr.data`), `X_umap[0]` (an `obsm` key), `raw["HLA-DRA"]`. Use `ap.layer("name")` for a layer whose name is reserved. Strings such as `"raw:MS4A1"` and `ap.col(...)` are for names computed in a loop. Use selectors such as `ap.starts_with(...)` (they pick `obs` columns) and helpers such as `ap.mean(...)`, `ap.if_else(...)` and `ap.case_when(...)` instead of pandas string queries.
+- Verbs take names positionally: `select(obs.louvain, -obs.n_genes)`, `count(obs.sample)`, `group_by(obs.louvain)`. New columns are keywords: `mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)`, `summarize(cells=ap.n(), by=obs.louvain)`. A dict is for names that are not identifiers.
+- `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like containers (`X`, layers, `raw`, `obsm`, `varm`) are read-only expression sources.
 - AnnData-returning verbs must preserve alignment across `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`, and `varp`.
-- Axis-changing verbs default to independent results. Treat `copy=False` as permission for either a view or a materialized result, never as an `is_view` guarantee.
-- Same-shape writers use `inplace=False`; grouped AnnData verbs preserve grouping until `ungroup()`.
+- Every verb returns a new object, so assign the result. There is no `copy=` or `inplace=`. Same-shape verbs share the matrices with the input; a subsetting verb on a backed input returns the view. Grouped AnnData verbs preserve grouping until `ungroup()`.
 - Joins are metadata joins for `obs` or `var`; they should not silently create duplicated cells/features.
-- Whole-matrix long exports are expensive. Select features explicitly unless the user clearly asks for all features, and use cumulative `max_matrix_values=` budgets.
-- Backed axis selection with `copy=True` returns an in-memory result. Load backed objects before same-shape mutation.
+- Whole-matrix exports are expensive. Name the features, pass `allow_all_features=True` only when the user clearly asks for all of them, and use cumulative `max_matrix_values=` budgets.
+- Load backed objects with `.to_memory()` before a metadata-changing verb.
 
 ## Reference Files
 

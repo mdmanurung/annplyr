@@ -22,17 +22,18 @@ mangled. Layer and ``obsm``/``varm`` prefixes need the object, so
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from anndata import AnnData
 
-from annplyr._errors import IncompatibleAxisError, UnknownSourceError
-from annplyr._expr import col, collect_column_references
+from annplyr._errors import DuplicateNameError, IncompatibleAxisError, SelectionError, UnknownSourceError
+from annplyr._expr import AnnplyrExpr, Source, all_of, col, collect_column_references, everything
 from annplyr._frames import OBS_NAMES, VAR_NAMES, obs_frame, var_frame
 from annplyr._sources import RequestPlanner
+from annplyr._typing import Axis
 
 #: Prefixes that mean a specific container without needing the AnnData object.
 #: The virtual axis-name columns are deliberately absent: they are already
@@ -102,8 +103,8 @@ def resolve_source(adata: AnnData, text: str) -> ResolvedSource:
     qualifier, name = split_qualifier(text)
     if qualifier in _KEYED_QUALIFIERS:
         # "obsm:X_pca:0" names the key and then the column, like "X_pca:0".
-        obsm_key, _, name = name.partition(":")
-        return ResolvedSource(qualifier, obsm_key, _AXIS_BY_KIND[qualifier], ((text, name),))
+        keyed, _, name = name.partition(":")
+        return ResolvedSource(qualifier, keyed, _AXIS_BY_KIND[qualifier], ((text, name),))
     if qualifier is None:
         qualifier = _dynamic_qualifier(adata, text)
         if qualifier is not None:
@@ -416,6 +417,10 @@ def resolve_grouping_keys(selector: Any, *, axis: str | None = None) -> Any:
     silently group whichever ``obs`` column happens to share the bare name, which
     is the wrong answer rather than an error.
     """
+    if isinstance(selector, (AnnplyrExpr, Source)):
+        selector = _key_text(selector)
+        if axis is None:
+            return split_qualifier(selector)[1]
     if isinstance(selector, str):
         qualifier, separator, tail = selector.partition(":")
         if separator and tail and qualifier in RESERVED_QUALIFIERS:
@@ -440,3 +445,177 @@ def resolve_grouping_keys(selector: Any, *, axis: str | None = None) -> Any:
     if isinstance(selector, Sequence) and not isinstance(selector, (str, bytes)):
         return [resolve_grouping_keys(item, axis=axis) for item in selector]
     return selector
+
+
+_NOT_A_NAME = "{verb} takes column names, not computed expressions: mutate() the value first, then name it"
+#: Matrix containers: naming one whole would read every feature.
+_WHOLE_MATRIX = frozenset({"x", "raw", "layer"})
+_KEYED = frozenset({"obsm", "varm", "obsp", "varp", "uns"})
+#: Containers select, rename, relocate and distinct can reshape: obs and var columns, and X features.
+META_AND_X = frozenset({"obs", "var", "x"})
+
+
+def _flat(items: Sequence[Any]) -> Iterator[Any]:
+    """Yield names, unpacking lists so ``select(["a", "b"])`` reads like ``select("a", "b")``."""
+    for item in items:
+        if isinstance(item, (list, tuple)):
+            yield from _flat(item)
+        else:
+            yield item
+
+
+def _key_text(key: Any, verb: str = "grouping") -> str:
+    """Return the qualified column text of a grouping key given as an expression."""
+    text = key._source_column if isinstance(key, AnnplyrExpr) else None
+    if text is None:
+        raise SelectionError(_NOT_A_NAME.format(verb=verb))
+    return text
+
+
+def key_names(
+    adata: AnnData, by: Sequence[Any], *, verb: str, axis: str | None = None, qualified: bool = False
+) -> tuple[Axis, list[Any]]:
+    """Return ``(axis, keys)`` for positional grouping keys, inferring the axis.
+
+    A ``var`` name means the feature axis and anything else is ``obs``. Mixing
+    the two, or contradicting an explicit ``axis``, raises
+    :class:`IncompatibleAxisError`. ``qualified=True`` keeps ``var:`` on feature
+    keys, which is the form ``resolve_grouping_keys`` wants for a verb that learns
+    its axis elsewhere.
+    """
+    found: list[tuple[str, Any]] = []
+    for key in _flat(by):
+        if isinstance(key, Source):
+            raise SelectionError(f"{verb} needs named columns, not the whole container {key!r}")
+        text = _key_text(key, verb) if isinstance(key, AnnplyrExpr) else key
+        if not isinstance(text, str):
+            found.append((axis or "obs", text))
+            continue
+        source = resolve_source(adata, text)
+        if source.kind not in {"obs", "var"}:
+            raise IncompatibleAxisError(f"{verb} keys are obs or var metadata; {text!r} is in {source.context}")
+        found.append((source.kind, source.references[0][1]))
+    axes = {kind for kind, _ in found} | ({axis} if axis else set())
+    if len(axes) > 1:
+        raise IncompatibleAxisError(f"{verb} cannot mix obs and var keys in one call")
+    resolved = cast(Axis, next(iter(axes), "obs"))
+    return resolved, [
+        f"var:{name}" if qualified and resolved == "var" and isinstance(name, str) else name for _, name in found
+    ]
+
+
+def bare_key(value: Any, *, axis: str = "obs") -> Any:
+    """Turn a column expression such as ``obs.n_genes`` into the bare expression the axis frame holds.
+
+    Other values pass through. An expression that reads qualified columns but is
+    not one bare column cannot be evaluated against the frame, so it raises.
+    """
+    if isinstance(value, str):
+        qualifier, name = split_qualifier(value)
+        return name if qualifier in (None, axis) else value
+    if not isinstance(value, AnnplyrExpr):
+        return value
+    if value._source_column is not None:
+        qualifier, name = split_qualifier(value._source_column)
+        return col(name) if qualifier in (None, axis) else value
+    if any(split_qualifier(text)[0] for text in value.dependencies or ()):
+        raise SelectionError(_NOT_A_NAME.format(verb="slice_min/slice_max"))
+    return value
+
+
+def container_kwargs(
+    adata: AnnData,
+    names: Sequence[Any],
+    *,
+    verb: str,
+    allowed: frozenset[str],
+    negation: bool = False,
+    whole_matrix: bool = True,
+) -> dict[str, Any]:
+    """Turn positional names into the per-container keywords the verbs take.
+
+    Each name is a string, a column expression such as ``counts.MS4A1``, a selector
+    (read as ``obs``), or a whole :class:`~annplyr.Source`. The result holds one
+    entry per container, such as ``{"obs": [...], "x": [...], "layer": "counts"}``
+    or ``{"obsm": {"X_umap": [...]}}``. With ``negation=True`` a negated bare
+    column (``-obs.x``) means "everything except", which select, relocate and
+    distinct read as a drop. ``whole_matrix=False`` rejects a whole ``X``, ``raw``
+    or layer, because naming one would read every feature.
+    """
+    groups: dict[tuple[str, str | None], tuple[list[Any], list[Any]]] = {}
+    piece: Any
+    for item in _flat(names):
+        negated = False
+        if isinstance(item, Source):
+            source, piece = resolve_container(adata, item._prefix), everything()
+            if source.kind in _WHOLE_MATRIX and not whole_matrix:
+                raise SelectionError(
+                    f"{verb} on the whole {item._prefix!r} would read every feature: name the features, "
+                    "or pass allow_all_features=True where the verb accepts it"
+                )
+        elif isinstance(item, AnnplyrExpr):
+            text = item._source_column
+            if text is None and negation and item._negated_column is not None:
+                text, negated = item._negated_column, True
+            source = resolve_source(adata, _key_text(item, verb) if text is None else text)
+            piece = source.references[0][1]
+        elif isinstance(item, str):
+            source = resolve_source(adata, item)
+            piece = source.references[0][1]
+        else:
+            source, piece = ResolvedSource("obs", None, "obs", ()), item
+        if source.kind not in allowed:
+            error = IncompatibleAxisError if source.axis == "var" else SelectionError
+            raise error(f"{verb} cannot take names from {source.context}; it works on {', '.join(sorted(allowed))}")
+        pos, neg = groups.setdefault((source.kind, source.key), ([], []))
+        (neg if negated else pos).append(piece)
+    out: dict[str, Any] = {}
+    for (kind, key), (pos, neg) in groups.items():
+        selector: Any = pos
+        if neg:
+            drop = ~all_of(neg)  # type: ignore[operator]
+            selector = drop
+            if pos:
+                parts = [all_of(p) if isinstance(p, str) else p for p in pos]
+                keep: Any = parts[0]
+                for part in parts[1:]:
+                    keep = keep | part
+                selector = keep & drop
+        slot = "x" if kind == "layer" else kind
+        if kind in _KEYED:
+            out.setdefault(slot, {})[key] = selector
+        elif slot in out:
+            raise SelectionError(f"{verb} reads one matrix per call: use either X or one layer, not several")
+        else:
+            out[slot] = selector
+            if kind == "layer":
+                out["layer"] = key
+    return out
+
+
+def rename_kwargs(adata: AnnData, mapping: Mapping[str, Any] | None, new_to_old: Mapping[str, Any]) -> dict[str, Any]:
+    """Turn ``new=old`` pairs into ``{container: {new: old_bare_name}}`` for rename.
+
+    The container comes from the old name's qualifier, so ``cell_type=obs.louvain``
+    renames an obs column and ``{"CD4+": X.CD4}`` renames a feature.
+    """
+    clash = set(mapping or ()) & set(new_to_old)
+    if clash:
+        raise DuplicateNameError(f"rename got the new name(s) {', '.join(sorted(clash))} twice")
+    out: dict[str, Any] = {}
+    for new, old in {**(mapping or {}), **new_to_old}.items():
+        if not isinstance(old, (str, AnnplyrExpr)):
+            raise SelectionError(f"rename needs the old name of {new!r} as a string or one column, got {old!r}")
+        ((kind, (bare,)),) = container_kwargs(adata, [old], verb="rename", allowed=META_AND_X).items()
+        out.setdefault(kind, {})[new] = bare
+    return out
+
+
+def relocate_anchor(adata: AnnData, anchor: Any, moved: Mapping[str, Any]) -> str | None:
+    """Return the bare name of a ``before``/``after`` anchor, given as a string or a column."""
+    if anchor is None:
+        return None
+    ((kind, (bare,)),) = container_kwargs(adata, [anchor], verb="relocate", allowed=META_AND_X).items()
+    if set(moved) - {kind}:
+        raise SelectionError(f"relocate anchor {anchor!r} must sit in the same container as the columns it moves")
+    return cast(str, bare)

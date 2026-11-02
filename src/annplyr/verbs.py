@@ -4,11 +4,12 @@ Every verb is available as a plain function taking the AnnData object first, so
 a pipeline can start without the accessor and then chain with methods:
 
     import annplyr as ap
+    from annplyr.data import X, obs
 
     summary = (
-        ap.filter(adata, obs=ap.col("n_genes") >= 500)
-        .select(obs=ap.everything(), x=panel)
-        .summarize(obs={"cells": ap.n()}, by="louvain")
+        ap.filter(adata, obs.n_genes >= 500)
+        .select(obs.louvain, X.MS4A1)
+        .count(obs.louvain)
     )
 
 The functions are generated from :class:`~annplyr.AnnplyrAccessor`, so there is

@@ -18,7 +18,7 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 
 ## Core Rules
 
-- Name every column with its container: `obs.percent_mito`, `raw.MS4A1`, `X.MS4A1`, `counts.MS4A1` (any layer imported from `annplyr.data`), `X_umap[0]` (an `obsm` key), `raw["HLA-DRA"]`. Use `ap.layer("name")` for a layer whose name is reserved. Strings such as `"raw:MS4A1"` and `ap.col(...)` are for names computed in a loop. Use selectors such as `ap.starts_with(...)` (they pick `obs` columns) and helpers such as `ap.mean(...)`, `ap.if_else(...)` and `ap.case_when(...)` instead of pandas string queries.
+- Name every column with its container: `obs.percent_mito`, `raw.MS4A1`, `X.MS4A1`, `counts.MS4A1` (any layer imported from `annplyr.data`), `X_umap[0]` (an `obsm` key), `raw["HLA-DRA"]`. Use `ap.layer("name")` for a layer whose name is reserved. Strings such as `"raw:MS4A1"` and `ap.col(...)` are for names computed in a loop. Use selectors such as `ap.starts_with(...)` (bare, they pick `obs` columns; `X[ap.starts_with(...)]` picks features) and helpers such as `ap.mean(...)`, `ap.if_else(...)` and `ap.case_when(...)` instead of pandas string queries.
 - Verbs take names positionally: `select(obs.louvain, -obs.n_genes)`, `count(obs.sample)`, `group_by(obs.louvain)`. New columns are keywords: `mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)`, `summarize(cells=ap.n(), by=obs.louvain)`. A dict is for names that are not identifiers.
 - `mutate()` and `transmute()` write only `obs` or `var` metadata. Matrix-like containers (`X`, layers, `raw`, `obsm`, `varm`) are read-only expression sources.
 - AnnData-returning verbs must preserve alignment across `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`, and `varp`.

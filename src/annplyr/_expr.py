@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 import narwhals as nw
 import numpy as np
@@ -680,7 +680,9 @@ class Source:
     def __init__(self, prefix: str):
         object.__setattr__(self, "_prefix", prefix)
 
-    def __getitem__(self, name: str | int) -> AnnplyrExpr:
+    def __getitem__(self, name: str | int | AnnplyrSelector) -> Any:
+        if callable(getattr(name, "resolve", None)):
+            return ScopedSelector(self, cast(AnnplyrSelector, name))  # X[ap.starts_with("CD")]
         return col(f"{self._prefix}:{name}")
 
     def __getattr__(self, name: str) -> AnnplyrExpr:
@@ -697,6 +699,14 @@ class Source:
 
     def __repr__(self) -> str:
         return f"Source({self._prefix!r})"
+
+
+@dataclass(frozen=True)
+class ScopedSelector:
+    """A selector that picks names inside one container, such as ``X[ap.starts_with("CD")]``."""
+
+    source: Source
+    selector: AnnplyrSelector
 
 
 def layer(name: str) -> Source:

@@ -30,7 +30,7 @@ import pandas as pd
 from anndata import AnnData
 
 from annplyr._errors import DuplicateNameError, IncompatibleAxisError, SelectionError, UnknownSourceError
-from annplyr._expr import AnnplyrExpr, Source, all_of, col, collect_column_references, everything
+from annplyr._expr import AnnplyrExpr, ScopedSelector, Source, all_of, col, collect_column_references, everything
 from annplyr._frames import OBS_NAMES, VAR_NAMES, obs_frame, var_frame
 from annplyr._sources import RequestPlanner
 from annplyr._typing import Axis
@@ -557,6 +557,8 @@ def container_kwargs(
                     f"{verb} on the whole {item._prefix!r} would read every feature: name the features, "
                     "or pass allow_all_features=True where the verb accepts it"
                 )
+        elif isinstance(item, ScopedSelector):
+            source, piece = resolve_container(adata, item.source._prefix), item.selector
         elif isinstance(item, AnnplyrExpr):
             text = item._source_column
             if text is None and negation and item._negated_column is not None:

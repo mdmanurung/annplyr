@@ -20,7 +20,7 @@ Names are positional and carry their container (`obs.x`, `var.x`, `X.x`, `raw.x`
 
 **Subsetting and column ops:**
 - `filter(*predicates, max_matrix_values=...)` — subset observations or features, one predicate per argument; each names its own container. A `var` predicate subsets features.
-- `select(*names)` — keep named metadata columns and selected features: `select(obs.louvain, var.n_cells, X.MS4A1)`. A minus sign drops an `obs` column: `select(-obs.louvain)`. Selectors such as `ap.starts_with("n_")` pick `obs` columns.
+- `select(*names)` — keep named metadata columns and selected features: `select(obs.louvain, var.n_cells, X.MS4A1)`. A minus sign drops an `obs` column: `select(-obs.louvain)`. Selectors such as `ap.starts_with("n_")` pick `obs` columns; index a container to pick features: `select(X[ap.starts_with("CD")])`.
 - `rename(new=old)` — rename columns by mapping new names to existing columns: `rename(cell_type=obs.louvain)`. A dict handles new names that are not identifiers.
 - `rename_with(str.lower, *names)` — rename selected columns by applying a function to names.
 - `relocate(*names, before=..., after=...)` — reorder metadata columns. Raises `SelectionError` when the `before`/`after` anchor is among the columns being moved.
@@ -61,7 +61,7 @@ adata.select(ap.everything())
 adata.to_wide(ap.pick(ap.starts_with("qc_")))  # pick wraps a selector into a column list
 ```
 
-A selector cannot choose genes. Name them: `select(*[X[gene] for gene in panel])`.
+Pick genes with a selector inside the container: `select(X[ap.any_of(panel)])` keeps the panel genes that exist.
 
 Virtual axis names are available as `ap.obs_names` and `ap.var_names` in expressions.
 

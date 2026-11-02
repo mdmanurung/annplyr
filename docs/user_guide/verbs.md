@@ -111,7 +111,9 @@ One call subset both axes: three metadata columns and three of 1,838 genes.
 Put a minus sign in front of an `obs` column to drop it: `select(-obs.louvain)`.
 Use `all_of()` for strict configurable names, `any_of()` when absent names are
 acceptable, and helpers such as `starts_with()`, `contains()`, or `where()` for
-schema-driven selection of `obs` columns.
+schema-driven selection of `obs` columns. Index a container with a selector to
+pick features the same way: `select(X[ap.any_of(panel)])` keeps the panel genes
+that exist, and `X[ap.starts_with("CD")]` keeps every gene starting with `CD`.
 
 ## Derive metadata with mutate
 

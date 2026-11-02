@@ -145,3 +145,12 @@ def test_var_keys_need_no_axis_and_joins_take_columns(dense_adata) -> None:
     pd.testing.assert_frame_equal(by_column.obs, by_string.obs)
     long = dense_adata.ap.join_features(X.g0)
     assert ".abundance_X" in long.columns
+
+
+def test_a_selector_inside_a_container_picks_features(dense_adata) -> None:
+    import annplyr as ap
+
+    picked = dense_adata.ap.select(X[ap.any_of(["g1", "g3", "missing"])])
+    assert picked.var_names.tolist() == ["g1", "g3"]
+    wide = dense_adata.ap.to_wide(obs.batch, X[ap.starts_with("g")])
+    assert {"batch", "g0", "g1", "g2", "g3"} <= set(wide.columns)

@@ -46,3 +46,10 @@ def test_aggregate_matches_a_pandas_groupby(cells: AnnData, fun: str) -> None:
 def test_aggregate_needs_a_known_source(cells: AnnData) -> None:
     with pytest.raises(ap.UnknownSourceError, match="counts"):
         aggregate_cells_adata(cells, "donor", source="cnts")
+
+
+def test_a_float32_sum_accumulates_in_float64(cells: AnnData) -> None:
+    cells.X = np.full((cells.n_obs, cells.n_vars), 0.1, dtype=np.float32)
+    pb = aggregate_cells_adata(cells, "donor", source="x")
+    assert pb.X.dtype == np.float64
+    np.testing.assert_allclose(np.asarray(pb.X)[0, 0], 4 * np.float64(np.float32(0.1)), rtol=1e-15)

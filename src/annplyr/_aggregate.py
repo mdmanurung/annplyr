@@ -63,8 +63,14 @@ def aggregate_cells_adata(
 
     n_groups = len(plan.keys)
     n_cells = np.bincount(plan.group_ids, minlength=n_groups)
-    # a sum keeps the source dtype, so integer counts stay integers
-    weights = np.ones(adata.n_obs, dtype=matrix.dtype) if fun == "sum" else 1.0 / n_cells[plan.group_ids]
+    # Integer counts stay integers; floats accumulate in float64, as R and pandas do,
+    # because a float32 sum over thousands of cells drifts by about 1e-6.
+    integer = np.issubdtype(matrix.dtype, np.integer)
+    weights = (
+        np.ones(adata.n_obs, dtype=matrix.dtype if integer else np.float64)
+        if fun == "sum"
+        else 1.0 / n_cells[plan.group_ids]
+    )
     indicator = sp.csr_matrix((weights, (plan.group_ids, np.arange(adata.n_obs))), shape=(n_groups, adata.n_obs))
     values = indicator @ matrix  # sparse stays sparse, dense stays dense
 

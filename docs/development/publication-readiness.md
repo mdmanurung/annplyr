@@ -130,9 +130,25 @@ The API review found and fixed these bugs, each with a regression test:
 - `annplyr.data` minted fake names for Sphinx, which broke a fresh docs build.
 
 A fresh agent that had read only the docs did ten tidySCE vignette tasks on
-PBMC3k, and all ten worked on the first try. R parity of the numbers is
-**unverified**: R 4.5.2 is on this host, but tidySingleCellExperiment and
-anndataR are not installed.
+PBMC3k, and all ten worked on the first try.
+
+R parity was then measured with `scripts/r_parity/`. The same PBMC3k matrix
+(`.raw`, with synthetic donors) went to annplyr and to tidySingleCellExperiment
+(R 4.5.2, Bioconductor 3.22). The tasks were filter, count, mutate, grouped
+summarise, `slice_max(by=)`, `join_features` long, rename with `if_else`,
+`left_join`, `aggregate_cells` and `arrange`. All ten match at `rtol` 1e-6:
+- the same cells, in the same order, for filter, slice and arrange;
+- the same counts;
+- `aggregate_cells` sums within 4.4e-15 relative.
+
+Two details:
+- **Fixed during this check.** `aggregate_cells` summed float32 data in
+  float32, which drifted by 1.2e-6; it now accumulates floats in float64.
+- **Still different.** `count` and grouped `summarize` return groups in
+  first-seen order, where dplyr sorts them by key; the values are identical.
+
+anndataR did not build here, because its `rhdf5filters` dependency fails to
+compile, so the scripts pass the matrix to R as Matrix Market + CSV.
 
 ## Maintainer gaps
 

@@ -105,4 +105,3 @@ print(with_gene.nest(obs.cls)["cls"].tolist())
 ['n_genes', 'percent_mito', 'louvain', 'cls', 'MS4A1']
 ['lymphoid', 'myeloid']
 ```
-

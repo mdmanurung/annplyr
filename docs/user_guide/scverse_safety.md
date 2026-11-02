@@ -52,8 +52,8 @@ print(adata.to_wide(raw.MS4A1, raw.CD79A, max_matrix_values=2 * adata.n_obs).dty
 ```
 
 ```{testoutput}
-raw_MS4A1    Sparse[float32, 0.0]
-raw_CD79A    Sparse[float32, 0.0]
+MS4A1    Sparse[float32, 0.0]
+CD79A    Sparse[float32, 0.0]
 dtype: object
 ```
 

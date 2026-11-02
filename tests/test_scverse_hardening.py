@@ -27,8 +27,8 @@ def test_raw_source_is_explicit_read_only_obs_axis_source(dense_adata: AnnData) 
     )
 
     wide = adata.ap.to_wide("batch", "raw:g0")
-    assert wide.columns.tolist() == ["batch", "raw_g0"]
-    assert wide["raw_g0"].tolist() == [1.0, 2.0, 0.0, 5.0, 3.0]
+    assert wide.columns.tolist() == ["batch", "g0"]
+    assert wide["g0"].tolist() == [1.0, 2.0, 0.0, 5.0, 3.0]
 
     tidy = adata.ap.join_features("raw:g3")
     assert {"batch", ".cell", ".feature", ".abundance_raw"} <= set(tidy.columns)
@@ -42,7 +42,7 @@ def test_to_wide_and_pull_expose_scverse_sources(dense_adata: AnnData) -> None:
 
     raw = adata.ap.to_wide("raw:g0")
     assert raw.index.tolist() == adata.obs_names.tolist()
-    assert raw.columns.tolist() == ["raw_g0"]
+    assert raw.columns.tolist() == ["g0"]
 
     pulled = adata.ap.pull("obsp:distances:c1")
     assert pulled.index.tolist() == adata.obs_names.tolist()

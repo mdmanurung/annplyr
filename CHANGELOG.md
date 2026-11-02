@@ -51,6 +51,12 @@ has the side-by-side table with the R packages.
 
 ### Changed
 
+- **Breaking:** `to_wide` names columns as tidySingleCellExperiment, Seurat and
+  ggann do. Genes keep their own names (`MS4A1`, not `raw_MS4A1`), and embedding
+  columns are 1-based with a short prefix (`X_umap` gives `UMAP_1`, `UMAP_2`;
+  `X_pca` gives `PC_1`). A gene named like an `obs` column raises
+  `DuplicateNameError`.
+
 - **Breaking:** every column name carries its container. `from annplyr.data
   import obs, var, X, raw` gives the fixed containers, and any other name is a
   layer or an `obsm`/`varm` key (`from annplyr.data import counts, X_umap`).

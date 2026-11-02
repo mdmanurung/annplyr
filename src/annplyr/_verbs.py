@@ -2003,7 +2003,7 @@ def to_wide_adata(
         descriptors.append((token, x, "", "obs"))
     if raw is not None:
         token, _ = _add_matrix_request(planner, adata, "raw", raw, mode="selection", axis="obs", context="to_df raw")
-        descriptors.append((token, raw, "raw_", "obs"))
+        descriptors.append((token, raw, "", "obs"))  # bare gene names, as tidySCE; clashes raise
     for key, selector in (obsm or {}).items():
         token, _ = _add_matrix_request(
             planner,
@@ -2015,7 +2015,7 @@ def to_wide_adata(
             axis="obs",
             context=f"to_df obsm {key!r}",
         )
-        descriptors.append((token, selector, f"{key}_", "obs"))
+        descriptors.append((token, selector, _embedding_names(key), "obs"))
     for key, selector in (obsp or {}).items():
         token, _ = _add_matrix_request(
             planner,
@@ -2033,13 +2033,28 @@ def to_wide_adata(
     for token, selector, prefix, axis in descriptors:
         frame = _decorate_projected_frame(projected[token], adata, axis=axis, request=selector)
         selected = evaluate_select(frame, selector).reset_index(drop=True)
-        pieces.append(selected.add_prefix(prefix) if prefix else selected)
+        if callable(prefix):
+            selected = selected.rename(columns=prefix)
+        elif prefix:
+            selected = selected.add_prefix(prefix)
+        pieces.append(selected)
     if not pieces:
         return pd.DataFrame(index=adata.obs_names)
     out = pd.concat(pieces, axis=1)
     _ensure_unique([str(column) for column in out.columns], source="to_df")
     out.index = adata.obs_names
     return out
+
+
+def _embedding_names(key: str) -> Callable[[Any], str]:
+    """Name embedding columns as Seurat, tidySCE and ggann do: ``X_umap`` gives ``UMAP_1``.
+
+    ``X_pca`` gives ``PC_1``; other keys drop ``X_`` and are upper-cased. Numbers
+    start at 1. A named column, from an obsm DataFrame, keeps its name.
+    """
+    base = (key[2:] if key.startswith("X_") else key).upper()
+    base = {"PCA": "PC"}.get(base, base)
+    return lambda column: f"{base}_{int(column) + 1}" if str(column).isdigit() else str(column)
 
 
 def to_tidy_adata(

@@ -149,8 +149,8 @@ def test_pull_to_wide_and_join_features_are_plot_friendly(dense_adata: AnnData) 
 
     wide = dense_adata.ap.to_wide("batch", "x:g0", "x:g3", "X_pca:0")
     assert wide.index.tolist() == dense_adata.obs_names.tolist()
-    assert wide.columns.tolist() == ["batch", "g0", "g3", "X_pca_0"]
-    assert wide.loc["c3", "X_pca_0"] == 1.0
+    assert wide.columns.tolist() == ["batch", "g0", "g3", "PC_1"]
+    assert wide.loc["c3", "PC_1"] == 1.0
 
     tidy = dense_adata.ap.join_features("x:g0", "x:g3")
     assert {"batch", ".cell", ".feature", ".abundance_X"} <= set(tidy.columns)

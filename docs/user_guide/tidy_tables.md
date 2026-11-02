@@ -36,13 +36,13 @@ print(wide.shape)
 ```
 
 ```{testoutput}
-                          louvain  n_genes  raw_MS4A1  raw_CD79A
-index                                                           
-AAACATACAACCAC-1      CD4 T cells      781        0.0        0.0
-AAACATTGAGCTAC-1          B cells     1352    1.94591   1.386294
-AAACATTGATCAGC-1      CD4 T cells     1131        0.0        0.0
-AAACCGTGCTTCCG-1  CD14+ Monocytes      960        0.0        0.0
-AAACCGTGTATGCG-1         NK cells      522        0.0        0.0
+                          louvain  n_genes    MS4A1     CD79A
+index                                                        
+AAACATACAACCAC-1      CD4 T cells      781      0.0       0.0
+AAACATTGAGCTAC-1          B cells     1352  1.94591  1.386294
+AAACATTGATCAGC-1      CD4 T cells     1131      0.0       0.0
+AAACCGTGCTTCCG-1  CD14+ Monocytes      960      0.0       0.0
+AAACCGTGTATGCG-1         NK cells      522      0.0       0.0
 (2638, 4)
 ```
 
@@ -72,12 +72,12 @@ AAACCGTGTATGCG-1         NK cells      522  0.00000  0.000000
 
 ::::
 
-Two differences. annplyr prefixes matrix columns with their
-container (`raw_MS4A1`), so a gene can never be confused with an `obs` column of
-the same name. And its columns stay pandas *sparse*, which is why the zeros
+Genes keep their own names, as in tidySingleCellExperiment, and a gene that
+shares its name with an `obs` column raises `DuplicateNameError` instead of
+being confused with it. The columns stay pandas *sparse*, which is why the zeros
 print as `0.0`. A wide export of many genes stays cheap.
 
-Embeddings come from the same call. `X_pca[0]` is the first component:
+Embeddings come from the same call. `X_pca[0]` is the first component, named `PC_1` as in Seurat, tidySCE and ggann:
 
 ```{testcode}
 model_frame = adata.to_wide(
@@ -91,13 +91,13 @@ print(model_frame.head().round(3))
 ```
 
 ```{testoutput}
-                          louvain  X_pca_0  X_pca_1
-index                                              
-AAACATACAACCAC-1      CD4 T cells    5.556    0.258
-AAACATTGAGCTAC-1          B cells    7.210    7.482
-AAACATTGATCAGC-1      CD4 T cells    2.694   -1.584
-AAACCGTGCTTCCG-1  CD14+ Monocytes  -10.143   -1.369
-AAACCGTGTATGCG-1         NK cells   -1.113   -8.153
+                          louvain    PC_1   PC_2
+index                                           
+AAACATACAACCAC-1      CD4 T cells   5.556  0.258
+AAACATTGAGCTAC-1          B cells   7.210  7.482
+AAACATTGATCAGC-1      CD4 T cells   2.694 -1.584
+AAACCGTGCTTCCG-1  CD14+ Monocytes -10.143 -1.369
+AAACCGTGTATGCG-1         NK cells  -1.113 -8.153
 ```
 
 ## Long tables for faceted plots

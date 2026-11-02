@@ -85,6 +85,8 @@ class AnnplyrExpr:
     cardinality: Cardinality = "unknown"
     _reduction: _ReductionSpec | None = field(default=None, repr=False, compare=False, kw_only=True)
     _source_column: str | None = field(default=None, repr=False, compare=False, kw_only=True)
+    # Set by ``-col`` on a bare column so select, relocate and distinct can read it as a drop.
+    _negated_column: str | None = field(default=None, repr=False, compare=False, kw_only=True)
     _chunk_safe: bool = field(default=True, repr=False, compare=False, kw_only=True)
 
     __array_priority__ = 1000
@@ -194,6 +196,7 @@ class AnnplyrExpr:
             self.dependencies,
             self.output_width,
             self.cardinality,
+            _negated_column=self._source_column,
             _chunk_safe=self._chunk_safe,
         )
 
@@ -660,6 +663,44 @@ def col(*names: str | Iterable[str]) -> AnnplyrExpr:
         "row",
         _source_column=source_column,
     )
+
+
+class Source:
+    """One container of an AnnData object: ``counts.MS4A1`` is ``col("counts:MS4A1")``.
+
+    Attribute and item access build a column expression, so ``raw["HLA-DRA"]``
+    and ``X_umap[0]`` cover names that are not identifiers. Passed whole to a
+    verb, a ``Source`` means every column of that container.
+    """
+
+    __slots__ = ("_prefix",)
+    __iter__ = None  # type: ignore[assignment]  # __getitem__ would otherwise make it loop forever
+
+    def __init__(self, prefix: str):
+        object.__setattr__(self, "_prefix", prefix)
+
+    def __getitem__(self, name: str | int) -> AnnplyrExpr:
+        return col(f"{self._prefix}:{name}")
+
+    def __getattr__(self, name: str) -> AnnplyrExpr:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self[name]
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        msg = f"{self._prefix!r} is a container, not a function: write {self._prefix}.x or {self._prefix}['x']"
+        raise TypeError(msg)
+
+    def __repr__(self) -> str:
+        return f"Source({self._prefix!r})"
+
+
+def layer(name: str) -> Source:
+    """Return the :class:`Source` for the layer, obsm key or varm key ``name``.
+
+    Use it when the name clashes with an annplyr export, such as a layer called ``mean``.
+    """
+    return Source(name)
 
 
 def lit(value: Any) -> AnnplyrExpr:

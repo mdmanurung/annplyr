@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from annplyr import _accessor as _accessor
+from annplyr import data as data
 from annplyr import verbs as verbs
 from annplyr._errors import (
     AnnplyrError,
@@ -15,6 +16,7 @@ from annplyr._errors import (
 )
 from annplyr._expr import (
     AnnplyrExpr,
+    Source,
     across,
     all_of,
     any_of,
@@ -45,6 +47,7 @@ from annplyr._expr import (
     lag,
     last,
     last_col,
+    layer,
     lead,
     lit,
     matches,
@@ -111,6 +114,7 @@ from annplyr._verbs import (
 
 __version__ = "0.5.0"
 AnnplyrAccessor = _accessor.AnnplyrAccessor
+tidy = TidyAnnData.wrap
 
 __all__ = [
     "AnnplyrAccessor",
@@ -124,6 +128,7 @@ __all__ = [
     "NameRepairError",
     "SelectionError",
     "SizeMismatchError",
+    "Source",
     "TidyAnnData",
     "UnknownColumnError",
     "UnknownSourceError",
@@ -179,6 +184,7 @@ __all__ = [
     "lag",
     "last",
     "last_col",
+    "layer",
     "lead",
     "left_join",
     "lit",

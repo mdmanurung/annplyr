@@ -87,8 +87,10 @@ def join_features_adata(
             feature=".feature",
             value=value,
             max_matrix_values=max_matrix_values,
+            context="join_features",
         )
         if long is None:
+
             long = part
             continue
         long[value] = part[value].to_numpy()

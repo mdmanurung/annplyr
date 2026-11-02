@@ -2041,6 +2041,7 @@ def to_tidy_adata(
     value: str = "value",
     allow_all_features: bool = False,
     max_matrix_values: int | None = None,
+    context: str = "to_tidy",
 ) -> pd.DataFrame:
     if x is not None and raw is not None:
         msg = "to_tidy accepts x or raw, not both"
@@ -2059,9 +2060,10 @@ def to_tidy_adata(
         mode="selection",
         layer=layer if source == "x" else None,
         axis="obs",
-        context="to_tidy",
+        context=context,
     )
     matrix = _decorate_projected_frame(planner.execute()[token], adata, axis="obs", request=selector)
+
     wide = evaluate_select(matrix, selector)
     meta = (
         evaluate_select(obs_frame(adata), obs).reset_index(drop=True)

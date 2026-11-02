@@ -44,3 +44,8 @@ def test_long_keeps_duplicate_cell_names_apart(cells: AnnData) -> None:
     long = join_features_adata(cells, "raw:g0", "counts:g0", shape="long")
     assert len(long) == cells.n_obs
     np.testing.assert_array_equal(long[".abundance_counts"].to_numpy(), cells.layers["counts"][:, 0])
+
+
+def test_budget_error_names_join_features(cells: AnnData) -> None:
+    with pytest.raises(ap.AnnplyrError, match=r"\(join_features\) would materialize"):
+        join_features_adata(cells, "raw:g0", "raw:g1", shape="long", max_matrix_values=1)

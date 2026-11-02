@@ -154,3 +154,12 @@ def test_a_selector_inside_a_container_picks_features(dense_adata) -> None:
     assert picked.var_names.tolist() == ["g1", "g3"]
     wide = dense_adata.ap.to_wide(obs.batch, X[ap.starts_with("g")])
     assert {"batch", "g0", "g1", "g2", "g3"} <= set(wide.columns)
+
+
+def test_data_refuses_names_that_tools_probe() -> None:
+    import annplyr.data as data
+
+    for name in ("annplyr", "mean", "AnnplyrError"):
+        with pytest.raises(AttributeError, match="ap.layer"):
+            getattr(data, name)
+    assert repr(data.counts) == "Source('counts')"

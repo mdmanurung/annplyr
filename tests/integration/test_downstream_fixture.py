@@ -142,7 +142,7 @@ def test_concatenation_reconstructs_every_aligned_container() -> None:
 def test_scanpy_preprocessing_accepts_annplyr_output() -> None:
     scanpy = pytest.importorskip("scanpy", reason="Scanpy is installed only in the integration environment")
     source = make_representative_adata()
-    result = source.ap.filter(ap.col("qc_pass").fill_null(False)).ap.select(x=["GATA3", "MS4A1", "LYZ", "NKG7"])
+    result = source.ap.filter(ap.col("qc_pass").fill_null(False)).ap.select("x:GATA3", "x:MS4A1", "x:LYZ", "x:NKG7")
     source_snapshot = source.copy()
 
     scanpy.pp.normalize_total(result, target_sum=10_000)

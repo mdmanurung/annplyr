@@ -23,55 +23,38 @@ def test_summarize_rejects_a_cross_container_aggregate(dense_adata: AnnData) -> 
         dense_adata.ap.summarize({"bad": ap.mean("score") + ap.mean("x:g0")})
 
 
-def test_pull_requires_exactly_one_source(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.UnknownSourceError, match="exactly one source"):
+def test_pull_takes_exactly_one_name(dense_adata: AnnData) -> None:
+    with pytest.raises(TypeError):
         dense_adata.ap.pull()
 
-    with pytest.raises(ap.UnknownSourceError, match="exactly one source"):
-        dense_adata.ap.pull(obs="batch", x="g0")
+    with pytest.raises(TypeError):
+        dense_adata.ap.pull("batch", "x:g0")
 
 
 def test_pull_requires_single_selected_column(dense_adata: AnnData) -> None:
     with pytest.raises(ap.SelectionError, match="exactly one column"):
-        dense_adata.ap.pull(obs=["batch", "score"])
-
-
-@pytest.mark.parametrize("source", ["obsm", "varm", "obsp", "varp", "uns"])
-@pytest.mark.parametrize("mapping", [{}, {"first": "0", "second": "0"}])
-def test_pull_requires_exactly_one_mapping_key(dense_adata: AnnData, source: str, mapping: dict[str, str]) -> None:
-    with pytest.raises(ap.UnknownSourceError, match="exactly one source key"):
-        dense_adata.ap.pull(**{source: mapping})
+        dense_adata.ap.pull(ap.all_of(["batch", "score"]))
 
 
 def test_missing_metadata_column_raises_typed_error(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="missing"):
-        dense_adata.ap.select(obs="missing")
+        dense_adata.ap.select("missing")
 
 
 def test_missing_obsm_key_raises_typed_error(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.UnknownSourceError, match="obsm.*missing"):
-        dense_adata.ap.pull(obsm={"missing": "0"})
+    with pytest.raises(ap.UnknownSourceError, match="missing"):
+        dense_adata.ap.pull("missing:0")
 
 
-def test_group_by_rejects_a_qualified_key_because_axis_is_given(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.IncompatibleAxisError, match="redundant"):
-        dense_adata.ap.group_by("var:feature_type")
+def test_group_by_rejects_mixed_axes(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.IncompatibleAxisError, match="mix obs and var"):
+        dense_adata.ap.group_by("batch", "var:feature_type")
 
 
-def test_group_by_rejects_an_unknown_axis(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.IncompatibleAxisError, match="obs|var"):
-        dense_adata.ap.group_by("batch", axis="cells")
-
-
-def test_a_grouping_key_naming_the_other_axis_is_rejected(dense_adata: AnnData) -> None:
+def test_summarize_key_naming_the_other_axis_is_rejected(dense_adata: AnnData) -> None:
     """Resolving ``var:`` against an obs frame would group the wrong column."""
-    for call in (
-        lambda: dense_adata.ap.count("var:feature_type"),
-        lambda: dense_adata.ap.add_count("var:feature_type"),
-        lambda: dense_adata.ap.summarize({"n": ap.n()}, by="var:feature_type"),
-    ):
-        with pytest.raises(ap.IncompatibleAxisError, match="names the var axis"):
-            call()
+    with pytest.raises(ap.IncompatibleAxisError, match="names the var axis"):
+        dense_adata.ap.summarize({"n": ap.n()}, by="var:feature_type")
 
 
 def test_a_var_axis_reduce_requires_a_qualified_grouping_key(dense_adata: AnnData) -> None:
@@ -102,7 +85,7 @@ def test_unknown_sort_key_raises_unknown_column_error(dense_adata: AnnData, call
 
 def test_select_with_a_repeated_name_raises_duplicate_name_error(dense_adata: AnnData) -> None:
     with pytest.raises(ap.DuplicateNameError):
-        dense_adata.ap.select(obs=["batch", "batch"])
+        dense_adata.ap.select("batch", "batch")
 
 
 def test_mutate_without_a_dict_names_the_fix(dense_adata: AnnData) -> None:

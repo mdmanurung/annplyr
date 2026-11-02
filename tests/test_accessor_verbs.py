@@ -5,6 +5,7 @@ import pandas as pd
 from anndata import AnnData
 
 import annplyr as ap
+from annplyr.data import X, var
 
 
 def test_import_registers_ap_accessor(dense_adata: AnnData) -> None:
@@ -30,9 +31,10 @@ def test_filter_select_and_arrange_match_manual_indexing(dense_adata: AnnData) -
     np.testing.assert_array_equal(filtered.X, dense_adata[["c4"], ["g0", "g3"]].X)
 
     selected = dense_adata.ap.select(
-        obs=ap.starts_with("cell"),
-        var=ap.col("chrom"),
-        x=ap.col("g0", "g3"),
+        ap.starts_with("cell"),
+        var.chrom,
+        X.g0,
+        X.g3,
     )
 
     assert selected.obs.columns.tolist() == ["cell_type"]
@@ -47,9 +49,10 @@ def test_filter_select_and_arrange_match_manual_indexing(dense_adata: AnnData) -
 
 def test_select_everything_ignores_synthetic_name_columns_and_preserves_x_order(dense_adata: AnnData) -> None:
     selected = dense_adata.ap.select(
-        obs=ap.everything(),
-        var=ap.everything(),
-        x=ap.col("g3", "g0"),
+        ap.everything(),
+        var,
+        X.g3,
+        X.g0,
     )
 
     assert selected.obs.columns.tolist() == dense_adata.obs.columns.tolist()
@@ -106,7 +109,7 @@ def test_grouped_iteration_summarize_count_and_by_arguments(dense_adata: AnnData
     expected = pd.DataFrame({"batch": ["A", "B"], "mean_score": [11 / 6, 7 / 4], "cells": [3, 2]})
     pd.testing.assert_frame_equal(summary.reset_index(drop=True), expected)
 
-    counted = dense_adata.ap.count(by="batch")
+    counted = dense_adata.ap.count("batch")
     pd.testing.assert_frame_equal(
         counted.reset_index(drop=True),
         pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),
@@ -140,11 +143,11 @@ def test_summarize_reads_matrix_sources_with_by_arguments(dense_adata: AnnData) 
 
 
 def test_pull_to_wide_and_to_tidy_are_plot_friendly(dense_adata: AnnData) -> None:
-    pulled = dense_adata.ap.pull(x="g3")
+    pulled = dense_adata.ap.pull("x:g3")
     assert pulled.name == "g3"
     assert pulled.tolist() == [2.0, 1.0, 0.0, 8.0, 4.0]
 
-    wide = dense_adata.ap.to_wide(obs=["batch"], x=["g0", "g3"], obsm={"X_pca": ["0"]})
+    wide = dense_adata.ap.to_wide("batch", "x:g0", "x:g3", "X_pca:0")
     assert wide.index.tolist() == dense_adata.obs_names.tolist()
     assert wide.columns.tolist() == ["batch", "g0", "g3", "X_pca_0"]
     assert wide.loc["c3", "X_pca_0"] == 1.0

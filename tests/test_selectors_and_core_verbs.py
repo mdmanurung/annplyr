@@ -5,16 +5,16 @@ import pytest
 from anndata import AnnData
 
 import annplyr as ap
+from annplyr.data import X, obs, var
 
 
 def test_tidyselect_helpers_resolve_expected_columns(dense_adata: AnnData) -> None:
     selected = dense_adata.ap.select(
-        obs=[
-            ap.all_of(["batch"]),
-            ap.any_of(["missing", "score"]),
-            ap.last_col(),
-        ],
-        x=ap.num_range("g", [3, 0]),
+        ap.all_of(["batch"]),
+        ap.any_of(["missing", "score"]),
+        ap.last_col(),
+        X.g3,
+        X.g0,
     )
 
     assert selected.obs.columns.tolist() == ["batch", "score", "cell_type"]
@@ -22,16 +22,16 @@ def test_tidyselect_helpers_resolve_expected_columns(dense_adata: AnnData) -> No
 
 
 def test_where_selector_selects_columns_by_dtype(dense_adata: AnnData) -> None:
-    selected = dense_adata.ap.select(obs=ap.where(pd.api.types.is_numeric_dtype))
+    selected = dense_adata.ap.select(ap.where(pd.api.types.is_numeric_dtype))
 
     assert selected.obs.columns.tolist() == ["score"]
 
 
 def test_rename_updates_metadata_columns_and_feature_names(dense_adata: AnnData) -> None:
     renamed = dense_adata.ap.rename(
-        obs={"condition": "batch"},
-        var={"chr": "chrom"},
-        x={"Gene0": "g0"},
+        condition="batch",
+        chr=var.chrom,
+        Gene0=X.g0,
     )
 
     assert renamed.obs.columns.tolist() == ["condition", "score", "cell_type"]
@@ -41,14 +41,14 @@ def test_rename_updates_metadata_columns_and_feature_names(dense_adata: AnnData)
 
 
 def test_relocate_moves_metadata_columns(dense_adata: AnnData) -> None:
-    relocated = dense_adata.ap.relocate(obs=["score"], before="batch", var=["length"], after="chrom")
+    relocated = dense_adata.ap.relocate("score", before="batch").relocate(var.length, after=var.chrom)
 
     assert relocated.obs.columns.tolist() == ["score", "batch", "cell_type"]
     assert relocated.var.columns.tolist() == ["feature_type", "chrom", "length"]
 
 
 def test_distinct_subsets_first_rows_for_unique_metadata(dense_adata: AnnData) -> None:
-    distinct = dense_adata.ap.distinct(obs="batch", keep_all=True)
+    distinct = dense_adata.ap.distinct("batch", keep_all=True)
 
     assert distinct.obs_names.tolist() == ["c0", "c2"]
     assert distinct.n_vars == dense_adata.n_vars
@@ -63,32 +63,32 @@ def test_transmute_keeps_only_new_metadata_columns(dense_adata: AnnData) -> None
 
 
 def test_tally_and_add_count(dense_adata: AnnData) -> None:
-    tally = dense_adata.ap.tally(by="batch")
+    tally = dense_adata.ap.tally("batch")
     pd.testing.assert_frame_equal(
         tally.reset_index(drop=True),
         pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),
     )
 
-    counted = dense_adata.ap.add_count(by="batch", name="batch_n")
+    counted = dense_adata.ap.add_count("batch", name="batch_n")
     assert counted.obs["batch_n"].tolist() == [3, 3, 2, 2, 3]
     assert "batch_n" not in dense_adata.obs
 
 
 def test_everything_ignores_virtual_name_columns_outside_select(dense_adata: AnnData) -> None:
-    wide = dense_adata.ap.to_wide(obs=ap.everything())
+    wide = dense_adata.ap.to_wide(obs)
     assert wide.columns.tolist() == dense_adata.obs.columns.tolist()
 
-    counted = dense_adata.ap.count(by=ap.everything())
+    counted = dense_adata.ap.count(ap.everything())
     assert counted.columns.tolist() == [*dense_adata.obs.columns.tolist(), "n"]
     assert "obs_names" not in counted.columns
 
 
 def test_rename_rejects_duplicate_sources_and_targets(dense_adata: AnnData) -> None:
     with pytest.raises(ap.DuplicateNameError, match="source"):
-        dense_adata.ap.rename(obs={"condition": "batch", "group": "batch"})
+        dense_adata.ap.rename(condition="batch", group="batch")
 
     with pytest.raises(ap.DuplicateNameError, match="Duplicate obs"):
-        dense_adata.ap.rename(obs={"score": "batch"})
+        dense_adata.ap.rename(score="batch")
 
 
 def test_rename_with_rejects_transformed_name_collisions(dense_adata: AnnData) -> None:
@@ -96,29 +96,29 @@ def test_rename_with_rejects_transformed_name_collisions(dense_adata: AnnData) -
     adata.obs["Batch"] = adata.obs["batch"]
 
     with pytest.raises(ap.DuplicateNameError, match="Duplicate obs"):
-        adata.ap.rename_with(str.lower, obs=["batch", "Batch"])
+        adata.ap.rename_with(str.lower, "batch", "Batch")
 
 
 def test_relocate_rejects_missing_anchor_for_target_source(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="missing"):
-        dense_adata.ap.relocate(obs=["score"], before="missing")
+        dense_adata.ap.relocate("score", before="missing")
 
-    relocated = dense_adata.ap.relocate(obs=["score"], before="batch", var=["length"], after="chrom")
+    relocated = dense_adata.ap.relocate("score", before="batch")
     assert relocated.obs.columns.tolist() == ["score", "batch", "cell_type"]
     assert relocated.var.columns.tolist() == ["feature_type", "chrom", "length"]
 
 
 def test_relocate_rejects_anchor_among_moved_columns(dense_adata: AnnData) -> None:
     with pytest.raises(ap.SelectionError, match="anchor"):
-        dense_adata.ap.relocate(obs=["score", "batch"], before="score")
+        dense_adata.ap.relocate("score", "batch", before="score")
 
     with pytest.raises(ap.SelectionError, match="anchor"):
-        dense_adata.ap.relocate(obs=["score", "batch"], after="batch")
+        dense_adata.ap.relocate("score", "batch", after="batch")
 
 
 def test_last_col_rejects_out_of_bounds_offset(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownColumnError, match="last_col"):
-        dense_adata.ap.select(obs=ap.last_col(offset=-1))
+        dense_adata.ap.select(ap.last_col(offset=-1))
 
 
 def test_real_virtual_name_columns_are_not_overwritten(dense_adata: AnnData) -> None:
@@ -126,7 +126,7 @@ def test_real_virtual_name_columns_are_not_overwritten(dense_adata: AnnData) -> 
     adata.obs["obs_names"] = ["real"] * adata.n_obs
     adata.var["var_names"] = ["real_var"] * adata.n_vars
 
-    wide = adata.ap.to_wide(obs=["obs_names"])
+    wide = adata.ap.to_wide("obs_names")
     assert wide["obs_names"].tolist() == ["real"] * adata.n_obs
     assert adata.ap.filter(ap.obs_names == "c0").obs_names.tolist() == ["c0"]
     assert adata.ap.filter(ap.obs_names == "c1").obs_names.tolist() == ["c1"]
@@ -134,10 +134,10 @@ def test_real_virtual_name_columns_are_not_overwritten(dense_adata: AnnData) -> 
 
 def test_select_rejects_computed_columns_for_anndata_alignment(dense_adata: AnnData) -> None:
     with pytest.raises(ap.SelectionError, match="computed"):
-        dense_adata.ap.select(obs=(ap.col("score") * 2).alias("score2"))
+        dense_adata.ap.select((ap.col("score") * 2).alias("score2"))
 
     with pytest.raises(ap.SelectionError, match="computed"):
-        dense_adata.ap.select(x=(ap.col("g0") + ap.col("g1")).alias("sum"))
+        dense_adata.ap.select((ap.col("g0") + ap.col("g1")).alias("sum"))
 
 
 def test_mutate_assignments_are_sequential_and_recycle_scalars(dense_adata: AnnData) -> None:

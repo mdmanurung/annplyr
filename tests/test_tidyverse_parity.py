@@ -52,7 +52,7 @@ def test_pick_if_any_and_if_all_use_tidyselect_columns(dense_adata: AnnData) -> 
     adata.obs["qc_mito"] = [0.1, 0.4, 0.2, 0.6, 0.3]
     adata.obs["qc_ribo"] = [0.2, 0.1, 0.3, 0.7, 0.2]
 
-    picked = adata.ap.to_wide(obs=ap.pick(ap.starts_with("qc_")))
+    picked = adata.ap.to_wide(ap.pick(ap.starts_with("qc_")))
     assert picked.columns.tolist() == ["qc_mito", "qc_ribo"]
 
     any_high = adata.ap.filter(ap.if_any(ap.starts_with("qc_"), lambda column: ap.col(column) > 0.5))
@@ -120,7 +120,7 @@ def test_grouped_matrix_sources_arrange_distinct_and_slices_are_group_local(dens
     group_rows = grouped.mutate({"group_row": ap.row_number()})
     assert group_rows.ungroup().obs["group_row"].tolist() == [1, 2, 1, 2, 3]
     assert grouped.arrange(ap.desc("x:g0")).ungroup().obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
-    assert adata.ap.group_by("batch").distinct(obs="label", keep_all=True).ungroup().obs_names.tolist() == [
+    assert adata.ap.group_by("batch").distinct("label", keep_all=True).ungroup().obs_names.tolist() == [
         "c0",
         "c4",
         "c2",

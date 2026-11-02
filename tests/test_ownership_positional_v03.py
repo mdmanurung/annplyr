@@ -80,13 +80,13 @@ def test_backed_shape_copy_materializes_selected_independent_result(tmp_path) ->
 
 def test_same_shape_inplace_identity_and_validation_before_write() -> None:
     adata = _aligned_adata()
-    result = adata.ap.rename(obs={"renamed": "value"}, inplace=True)
+    result = adata.ap.rename(renamed="value", inplace=True)
     assert result is adata
     assert adata.obs.columns.tolist() == ["key", "renamed"]
 
     snapshot = adata.obs.copy()
     with pytest.raises(UnknownColumnError):
-        adata.ap.rename(obs={"ok": "key"}, var={"bad": "missing"}, inplace=True)
+        adata.ap.rename(ok="key", bad=ap.col("var:missing"), inplace=True)
     pd.testing.assert_frame_equal(adata.obs, snapshot)
 
     with pytest.raises(SelectionError):
@@ -98,14 +98,14 @@ def test_relocate_x_and_sorted_counts_preserve_exact_inplace_identity() -> None:
     adata = _aligned_adata()
     expected_x = np.asarray(adata.X)[:, [2, 0, 1]].copy()
     expected_layer = np.asarray(adata.layers["counts"])[:, [2, 0, 1]].copy()
-    result = adata.ap.relocate(x="g2", inplace=True)
+    result = adata.ap.relocate("x:g2", inplace=True)
     assert result is adata
     assert adata.var_names.tolist() == ["g2", "g0", "g1"]
     np.testing.assert_array_equal(adata.X, expected_x)
     np.testing.assert_array_equal(adata.layers["counts"], expected_layer)
 
     adata.obs["key"] = ["b", "a", "b", "b"]
-    counted = adata.ap.add_count(by="key", sort=True, inplace=True)
+    counted = adata.ap.add_count("key", sort=True, inplace=True)
     assert counted is adata
     assert adata.obs_names.tolist() == ["c0", "c2", "c3", "c1"]
     assert adata.obs["n"].tolist() == [3, 3, 3, 1]
@@ -118,9 +118,9 @@ def test_positional_verbs_and_joins_are_unambiguous_with_duplicate_axis_names() 
 
     assert adata.ap.filter(ap.col("value") >= 2).X[:, 0].tolist() == [0, 6, 9]
     assert adata.ap.arrange(ap.col("value")).X[:, 0].tolist() == [3, 0, 6, 9]
-    assert adata.ap.distinct(obs="value").X[:, 0].tolist() == [0, 3, 9]
+    assert adata.ap.distinct("value").X[:, 0].tolist() == [0, 3, 9]
     assert adata.ap.slice(1, 0).X[:, 0].tolist() == [3, 0]
-    assert adata.ap.select(obs="value").X[:, 0].tolist() == [0, 3, 6, 9]
+    assert adata.ap.select("value").X[:, 0].tolist() == [0, 3, 6, 9]
 
     other = pd.DataFrame({"key": ["a", "b"], "label": [10, 20]})
     left = adata.ap.left_join(other, by="key")
@@ -138,9 +138,9 @@ def test_positional_verbs_and_joins_are_unambiguous_with_duplicate_axis_names() 
 
     assert adata.ap.filter(ap.col("var:kind") == "b").X[0, :].tolist() == [0, 2]
     assert adata.ap.arrange(ap.col("var:kind")).X[0, :].tolist() == [1, 0, 2]
-    assert adata.ap.distinct(var="kind", axis="var").X[0, :].tolist() == [0, 1]
+    assert adata.ap.distinct("var:kind").X[0, :].tolist() == [0, 1]
     assert adata.ap.slice(1, 0, axis="var").X[0, :].tolist() == [1, 0]
-    assert adata.ap.select(var="kind").X[0, :].tolist() == [0, 1, 2]
+    assert adata.ap.select(ap.col("var:kind")).X[0, :].tolist() == [0, 1, 2]
 
     var_other = pd.DataFrame({"kind": ["a", "b"], "label": [10, 20]})
     assert adata.ap.left_join(var_other, by="kind", axis="var").X[0, :].tolist() == [0, 1, 2]

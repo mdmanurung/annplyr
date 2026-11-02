@@ -6,6 +6,7 @@ import pandas as pd
 from anndata import AnnData
 
 import annplyr as ap
+from annplyr.data import X, obs
 from annplyr.typing import (
     AnnDataWithAnnplyr,
     Expression,
@@ -17,7 +18,7 @@ from annplyr.typing import (
 
 
 def extract_scores(adata: AnnDataWithAnnplyr) -> pd.DataFrame:
-    return adata.ap.to_wide(obs=["batch", "score"], x=["GATA3"])
+    return adata.ap.to_wide(obs.batch, obs.score, X.GATA3)
 
 
 def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
@@ -31,7 +32,7 @@ def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
 
     filtered = typed.ap.filter(predicate)
     assert_type(filtered, AnnDataWithAnnplyr)
-    selected = filtered.ap.select(obs=columns, x=["GATA3", "MS4A1"])
+    selected = filtered.ap.select(columns, X.GATA3, X.MS4A1)
     assert_type(selected, AnnDataWithAnnplyr)
 
     expression = ap.col("score") + 1
@@ -52,7 +53,7 @@ def realistic_pipeline(adata: AnnData, metadata: pd.DataFrame) -> pd.DataFrame:
     assert_type(ungrouped, AnnDataWithAnnplyr)
     wide = ungrouped.ap.as_frame(source, select=["GATA3", "MS4A1"])
     assert_type(wide, pd.DataFrame)
-    pulled = ungrouped.ap.pull(obs="score")
+    pulled = ungrouped.ap.pull(obs.score)
     assert_type(pulled, pd.Series)
     piped = ungrouped.ap.pipe(extract_scores)
     assert_type(piped, pd.DataFrame)

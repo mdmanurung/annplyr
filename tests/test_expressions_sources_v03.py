@@ -253,7 +253,7 @@ def test_public_planner_rejects_later_cumulative_request_before_first_read(monke
     monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: next(sentinels))
     adata = AnnData(X=np.zeros((5, 4)))
     with pytest.raises(AnnplyrError, match="materialize 10 matrix values"):
-        adata.ap.to_wide(x="a", raw="b", max_matrix_values=9)
+        adata.ap.to_wide("x:a", "raw:b", max_matrix_values=9)
     assert first.reads == 0
     assert later.reads == 0
 

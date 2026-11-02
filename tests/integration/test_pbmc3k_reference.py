@@ -127,7 +127,7 @@ def test_grouped_filter_uses_group_local_statistics(pbmc: AnnData) -> None:
 
 
 def test_select_keeps_named_columns_and_genes_in_requested_order(pbmc: AnnData) -> None:
-    result = pbmc.ap.select(obs=["louvain", "n_genes"], x=["NKG7", "CST3"])
+    result = pbmc.ap.select("louvain", "n_genes", "x:NKG7", "x:CST3")
 
     assert result.obs.columns.tolist() == ["louvain", "n_genes"]
     assert result.var_names.tolist() == ["NKG7", "CST3"]
@@ -378,8 +378,10 @@ ALIGNMENT_PIPELINES: dict[str, Callable[[AnnData], AnnData]] = {
     "filter": lambda a: a.ap.filter(ap.col("n_genes") > 800, ap.col("raw:CST3") > 0),
     "arrange": lambda a: a.ap.arrange(ap.desc("n_counts"), "n_genes"),
     "slice": lambda a: a.ap.slice_max(ap.col("n_counts"), n=50),
-    "select-genes": lambda a: a.ap.select(x=["NKG7", "CST3", "MS4A1"]),
-    "filter-then-select": lambda a: a.ap.filter(ap.col("x:NKG7") > 0).select(x=ap.starts_with("C")),
+    "select-genes": lambda a: a.ap.select("x:NKG7", "x:CST3", "x:MS4A1"),
+    "filter-then-select": lambda a: a.ap.filter(ap.col("x:NKG7") > 0).select(
+        *[f"x:{g}" for g in a.var_names if g.startswith("C")]
+    ),
     "mutate": lambda a: a.ap.mutate({"k": ap.col("n_counts") / 1000}),
     "left_join": lambda a: a.ap.left_join(pd.DataFrame({KEY: ["B cells"], "tag": ["b"]}), by=KEY),
     "grouped-filter": lambda a: a.ap.group_by(KEY).filter(ap.row_number() <= 3).ungroup(),
@@ -519,9 +521,9 @@ def test_slice_by_matrix_reference_fails_with_an_annplyr_error(pbmc: AnnData, ca
 
 def test_duplicate_names_raise_duplicate_name_error(pbmc: AnnData) -> None:
     with pytest.raises(ap.DuplicateNameError):
-        pbmc.ap.select(obs=["n_genes", "n_genes"])
+        pbmc.ap.select("n_genes", "n_genes")
     with pytest.raises(ap.DuplicateNameError):
-        pbmc.ap.rename(obs={"n_genes": "n_counts"})
+        pbmc.ap.rename(n_counts="n_genes")
     with pytest.raises(ap.DuplicateNameError):
         pbmc.ap.mutate({"n_genes": ap.lit(0), "again": ap.across(["n_genes"], names="n_genes")})
 

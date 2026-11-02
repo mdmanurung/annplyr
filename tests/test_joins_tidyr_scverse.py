@@ -122,7 +122,7 @@ def test_multikey_filtering_joins_canonicalize_mixed_object_null_sentinels() -> 
 
 
 def test_pivot_longer_and_pivot_wider_round_trip_selected_values(dense_adata: AnnData) -> None:
-    long = dense_adata.ap.pivot_longer(obs=["batch"], x=["g0", "g3"])
+    long = dense_adata.ap.pivot_longer("batch", "x:g0", "x:g3")
 
     assert long.columns.tolist() == ["obs_name", "batch", "name", "value"]
     assert len(long) == dense_adata.n_obs * 2
@@ -141,7 +141,7 @@ def test_pivot_longer_rejects_cross_source_duplicate_names(dense_adata: AnnData)
     adata.obs["g0"] = ["meta"] * adata.n_obs
 
     with pytest.raises(ap.NameRepairError, match="Duplicate"):
-        adata.ap.pivot_longer(obs=["g0"], x=["g0"])
+        adata.ap.pivot_longer("g0", "x:g0")
 
 
 def test_to_tidy_requires_explicit_features_by_default(dense_adata: AnnData) -> None:
@@ -223,7 +223,9 @@ def test_sparse_long_exports_preserve_value_dtype_and_obs_major_order(
     method: str,
     feature_column: str,
 ) -> None:
-    result = getattr(sparse_adata.ap, method)(x=["g0", "g3"])
+    result = (
+        sparse_adata.ap.to_tidy(x=["g0", "g3"]) if method == "to_tidy" else sparse_adata.ap.pivot_longer("x:g0", "x:g3")
+    )
 
     assert isinstance(result["value"].dtype, pd.SparseDtype)
     assert list(result[["obs_name", feature_column]].itertuples(index=False, name=None)) == [
@@ -238,7 +240,7 @@ def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData)
     backed = read_h5ad(path, backed="r")
 
     try:
-        counted = backed.ap.count(by="batch")
+        counted = backed.ap.count("batch")
         pd.testing.assert_frame_equal(
             counted.reset_index(drop=True),
             pd.DataFrame({"batch": pd.Categorical(["A", "B"]), "n": [3, 2]}),  # h5ad stores batch as categorical

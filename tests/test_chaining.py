@@ -14,13 +14,14 @@ from anndata import AnnData
 import annplyr as ap
 from annplyr import AnnplyrAccessor
 from annplyr._tidy import SHADOWED_VERBS, TidyAnnData
+from annplyr.data import X
 
 
 def _pipeline(adata: AnnData) -> TidyAnnData:
     """Enter the accessor once, then chain with methods only."""
     return (
         adata.ap.filter(ap.col("batch") == "A")
-        .select(obs=ap.everything(), x=ap.col("g0", "g1"))
+        .select(ap.everything(), X.g0, X.g1)
         .mutate({"gene_score": (ap.col("x:g0") + ap.col("x:g1")) / 2})
     )
 
@@ -41,7 +42,7 @@ def test_chain_runs_without_reentering_the_accessor(dense_adata: AnnData) -> Non
 
 def test_chained_steps_intermediate_to_the_right_shapes(dense_adata: AnnData) -> None:
     filtered = dense_adata.ap.filter(ap.col("batch") == "A")
-    selected = filtered.select(obs=ap.everything(), x=ap.col("g0", "g1"))
+    selected = filtered.select(ap.everything(), X.g0, X.g1)
     scored = _pipeline(dense_adata)
 
     assert filtered.n_obs == 3
@@ -55,8 +56,9 @@ def test_free_function_surface_matches_the_chained_accessor(dense_adata: AnnData
     from_functions = ap.mutate(
         ap.select(
             ap.filter(dense_adata, ap.col("batch") == "A"),
-            obs=ap.everything(),
-            x=ap.col("g0", "g1"),
+            ap.everything(),
+            X.g0,
+            X.g1,
         ),
         {"gene_score": (ap.col("x:g0") + ap.col("x:g1")) / 2},
     )
@@ -127,14 +129,14 @@ def test_rename_categories_stays_chainable(dense_adata: AnnData) -> None:
     assert all(str(c).startswith("renamed_") for c in wrapped.obs["cell_type"].cat.categories)
     # the mutated object is still a chainable result
     assert isinstance(wrapped, TidyAnnData)
-    assert wrapped.count(by="cell_type")["n"].sum() == 3
+    assert wrapped.count("cell_type")["n"].sum() == 3
 
 
 def test_slicing_a_result_does_not_break_the_chain(dense_adata: AnnData) -> None:
     result = dense_adata.ap.filter(ap.col("batch") == "A")[:1]
 
     assert result.n_obs == 1
-    assert result.count(by="cell_type")["n"].tolist() == [1]
+    assert result.count("cell_type")["n"].tolist() == [1]
 
 
 def test_to_anndata_returns_a_plain_anndata(dense_adata: AnnData) -> None:
@@ -150,7 +152,7 @@ def test_upstream_anndata_to_df_is_not_shadowed(dense_adata: AnnData) -> None:
     wrapped = dense_adata.ap.filter(ap.col("batch") == "A")
 
     assert list(wrapped.to_df().columns) == list(dense_adata.var_names)
-    assert list(wrapped.to_wide(obs=["cell_type"], x=ap.col("g0"))) == ["cell_type", "g0"]
+    assert list(wrapped.to_wide("cell_type", X.g0)) == ["cell_type", "g0"]
 
 
 def test_no_accessor_verb_is_silently_shadowed() -> None:
@@ -166,8 +168,8 @@ def test_wrap_preserves_identity_for_inplace_verbs(sparse_adata: AnnData) -> Non
 
 
 def test_wrap_leaves_terminal_pandas_results_untouched(dense_adata: AnnData) -> None:
-    counts = dense_adata.ap.count(by="cell_type")
-    series = dense_adata.ap.pull(obs="score")
+    counts = dense_adata.ap.count("cell_type")
+    series = dense_adata.ap.pull("score")
 
     assert type(TidyAnnData.wrap(counts)) is pd.DataFrame
     assert type(TidyAnnData.wrap(series)) is pd.Series
@@ -238,7 +240,7 @@ def test_grouped_chain_survives_group_boundaries(dense_adata: AnnData) -> None:
         .mutate({"rank": ap.row_number()})
         .filter(ap.col("rank") <= 1)
         .ungroup()
-        .count(by="cell_type", sort=True)
+        .count("cell_type", sort=True)
     )
 
     assert list(summary.columns) == ["cell_type", "n"]
@@ -249,7 +251,7 @@ def test_accessor_namespace_still_available_on_results(dense_adata: AnnData) -> 
     result = dense_adata.ap.filter(ap.col("batch") == "A")
 
     assert isinstance(result.ap, AnnplyrAccessor)
-    assert result.ap.to_wide(obs=["cell_type"]).equals(result.to_wide(obs=["cell_type"]))
+    assert result.ap.to_wide("cell_type").equals(result.to_wide("cell_type"))
 
 
 def test_pipe_receives_the_wrapped_object(sparse_adata: AnnData) -> None:
@@ -311,7 +313,7 @@ def test_wrap_preserves_a_user_anndata_subclass_inplace() -> None:
     assert isinstance(adata, TidyAnnData)
     assert adata.domain_method() == "domain"
     # and it is still chainable
-    assert adata.count(by="g")["n"].tolist() == [1, 1, 1, 1]
+    assert adata.count("g")["n"].tolist() == [1, 1, 1, 1]
 
 
 def test_wrap_does_not_crash_on_a_subclass_with_slots() -> None:

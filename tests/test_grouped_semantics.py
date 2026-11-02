@@ -60,7 +60,7 @@ def test_grouped_summarize_accepts_matrix_sources(dense_adata: AnnData) -> None:
 
 
 def test_grouped_var_count_and_keys(dense_adata: AnnData) -> None:
-    grouped = dense_adata.ap.group_by("feature_type", axis="var")
+    grouped = dense_adata.ap.group_by("var:feature_type")
 
     pd.testing.assert_frame_equal(
         grouped.count().reset_index(drop=True),

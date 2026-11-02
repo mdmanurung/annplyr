@@ -26,7 +26,7 @@ def test_raw_source_is_explicit_read_only_obs_axis_source(dense_adata: AnnData) 
         pd.DataFrame({"batch": ["A", "B"], "mean_raw_g0": [2.0, 2.5]}),
     )
 
-    wide = adata.ap.to_wide(obs=["batch"], raw=["g0"])
+    wide = adata.ap.to_wide("batch", "raw:g0")
     assert wide.columns.tolist() == ["batch", "raw_g0"]
     assert wide["raw_g0"].tolist() == [1.0, 2.0, 0.0, 5.0, 3.0]
 
@@ -59,7 +59,7 @@ def test_as_frame_exposes_scverse_sources_with_controlled_selection(dense_adata:
     uns = adata.ap.as_frame("uns", key="qc")
     pd.testing.assert_frame_equal(uns, adata.uns["qc"])
 
-    pulled = adata.ap.pull(obsp={"distances": "c1"})
+    pulled = adata.ap.pull("obsp:distances:c1")
     assert pulled.index.tolist() == adata.obs_names.tolist()
     assert pulled.name == "c1"
 
@@ -72,12 +72,12 @@ def test_matrix_exports_accept_public_materialization_budgets(dense_adata: AnnDa
     assert len(tidy) == dense_adata.n_obs * dense_adata.n_vars
 
     with pytest.raises(ap.AnnplyrError, match="materialize 10 matrix values"):
-        dense_adata.ap.to_wide(x=["g0", "g3"], max_matrix_values=9)
+        dense_adata.ap.to_wide("x:g0", "x:g3", max_matrix_values=9)
 
     with pytest.raises(ap.AnnplyrError, match="materialize 10 matrix values"):
-        dense_adata.ap.pivot_longer(x=["g0", "g3"], max_matrix_values=9)
+        dense_adata.ap.pivot_longer("x:g0", "x:g3", max_matrix_values=9)
 
 
 def test_missing_raw_source_raises_typed_error(dense_adata: AnnData) -> None:
     with pytest.raises(ap.UnknownSourceError, match="raw"):
-        dense_adata.ap.to_wide(raw=["g0"])
+        dense_adata.ap.to_wide("raw:g0")

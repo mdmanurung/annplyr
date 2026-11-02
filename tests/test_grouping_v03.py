@@ -40,15 +40,13 @@ def test_group_spec_resolves_once_and_rejects_computed_virtual_and_empty_selecti
     grouped = adata.ap.group_by(ap.starts_with("gro"))
     assert grouped.group_vars() == ["group"]
 
-    with pytest.raises(SelectionError, match="computed"):
-        adata.ap.group_by(ap.col("group"))
     with pytest.raises(SelectionError):
         adata.ap.group_by(nw.col("group"))
     with pytest.raises(SelectionError):
         adata.ap.group_by(ap.obs_names)
     with pytest.raises(SelectionError, match="at least one"):
         adata.ap.group_by(ap.any_of(["missing"]))
-    with pytest.raises(SelectionError):
+    with pytest.raises(SelectionError, match="mutate"):
         adata.ap.group_by(ap.col("value") + 1)
 
     del adata.obs["group"]
@@ -101,7 +99,7 @@ def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names
     operations = {
         "filter": grouped.filter(ap.row_number() == 1),
         "arrange": grouped.arrange(ap.col("value")),
-        "distinct": grouped.distinct(obs="value"),
+        "distinct": grouped.distinct("value"),
         "slice": grouped.slice(1),
         "head": grouped.slice_head(1),
         "tail": grouped.slice_tail(1),
@@ -122,18 +120,18 @@ def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names
 
 def test_grouped_select_transmute_rename_and_relocate_retain_or_update_keys() -> None:
     grouped = _grouped_fixture().ap.group_by(["group", "id"])
-    selected = grouped.select(obs="value")
+    selected = grouped.select("value")
     assert selected.ungroup().obs.columns.tolist() == ["group", "id", "value"]
 
     transmuted = grouped.transmute({"double": ap.col("value") * 2})
     assert transmuted.ungroup().obs.columns.tolist() == ["group", "id", "double"]
     assert transmuted.group_vars() == ["group", "id"]
 
-    renamed = grouped.rename(obs={"batch": "group"})
+    renamed = grouped.rename(batch="group")
     assert renamed.group_vars() == ["batch", "id"]
-    renamed_with = renamed.rename_with(str.upper, obs=ap.all_of(["batch"]))
+    renamed_with = renamed.rename_with(str.upper, ap.all_of(["batch"]))
     assert renamed_with.group_vars() == ["BATCH", "id"]
-    relocated = renamed_with.relocate(obs="id", after="value")
+    relocated = renamed_with.relocate("id", after="value")
     assert relocated.group_vars() == ["BATCH", "id"]
 
 
@@ -152,10 +150,10 @@ def test_grouped_inplace_identity_and_key_mutation_use_old_plan_then_regroup() -
     assert underlying.obs["within"].tolist() == [1, 1, 2, 1, 2, 3]
     assert result.group_keys()["group"].tolist() == ["first", "rest"]
 
-    renamed = grouped.rename(obs={"partition": "group"}, inplace=True)
+    renamed = grouped.rename(partition="group", inplace=True)
     assert renamed is grouped
     assert grouped.group_vars() == ["partition"]
-    relocated = grouped.relocate(obs="partition", after="text", inplace=True)
+    relocated = grouped.relocate("partition", after="text", inplace=True)
     assert relocated is grouped
     counted = grouped.add_count(sort=True, inplace=True)
     assert counted is grouped
@@ -234,7 +232,7 @@ def test_all_six_grouped_joins_execute_globally_and_update_suffixed_key() -> Non
 def test_grouped_var_axis_and_non_group_axis_join_remain_positional() -> None:
     adata = _grouped_fixture(duplicate_names=True)
     adata.var["gene_id"] = [0, 1, 2]
-    grouped_var = adata.ap.group_by("kind", axis="var")
+    grouped_var = adata.ap.group_by("var:kind")
     sliced = grouped_var.slice_head(1)
     assert sliced.ungroup().X[0, :].tolist() == [0, 1]
     assert sliced.group_vars() == ["kind"]

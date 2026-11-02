@@ -1991,7 +1991,7 @@ def to_wide_adata(
     max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
     planner = RequestPlanner(max_matrix_values)
-    descriptors: list[tuple[int, Any, str, str]] = []
+    descriptors: list[tuple[int, Any, str | Callable[[Any], str], str]] = []  # prefix or renamer
     if obs is not None:
         obs_piece = evaluate_select(obs_frame(adata), obs).reset_index(drop=True)
     else:

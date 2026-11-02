@@ -18,7 +18,7 @@ from annplyr._errors import AnnplyrError, UnknownSourceError
 from annplyr._groups import GroupPlan, GroupSpec
 
 
-def _source_matrix(adata: AnnData, source: Any) -> tuple[Any, pd.DataFrame]:
+def _source_matrix(adata: AnnData, source: Any) -> tuple[Any, Any]:
     """Return the matrix and its feature table for ``"x"``, ``"raw"`` or a layer."""
     name = getattr(source, "prefix", source)  # an annplyr.data Source carries its prefix
     if name in {"x", "X"}:

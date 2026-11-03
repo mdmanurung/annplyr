@@ -11,18 +11,13 @@ kernelspec:
 
 # API
 
+This page lists every public name with its signature. For task-led examples, start with {doc}`from_scanpy` or {doc}`tutorial`.
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
 from _setup import *
 ```
-
-```{code-cell} ipython3
-ag.plot_embedding(adata, "umap", color="louvain")
-```
-
-Use this page for exact signatures and return types. For task-led examples,
-start with {doc}`from_scanpy` or {doc}`tutorial`.
 
 | If you want to... | Start with... |
 |---|---|
@@ -36,6 +31,134 @@ start with {doc}`from_scanpy` or {doc}`tutorial`.
 | pool or split cells by group | `aggregate_cells`, `nest`, `unnest` |
 | reshape an extracted DataFrame | `annplyr.tidyr` |
 | construct expressions or selectors | `col`, `all_of`, `any_of`, `across` |
+
+## Verb families
+
+Six families cover the verbs. Each example runs on PBMC3k and draws what the verb returned.
+
+### Subset
+
+`filter`, `select`, `arrange`, `distinct` and the `slice*` verbs choose cells or features. The result is an AnnData with `X`, `raw` and the embeddings cut to match.
+
+```{code-cell} ipython3
+sub = adata.filter(obs.louvain.is_in(["B cells", "NK cells"]), obs.n_genes > 500)
+print(adata.shape, "->", sub.shape, "| umap:", sub.obsm["X_umap"].shape)
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+ag.plot_embedding(sub, "umap", color="louvain")
+```
+
+*Two clusters remain, and the embedding kept their coordinates.*
+
+### Derive
+
+`mutate`, `transmute`, `rename`, `relocate` and `add_count` write metadata. The matrices are read and never changed.
+
+```{code-cell} ipython3
+scored = adata.mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)
+scored.obs[["louvain", "b_score"]].head(3).round(2)
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+ag.plot_embedding(scored, "umap", color="b_score")
+```
+
+*The new `b_score` column colours the map like any gene.*
+
+### Summarize
+
+`summarize`, `count` and `group_by` reduce cells to groups. The result is a pandas table, in key order.
+
+```{code-cell} ipython3
+by_cluster = adata.summarize(cells=ap.n(), median_genes=ap.median(obs.n_genes), by=obs.louvain)
+by_cluster
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+from plotnine import aes, coord_flip, geom_col, ggplot
+
+ggplot(by_cluster, aes("louvain", "cells")) + geom_col() + coord_flip() + ag.theme_ggann()
+```
+
+*Cells per cluster, from the `cells` column above.*
+
+### Join
+
+The six joins attach a table to `obs` or `var`. They raise `JoinRelationshipError` when a join would add or duplicate cells.
+
+```{code-cell} ipython3
+lineage = pd.DataFrame(
+    {
+        "louvain": adata.obs["louvain"].cat.categories,
+        "lineage": ["T", "myeloid", "B", "T", "NK", "myeloid", "myeloid", "platelet"],
+    }
+)
+joined = adata.left_join(lineage, by=obs.louvain, relationship="many-to-one")
+joined.count(obs.lineage)
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+ag.plot_embedding(joined, "umap", color="lineage")
+```
+
+*The lineage came from the table, and every cell kept its place on the map.*
+
+### Reshape
+
+`join_features`, `to_wide`, `pivot_longer`, `pull` and `nest` turn AnnData into tables. `join_features` returns one row per cell and feature.
+
+```{code-cell} ipython3
+long = adata.join_features(raw.MS4A1, raw.CD79A, raw.NKG7, shape="long")
+long = long.rename(columns={".feature": "gene", ".abundance_raw": "expr"})
+mean_expr = long.groupby(["gene", "louvain"], observed=True)["expr"].mean().reset_index()
+mean_expr.head(3).round(2)
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+from plotnine import element_text, geom_tile, theme
+
+(
+    ggplot(mean_expr, aes("louvain", "gene", fill="expr"))
+    + geom_tile()
+    + theme(axis_text_x=element_text(rotation=45, ha="right"))
+    + ag.theme_ggann()
+)
+```
+
+*Mean expression per cluster, straight from the long table.*
+
+### Pseudobulk
+
+`aggregate_cells` pools cells into one row per group. The processed PBMC3k `.raw` holds log values, so this example takes the mean. Sum true counts for differential expression, as on {doc}`pseudobulk`. The donors here are **synthetic**.
+
+```{code-cell} ipython3
+cells = ap.tidy(adata.copy())
+cells.obs["donor"] = np.array(["d1", "d2", "d3"])[np.arange(cells.n_obs) % 3]
+pb = cells.aggregate_cells(obs.donor, obs.louvain, source=raw, fun="mean")
+print(pb.shape)
+pb.obs.head(3)
+```
+
+```{code-cell} ipython3
+:tags: [ggann]
+
+from plotnine import geom_col
+
+ggplot(pb.obs, aes("louvain", "n_cells", fill="donor")) + geom_col(position="dodge") + coord_flip() + ag.theme_ggann()
+```
+
+*Cells behind each pseudobulk sample. Megakaryocytes and dendritic cells have only a handful per donor, so those samples are noisy.*
 
 ## Accessor
 
@@ -109,7 +232,7 @@ The reduction chunk target is an internal implementation detail, currently
 It carries every accessor verb as a method, so `adata.ap.filter(...).select(...)`
 chains without re-entering `.ap`.
 
-## Consumer Typing
+## Consumer typing
 
 `AnnplyrAccessor`, `GroupedAnnData`, and `AnnplyrExpr` are exported from the
 package root for annotations. Construct expressions with helpers such as
@@ -199,7 +322,7 @@ symbol, public method signature, overload, return annotation, and alias.
    annplyr.unnest
 ```
 
-## Expressions And Selectors
+## Expressions and selectors
 
 Expression helpers return `AnnplyrExpr`. Operators, namespaces, and method
 chains propagate conservative dependency/cardinality metadata; call
@@ -267,7 +390,7 @@ schema/dtype selector and must not inspect values.
    annplyr.where
 ```
 
-## Aggregation Helpers
+## Aggregation helpers
 
 ```{eval-rst}
 .. autosummary::
@@ -282,7 +405,7 @@ schema/dtype selector and must not inspect values.
    annplyr.sum
 ```
 
-## Dataframe Helpers In `annplyr.tidyr`
+## DataFrame helpers in `annplyr.tidyr`
 
 These helpers reshape the pandas DataFrames that annplyr returns. They take a
 DataFrame, not an AnnData, so they live in their own module: call
@@ -311,7 +434,7 @@ DataFrame list columns. `ap.nest` and `ap.unnest` work on AnnData objects.
    annplyr.tidyr.unpack
 ```
 
-## Single-Cell Utility Helpers
+## Single-cell utility helpers
 
 These helpers cover narrow AnnData metadata ergonomics inspired by common
 single-cell workflows. They do not implement biological QC scoring, plotting

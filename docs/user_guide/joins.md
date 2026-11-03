@@ -88,8 +88,8 @@ the index yourself. That is the class of mistake the join verb removes. The
 result is an AnnData whose every aligned container still matches.
 
 Joins return a new AnnData, the left axis order is stable, and the original
-object is untouched. Join keys stay strings (`by="louvain"`), because the key
-names a column in both tables.
+object is untouched. The key names a column in both tables, so write it as a
+string (`by="louvain"`) or as the column (`by=obs.louvain`).
 
 
 ## Restrict an analysis cohort

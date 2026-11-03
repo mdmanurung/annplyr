@@ -485,7 +485,7 @@ class AnnplyrAccessor:
         The keys are positional, matching :meth:`count`, so grouping reads the
         same as counting::
 
-            adata.ap.group_by(obs.sample, obs.cell_type).summarize({"n": ap.n()})
+            adata.ap.group_by(obs.sample, obs.cell_type).summarize(n=ap.n())
 
         A key is a string, a column such as ``obs.louvain`` or a selector.
         Computed values are not keys: ``mutate`` them first. ``var`` keys group

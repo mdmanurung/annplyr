@@ -1281,10 +1281,7 @@ def summarize_adata(
     Each aggregate names its own container, so metadata and matrix statistics
     mix freely in a single call::
 
-        adata.ap.summarize(
-            {"cells": ap.n(), "mean_LYZ": ap.mean("raw:LYZ")},
-            by="louvain",
-        )
+        adata.ap.summarize(cells=ap.n(), mean_LYZ=ap.mean(raw.LYZ), by=obs.louvain)
 
     A bare name is ``obs`` metadata; a matrix needs a qualifier, and ``var:`` or
     ``varm:`` reduces over the feature axis. One aggregate cannot mix containers,

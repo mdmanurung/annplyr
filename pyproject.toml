@@ -62,17 +62,20 @@ benchmark = [
   "scipy==1.16.3",
 ]
 doc = [
+  # ggann needs plotnine-extra>=0.3.1, which is not on PyPI; pin the commit its CI uses.
+  "ggann @ git+https://github.com/mdmanurung/ggann@5571d6e0c962f1bafef23fa753f6bd0e56f34f8e",
   "ipykernel",
   "ipython",
   "myst-nb>=1.1",
   "pandas",
+  "plotnine>=0.15.3,<0.16",
+  "plotnine-extra @ git+https://github.com/mdmanurung/plotnine-extra@fcbd88f64760a2dd6e8200028a1a00909aa2c9f8",
   "scanpy>=1.10",
   "sphinx>=8.1",
   "sphinx-autodoc-typehints",
   "sphinx-book-theme>=1",
   "sphinx-copybutton",
   "sphinx-design",
-  "sphinxcontrib-bibtex>=1",
   "sphinxcontrib-katex",
   "sphinxext-opengraph",
 ]
@@ -82,12 +85,12 @@ integration = [
 ]
 
 [tool.hatch]
+metadata.allow-direct-references = true
 build.targets.wheel.packages = [ "src/annplyr" ]
 envs.default.installer = "uv"
 envs.default.dependency-groups = [ "dev" ]
 envs.docs.scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
-envs.docs.scripts.doctest = "sphinx-build -M doctest docs docs/_build -W {args}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
 envs.docs.dependency-groups = [ "doc" ]
 envs.hatch-test.scripts.cov-combine = "coverage combine"
@@ -183,8 +186,4 @@ skip = [
   "src/**/__init__.py",
   "tests",
   "docs/api.md",
-  "docs/changelog.md",
-  "docs/references.bib",
-  "docs/references.md",
-  "docs/notebooks/example.ipynb",
 ]

@@ -53,3 +53,13 @@ def test_a_float32_sum_accumulates_in_float64(cells: AnnData) -> None:
     pb = aggregate_cells_adata(cells, "donor", source="x")
     assert pb.X.dtype == np.float64
     np.testing.assert_allclose(np.asarray(pb.X)[0, 0], 4 * np.float64(np.float32(0.1)), rtol=1e-15)
+
+
+def test_aggregate_keeps_columns_constant_within_each_group(cells: AnnData) -> None:
+    cells.obs["condition"] = pd.Categorical(np.where(cells.obs["donor"] == "d1", "ctrl", "stim"))
+    cells.obs["varies"] = np.arange(cells.n_obs)
+    pb = aggregate_cells_adata(cells, "donor", "cell_type", source="counts")
+    assert "varies" not in pb.obs
+    assert isinstance(pb.obs["condition"].dtype, pd.CategoricalDtype)
+    expected = np.where(pb.obs["donor"].astype(str) == "d1", "ctrl", "stim")
+    assert pb.obs["condition"].astype(str).tolist() == expected.tolist()

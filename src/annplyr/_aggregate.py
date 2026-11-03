@@ -75,6 +75,13 @@ def aggregate_cells_adata(
     values = indicator @ matrix  # sparse stays sparse, dense stays dense
 
     obs = plan.keys.copy()
+    # Keep sample-level columns, as tidySCE does: a column constant within every
+    # group (condition, donor age) describes the pseudobulk, a varying one does not.
+    keys = list(plan.spec.columns)
+    for column in adata.obs.columns.difference(keys, sort=False):
+        column_values = adata.obs[column].reset_index(drop=True)
+        if column_values.groupby(plan.group_ids, observed=True).nunique(dropna=False).max() <= 1:
+            obs[column] = column_values.iloc[plan.first_positions].reset_index(drop=True)  # keeps dtype
     obs["n_cells"] = n_cells
     obs.index = pd.Index(obs[list(plan.spec.columns)].astype(str).agg("_".join, axis=1), name=None)
     return AnnData(X=values, obs=obs, var=features.copy())

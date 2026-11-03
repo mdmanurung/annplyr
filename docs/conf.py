@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from datetime import datetime
@@ -78,6 +79,10 @@ nb_execution_mode = "cache"
 nb_execution_raise_on_error = True
 nb_execution_timeout = 900
 nb_merge_streams = True
+# DOCS_ONLY=tutorial,api executes just those pages; the rest render without outputs.
+if os.environ.get("DOCS_ONLY"):
+    _run = {f"{name.strip()}.md" for name in os.environ["DOCS_ONLY"].split(",")}
+    nb_execution_excludepatterns = [p.name for p in HERE.glob("*.md") if p.name not in _run]
 typehints_defaults = "braces"
 always_use_bars_union = True
 

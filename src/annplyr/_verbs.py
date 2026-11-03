@@ -109,6 +109,9 @@ def _add_matrix_request(
     row_positions: Any = None,
 ) -> tuple[int, str]:
     adapter = source_adapter(adata, source, key=key, layer=layer)
+    named = [request] if isinstance(request, str) else request
+    if isinstance(named, list) and all(isinstance(name, str) for name in named):
+        resolve.check_feature_names(adata, "layer" if layer else source, layer, named, adapter.names)
     token = planner.add(
         adapter,
         request=request,
@@ -315,6 +318,14 @@ def _evaluate_filter_positions(
     return pd.Index(np.concatenate(pieces) if pieces else np.empty(0, dtype=np.intp))
 
 
+def _checked_names(adata: AnnData, x: Any) -> Any:
+    """Name a missing gene's real container before the selector reports it bare."""
+    named = [x] if isinstance(x, str) else x
+    if isinstance(named, list) and all(isinstance(name, str) for name in named):
+        resolve.check_feature_names(adata, "x", None, named, adata.var_names)
+    return x
+
+
 def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None) -> AnnData:
     obs_columns = (
         _selected_real_columns(evaluate_select(obs_frame(adata), obs).columns, _obs_table(adata).columns, source="obs")
@@ -327,7 +338,9 @@ def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None
         else _var_table(adata).columns
     )
     selected_var_names = (
-        _selected_real_columns(evaluate_select(x_frame(adata), x).columns, adata.var_names, source="x")
+        _selected_real_columns(
+            evaluate_select(x_frame(adata), _checked_names(adata, x)).columns, adata.var_names, source="x"
+        )
         if x is not None
         else list(adata.var_names)
     )

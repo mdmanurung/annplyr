@@ -22,6 +22,7 @@ mangled. Layer and ``obsm``/``varm`` prefixes need the object, so
 
 from __future__ import annotations
 
+import difflib
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
@@ -29,7 +30,13 @@ from typing import Any, cast
 import pandas as pd
 from anndata import AnnData
 
-from annplyr._errors import DuplicateNameError, IncompatibleAxisError, SelectionError, UnknownSourceError
+from annplyr._errors import (
+    DuplicateNameError,
+    IncompatibleAxisError,
+    SelectionError,
+    UnknownColumnError,
+    UnknownSourceError,
+)
 from annplyr._expr import AnnplyrExpr, ScopedSelector, Source, all_of, col, collect_column_references, everything
 from annplyr._frames import OBS_NAMES, VAR_NAMES, obs_frame, var_frame
 from annplyr._sources import RequestPlanner
@@ -225,6 +232,35 @@ def assert_single_source(adata: AnnData, values: Any) -> None:
         raise IncompatibleAxisError(msg)
 
 
+_SHOWN = {"x": "X", "raw": "raw"}
+
+
+def check_feature_names(adata: AnnData, kind: str, key: str | None, wanted: Sequence[str], names: Any) -> None:
+    """Fail on a missing gene with the fix: where the gene is, or what is close.
+
+    ``names`` are the features the reader can serve. ``X.LYZ`` on processed data,
+    where ``X`` holds only the highly variable genes, names ``raw.LYZ`` instead of
+    listing every gene in ``X``.
+    """
+    if kind not in {"x", "raw", "layer"}:
+        return
+    available = set(map(str, names))
+    missing = [name for name in dict.fromkeys(wanted) if name not in available]
+    if not missing:
+        return
+    here = key if kind == "layer" and key else _SHOWN.get(kind, kind)
+    elsewhere = {"X": adata.var_names, **({"raw": adata.raw.var_names} if adata.raw is not None else {})}
+    hints = []
+    for name in missing:
+        found = [label for label, index in elsewhere.items() if label != here and name in index]
+        if found:
+            hints.append(f"{name!r} is in {found[0]}: write {found[0]}.{name}")
+            continue
+        close = difflib.get_close_matches(name, sorted(available), n=3)
+        hints.append(f"{name!r} is not in {here}" + (f"; did you mean {', '.join(close)}?" if close else ""))
+    raise UnknownColumnError("Unknown feature: " + "; ".join(hints))
+
+
 def plan_source(
     planner: RequestPlanner,
     adata: AnnData,
@@ -245,6 +281,7 @@ def plan_source(
     layer = source.key if source.kind == "layer" else None
     key = None if source.kind == "layer" else source.key
     adapter = source_adapter(adata, adapter_kind, key=key, layer=layer)
+    check_feature_names(adata, source.kind, source.key, source.bare_names, adapter.names)
     # An expression that named no column, such as a raw Narwhals expression,
     # gets a None request so the planner charges the whole container rather than
     # projecting zero columns.

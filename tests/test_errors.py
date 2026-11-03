@@ -101,3 +101,32 @@ def test_grouped_summarize_has_no_by_because_group_by_sets_the_keys(dense_adata:
 def test_a_name_given_as_dict_and_keyword_raises(dense_adata: AnnData) -> None:
     with pytest.raises(ap.DuplicateNameError, match="s"):
         dense_adata.ap.mutate({"s": ap.col("score")}, s=ap.col("score") * 2)
+
+
+def test_error_messages_name_the_fix() -> None:
+    import anndata as ad
+    import numpy as np
+    import pandas as pd
+
+    from annplyr.data import X, obs
+
+    genes = [f"G{i}" for i in range(40)]
+    adata = ad.AnnData(
+        np.ones((3, 40)), obs=pd.DataFrame({"louvain": list("abc")}, index=list("xyz")), var=pd.DataFrame(index=genes)
+    )
+    adata.raw = ad.AnnData(np.ones((3, 41)), obs=adata.obs, var=pd.DataFrame(index=[*genes, "LYZ"]))
+    for call in (lambda: adata.ap.mutate(l=X.LYZ), lambda: adata.ap.select(X.LYZ), lambda: adata.ap.pull(X.LYZ)):
+        with pytest.raises(ap.UnknownColumnError, match=r"write raw\.LYZ"):
+            call()
+    with pytest.raises(ap.UnknownColumnError) as typo:
+        adata.ap.filter(obs.louvian == "a")
+    assert "did you mean louvain" in str(typo.value) and "__annplyr_" not in str(typo.value)
+    with pytest.raises(ap.UnknownColumnError) as unknown:
+        adata.ap.select(X.G99)
+    assert len(str(unknown.value)) < 200  # close matches only, not every gene
+
+
+def test_mutate_takes_a_bare_constant(dense_adata: AnnData) -> None:
+    out = dense_adata.ap.mutate(flag=1, ratio=0.5, ok=True)
+    assert out.obs["flag"].tolist() == [1] * dense_adata.n_obs
+    assert out.obs["ok"].all() and (out.obs["ratio"] == 0.5).all()

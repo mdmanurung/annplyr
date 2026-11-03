@@ -16,7 +16,7 @@ Each blocker is fixed on this branch unless marked open.
 
 | Blocker | Evidence | Status |
 |---|---|---|
-| Docs used the pre-0.5.0 API | `docs:doctest`: 36 of 69 failed, e.g. `filter() got an unexpected keyword argument 'obs'`. README and the 3 notebooks had the same problem. | Fixed: 78 of 78 pass |
+| Docs used the pre-0.5.0 API | Doctest run: 36 of 69 failed, e.g. `filter() got an unexpected keyword argument 'obs'`. README and the 3 notebooks had the same problem. | Fixed: every example runs in the docs build |
 | Notebooks never ran at build | `nb_execution_mode` was `"off"` in `docs/conf.py` | Fixed: `cache` mode, and errors fail the build |
 | ASV benchmarks used the old API | `bench_smoke.py:33` called `group_by(obs=...)`, so the `benchmark-smoke` CI job failed | Fixed: all 48 benchmark methods run |
 | anndata 0.13 broke `TidyAnnData` | `test_chaining.py`: `'super' object has no attribute 'concatenate'` | Fixed: the override only exists when anndata has the method |
@@ -55,14 +55,13 @@ Docs, build and benchmarks:
 | Check | Command | Outcome |
 |---|---|---|
 | Docs build | `uvx hatch run docs:build`, which runs with `-W` | Pass: 0 warnings, notebooks executed |
-| Doctests | `uvx hatch run docs:doctest` | Pass: 78 of 78, on a fresh `-E` build |
 | Build | `uvx hatch build -c`, then `uvx twine check dist/annplyr-0.5.0*` | Pass |
 | Benchmark smoke, run directly | Every `time_*` and `peakmem_*` method run once in the hatch env | Pass: 48 of 48 |
 | Benchmark smoke through ASV | `asv_local.py run --quick -E existing -b "^bench_smoke"`, in a scratch copy with the CI benchmark stack | Passed 5 of 5 before the API redesign. **Not rerun** since; the direct run above covers the same methods. |
 | CITATION.cff | `uvx cffconvert --validate -i CITATION.cff` | Pass: schema 1.2.0 |
 | JOSS PDF | `.github/workflows/draft-pdf.yml` | **Unverified**: runs in GitHub Actions only |
 | Workflow audit | `uvx zizmor@1.29.0 --offline --persona pedantic .github/workflows/` | Pass: 0 findings, after adding `concurrency` to `draft-pdf.yml`. The action is now in `ci-security.md`. |
-| Paper example output | Diff of the `paper.md` table against the doctested `docs/index.md` output | Pass: identical code and output |
+| Paper example output | Diff of the `paper.md` table against the `docs/index.md` output | Pass: identical code and output |
 | Docs CI in Actions | `docs.yaml` now runs the notebooks and downloads PBMC3k (about 24 MB) | **Unverified**: run locally only. It needs network, and adds a few minutes. |
 | Error messages name the fix | Raise sites sampled, and the typed errors asserted in the PBMC3k tests | **Partial**: unknown prefixes, sources and a non-dict `mutate` name the fix. Some planner and selection messages state only the problem. |
 
@@ -100,18 +99,18 @@ claim.
 | Repeated name in `select` raises `DuplicateNameError` | `tests/test_errors.py::test_select_with_a_repeated_name_raises_duplicate_name_error` |
 | `mutate` without a dict names the fix | `tests/test_errors.py::test_mutate_without_a_dict_names_the_fix` |
 | Verb results write to zarr | `tests/integration/test_downstream_fixture.py::test_verb_results_can_be_written_to_zarr` |
-| Docs, README, notebooks and benchmarks use the 0.5.0 API | `docs:doctest`, the notebook-executing `docs:build` and the `benchmark-smoke` job |
+| Docs, README, notebooks and benchmarks use the 0.5.0 API | the executing `docs:build` and the `benchmark-smoke` job |
 | Dependency floors raised | the `hatch-test.py3.12-min` env |
 | Pre-commit `check-ast` runs on Python 3.12 | `prek run --all-files` |
-| Trailing-whitespace hook skips docs Markdown | `docs:doctest`. The hook had broken 14 doctests. |
+| Trailing-whitespace hook skips docs Markdown | The executing `docs:build`. The hook had broken 14 doctests, since replaced by executed pages. |
 | JOSS `paper.md`/`paper.bib`, `.zenodo.json`, `CITATION.cff`, README citation section | `cffconvert --validate` |
-| Donor-level tutorial section | `docs:doctest` on `docs/vignettes/cohort_workflow.md` |
+| Donor-level tutorial section | the executing `docs:build` on `docs/pseudobulk.md` |
 
 ## API redesign for R parity
 
 After the audit, the 0.5.0 API was reworked to match tidyseurat,
 tidySingleCellExperiment and tidytof as closely as Python allows. The full
-side-by-side table is in `docs/user_guide/coming_from_r.md`, and the migration
+side-by-side table is in `docs/from_r.md`, and the migration
 table is in the CHANGELOG.
 
 - Container namespaces: `obs.percent_mito`, `raw.MS4A1`, `counts.MS4A1`,

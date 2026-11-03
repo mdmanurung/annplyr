@@ -1,7 +1,28 @@
+---
+jupytext:
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: Python 3
+  language: python
+  name: python3
+---
+
 # API
 
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+from _setup import *
+```
+
+```{code-cell} ipython3
+ag.plot_embedding(adata, "umap", color="louvain")
+```
+
 Use this page for exact signatures and return types. For task-led examples,
-start with {doc}`quickstart` or {doc}`tutorials`.
+start with {doc}`from_scanpy` or {doc}`tutorial`.
 
 | If you want to... | Start with... |
 |---|---|
@@ -68,7 +89,7 @@ Strings such as `"raw:MS4A1"` and `ap.col` remain available for computed names.
 
 All cumulative `max_matrix_values=` checks plan every source before the first
 adapter read. The mechanically checked callable-level contract is recorded in
-{doc}`development/api-contract-v0.3`.
+[`api-contract-v0.3.md`](https://github.com/mdmanurung/annplyr/blob/main/docs/development/api-contract-v0.3.md).
 
 The reduction chunk target is an internal implementation detail, currently
 25,165,824 logical values. It is deliberately not a public tuning flag.
@@ -130,7 +151,7 @@ The supported aliases live in `annplyr.typing`:
 | `JoinInput`, `JoinBy`, and join-option aliases | the exact dataframe/mapping and validated literal choices accepted by joins |
 | `GroupedReturn` | typed AnnData or `GroupedAnnData` |
 
-The generated {doc}`development/public-typing-contract` inventories every root
+The generated [`public-typing-contract.md`](https://github.com/mdmanurung/annplyr/blob/main/docs/development/public-typing-contract.md) inventories every root
 symbol, public method signature, overload, return annotation, and alias.
 
 ## Flat verb functions

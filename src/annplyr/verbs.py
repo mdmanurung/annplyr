@@ -41,7 +41,7 @@ def _make_function(name: str, accessor_method: Callable[..., Any]) -> Callable[.
         f"with the object moved in front. Every other argument is identical to\n"
         f"``AnnData.ap.{name}``, and the result carries the verbs, so this call\n"
         f"chains with the following step.\n\n"
-        f"{accessor_method.__doc__ or ''}"
+        f"{inspect.cleandoc(accessor_method.__doc__ or '')}"  # Python < 3.13 keeps docstring indent
     ).rstrip() + "\n"
     verb.__annotations__ = {"adata": AnnData, "return": Any}
     parameters = [inspect.Parameter("adata", inspect.Parameter.POSITIONAL_ONLY, annotation=AnnData)]

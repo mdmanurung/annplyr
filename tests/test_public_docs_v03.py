@@ -88,3 +88,9 @@ def test_docs_pages_are_executable_notebooks() -> None:
     assert "nb_execution_raise_on_error = True" in Path("docs/conf.py").read_text()
     for page in ["index", "from_scanpy", "from_r", "concepts", "tutorial", "pseudobulk", "api"]:
         assert "format_name: myst" in Path(f"docs/{page}.md").read_text()
+
+
+def test_flat_verb_docstrings_are_dedented_for_sphinx() -> None:
+    """Python 3.12 keeps docstring indentation; an indented numpy section breaks RST."""
+    doc = ap.verbs.filter.__doc__ or ""
+    assert "\nParameters\n----------\n" in doc

@@ -59,7 +59,7 @@ Every name carries its container, as in tidyseurat and tidySingleCellExperiment,
 
 Several design choices target the misalignment risk. Axis operations use integer position, so duplicate cell or feature names stay distinct. Sparse matrices stay sparse during projection. Only the requested features are read. An optional `max_matrix_values` argument sets a cumulative limit, and the planner rejects a request that would exceed it before any read. AnnData-returning verbs return `TidyAnnData`, a subclass of `AnnData`, so `isinstance` checks and Scanpy calls keep working.
 
-The package also ships helpers to check marker panels against `var_names` (`feature_present`), extract sample metadata, store plotting palettes, and reshape the returned DataFrames (`annplyr.tidyr`). It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation examples run on the PBMC3k dataset as doctests, so a stale example fails the build.
+The package also ships helpers to check marker panels against `var_names` (`feature_present`), extract sample metadata, store plotting palettes, and reshape the returned DataFrames (`annplyr.tidyr`). It bundles an Agent Skill that users install with `annplyr-install-skills`. The documentation examples run on the PBMC3k dataset when the site is built, so a stale example fails the build.
 
 # Example
 

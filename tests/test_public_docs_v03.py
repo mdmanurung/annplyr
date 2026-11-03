@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import tomllib
 from pathlib import Path
 
 import annplyr as ap
@@ -85,12 +84,7 @@ def test_join_and_pipe_docstrings_match_typed_failure_and_ownership_contracts() 
         assert "callable-defined" in (inspect.getdoc(cls.pipe) or "").lower()
 
 
-def test_sphinx_doctest_configuration_and_examples_are_present() -> None:
-    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
-    conf = Path("docs/conf.py").read_text()
-    quickstart = Path("docs/quickstart.md").read_text()
-
-    assert "sphinx.ext.doctest" in conf
-    assert "doctest_global_setup" in conf
-    assert "sphinx-build -M doctest" in pyproject["tool"]["hatch"]["envs"]["docs"]["scripts"]["doctest"]
-    assert quickstart.count("```{testcode}") >= 5
+def test_docs_pages_are_executable_notebooks() -> None:
+    assert "nb_execution_raise_on_error = True" in Path("docs/conf.py").read_text()
+    for page in ["index", "from_scanpy", "from_r", "concepts", "tutorial", "pseudobulk", "api"]:
+        assert "format_name: myst" in Path(f"docs/{page}.md").read_text()

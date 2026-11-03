@@ -37,5 +37,4 @@ __pycache__/
 # Docs
 /docs/generated/
 /docs/_build/
-/docs/notebooks/data/
 /scripts/r_parity/out/

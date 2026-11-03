@@ -90,9 +90,11 @@ biological QC and annotation workflow.
 
 ## Learn more
 
-- [Quickstart](https://mdmanurung.github.io/annplyr/quickstart.html)
-- [End-to-end tutorials](https://mdmanurung.github.io/annplyr/tutorials.html)
-- [User guide](https://mdmanurung.github.io/annplyr/user_guide/concepts.html)
+- [Coming from scanpy](https://mdmanurung.github.io/annplyr/from_scanpy.html)
+- [Coming from R](https://mdmanurung.github.io/annplyr/from_r.html)
+- [Concepts](https://mdmanurung.github.io/annplyr/concepts.html)
+- [Tutorial](https://mdmanurung.github.io/annplyr/tutorial.html)
+- [Pseudobulk](https://mdmanurung.github.io/annplyr/pseudobulk.html)
 - [API reference](https://mdmanurung.github.io/annplyr/api.html)
 
 The package also bundles an annplyr Agent Skill. Install or refresh it with

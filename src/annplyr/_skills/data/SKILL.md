@@ -47,5 +47,4 @@ For docs or skill changes, also check the Sphinx build when practical:
 
 ```bash
 uvx hatch run docs:build
-uvx hatch run docs:doctest
 ```

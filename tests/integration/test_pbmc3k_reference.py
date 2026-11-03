@@ -412,7 +412,7 @@ def test_shuffled_summaries_agree_after_sorting_by_group(pbmc: AnnData) -> None:
     mixed = shuffled.ap.group_by(KEY).summarize(stats).set_index(KEY).sort_index()
 
     np.testing.assert_allclose(mixed.to_numpy(float), plain.to_numpy(float), rtol=RTOL_AGG)
-    # and the table order is the key order whatever the data order, as documented in user_guide/grouping.md
+    # and the table order is the key order whatever the data order, as documented in docs/concepts.md
     assert shuffled.ap.count(KEY)[KEY].tolist() == pbmc.ap.count(KEY)[KEY].tolist()
 
 
@@ -440,7 +440,7 @@ def test_unmatched_join_key_is_na_never_a_default(pbmc: AnnData) -> None:
 
 
 def test_unused_categories_and_emptied_groups_follow_the_documented_grouping_contract(pbmc: AnnData) -> None:
-    # docs/user_guide/grouping.md: groups include NA, keep categorical
+    # docs/concepts.md: groups include NA, keep categorical
     # dtype and order, and omit unobserved categories; summary tables list them in key order.
     pbmc.obs[KEY] = pbmc.obs[KEY].cat.add_categories("Unused")
     for table in (pbmc.ap.count(KEY), pbmc.ap.group_by(KEY).summarize({"n": ap.n()})):

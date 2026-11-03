@@ -3,6 +3,8 @@
 [![Test](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml)
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
+[![PyPI](https://img.shields.io/pypi/v/annplyr)](https://pypi.org/project/annplyr/)
+<!-- [gap: DOI badge] add after Zenodo mints a DOI: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
 `annplyr` brings tidy, dataframe-style verbs to AnnData. Filter cells, select
 genes, join sample metadata, derive annotations, summarize groups, and build
@@ -15,20 +17,24 @@ pip install annplyr
 
 ## Try it on real data
 
-Importing `annplyr` registers the `adata.ap` accessor. This runs as written on
-Scanpy's PBMC3K:
+`ap.tidy(adata)` wraps an AnnData object so the verbs are methods. Each
+container has a name in `annplyr.data`: `obs`, `var`, `X`, `raw`, and any layer
+or `obsm` key. This runs as written on Scanpy's PBMC3K:
 
 ```python
 import scanpy as sc
 
 import annplyr as ap
+from annplyr.data import obs, raw
 
-adata = sc.datasets.pbmc3k_processed()
+adata = ap.tidy(sc.datasets.pbmc3k_processed())
 
-summary = adata.ap.summarize(
-    obs={"cells": ap.n(), "median_genes": ap.median("n_genes")},
-    raw={"mean_MS4A1": ap.mean("MS4A1"), "mean_LYZ": ap.mean("LYZ")},
-    by="louvain",
+summary = adata.summarize(
+    cells=ap.n(),
+    median_genes=ap.median(obs.n_genes),
+    mean_MS4A1=ap.mean(raw.MS4A1),
+    mean_LYZ=ap.mean(raw.LYZ),
+    by=obs.louvain,
 )
 print(summary.round(2))
 ```
@@ -36,10 +42,10 @@ print(summary.round(2))
 ```text
              louvain  cells  median_genes  mean_MS4A1  mean_LYZ
 0        CD4 T cells   1144         809.0        0.03      0.43
-1            B cells    342         677.0        0.99      0.39
-2    CD14+ Monocytes    480         859.0        0.04      3.55
-3           NK cells    154         890.0        0.04      0.35
-4        CD8 T cells    316         824.5        0.04      0.36
+1    CD14+ Monocytes    480         859.0        0.04      3.55
+2            B cells    342         677.0        0.99      0.39
+3        CD8 T cells    316         824.5        0.04      0.36
+4           NK cells    154         890.0        0.04      0.35
 5  FCGR3A+ Monocytes    150        1272.0        0.06      2.24
 6    Dendritic cells     37        1544.0        0.06      3.91
 7     Megakaryocytes     15         364.0        0.05      0.60
@@ -53,16 +59,17 @@ dendritic cells, which is the expected answer.
 QC and extraction chain the same way:
 
 ```python
-plot_data = (
-    adata.ap.filter(obs=ap.col("percent_mito") < 0.03)
-    .ap.to_tidy(obs=["louvain"], raw=["MS4A1", "CD79A"], max_matrix_values=2 * adata.n_obs)
+plot_data = adata.filter(obs.percent_mito < 0.03).join_features(
+    raw.MS4A1, raw.CD79A, shape="long", max_matrix_values=2 * adata.n_obs
 )
-print(plot_data.shape)   # (4514, 4)
+print(plot_data.shape)   # (4514, 7)
 ```
 
 The AnnData-returning steps preserve aligned `X`, layers, `raw`, embeddings,
-loadings, and pairwise matrices. The boundary to pandas is explicit: summary and
-extraction methods return DataFrames, everything else returns AnnData.
+loadings, and pairwise matrices. Every verb returns a new object. The boundary
+to pandas is explicit: summary and extraction methods return DataFrames,
+everything else returns AnnData.
+
 
 ## What you get
 
@@ -74,7 +81,8 @@ extraction methods return DataFrames, everything else returns AnnData.
   distinct because axis operations are position-based.
 - **Make materialization deliberate.** Matrix projection happens before pandas
   conversion, and `max_matrix_values=` places a cumulative bound on reads.
-- **Compose with Python.** AnnData results keep the `.ap` accessor; extracted
+- **Compose with Python.** AnnData results stay `TidyAnnData`, a subclass of
+  `AnnData`, so Scanpy calls work on them; extracted
   tables work directly with pandas and plotting libraries.
 
 `annplyr` is a wrangling layer, not a replacement for Scanpy, AnnData, or a
@@ -82,9 +90,11 @@ biological QC and annotation workflow.
 
 ## Learn more
 
-- [Quickstart](https://mdmanurung.github.io/annplyr/quickstart.html)
-- [End-to-end tutorials](https://mdmanurung.github.io/annplyr/tutorials.html)
-- [User guide](https://mdmanurung.github.io/annplyr/user_guide/concepts.html)
+- [Coming from scanpy](https://mdmanurung.github.io/annplyr/from_scanpy.html)
+- [Coming from R](https://mdmanurung.github.io/annplyr/from_r.html)
+- [Concepts](https://mdmanurung.github.io/annplyr/concepts.html)
+- [Tutorial](https://mdmanurung.github.io/annplyr/tutorial.html)
+- [Pseudobulk](https://mdmanurung.github.io/annplyr/pseudobulk.html)
 - [API reference](https://mdmanurung.github.io/annplyr/api.html)
 
 The package also bundles an annplyr Agent Skill. Install or refresh it with
@@ -93,4 +103,11 @@ The package also bundles an annplyr Agent Skill. Install or refresh it with
 
 For development setup and checks, see
 [CONTRIBUTING.md](https://github.com/mdmanurung/annplyr/blob/main/CONTRIBUTING.md).
-Citation metadata is available in `CITATION.cff`.
+
+## Citation
+
+If you use `annplyr`, please cite it. GitHub's "Cite this repository" button reads
+[`CITATION.cff`](https://github.com/mdmanurung/annplyr/blob/main/CITATION.cff).
+The accompanying paper is in
+[`paper.md`](https://github.com/mdmanurung/annplyr/blob/main/paper.md)
+[gap: JOSS DOI and Zenodo DOI, add after publication].

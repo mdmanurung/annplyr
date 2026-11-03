@@ -16,10 +16,11 @@ were peeled to their commit objects before acceptance.
 | [`actions/configure-pages`](https://github.com/actions/configure-pages/releases/tag/v6.0.0) | `v6.0.0` | `45bfe0192ca1faeb007ade9deae92b16b8254a0d` | Pages configuration |
 | [`actions/upload-pages-artifact`](https://github.com/actions/upload-pages-artifact/releases/tag/v5.0.0) | `v5.0.0` | `fc324d3547104276b827a68afc52ff2a11cc49c9` | rendered Pages artifact |
 | [`actions/deploy-pages`](https://github.com/actions/deploy-pages/releases/tag/v5.0.0) | `v5.0.0` | `cd2ce8fcbc39b97be8ca5fce6e763baed58fa128` | main-branch Pages deployment |
-| [`pypa/gh-action-pypi-publish`](https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.14.2) | `v1.14.2` | `dc37677b2e1c63e2034f94d8a5b11f265b73ba33` | PyPI trusted publishing |
+| [`pypa/gh-action-pypi-publish`](https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.14.3) | `v1.14.3` | `7245906fb61fa33a13554f9d5fb856fe61758086` | PyPI trusted publishing |
 | [`codecov/codecov-action`](https://github.com/codecov/codecov-action/releases/tag/v7.0.0) | `v7.0.0` | `fb8b3582c8e4def4969c97caa2f19720cb33a72f` | advisory OIDC coverage upload |
 | [`re-actors/alls-green`](https://github.com/re-actors/alls-green/releases/tag/v1.2.2) | `v1.2.2` | `05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe` | aggregate stable and advisory test jobs |
 | [`zizmorcore/zizmor-action`](https://github.com/zizmorcore/zizmor-action/releases/tag/v0.6.2) | `v0.6.2` | `3dc1ecc9bcb9e94e9b2c709687979e1298497054` | blocking workflow audit with zizmor 1.29.0 |
+| [`openjournals/openjournals-draft-action`](https://github.com/openjournals/openjournals-draft-action/releases/tag/v1.0) | `v1.0` | `85a18372e48f551d8af9ddb7a747de685fbbb01c` | JOSS paper draft PDF |
 
 The accepted major updates retain the inputs annplyr uses. `setup-uv` v9 changes
 only the default cache-pruning policy relevant here; release jobs disable that

@@ -61,9 +61,10 @@ Documentation is built with Sphinx and MyST-NB:
 uvx hatch run docs:build
 ```
 
-Notebook tutorials live in `docs/notebooks`. The default documentation build
-does not execute notebooks; keep notebooks lightweight and source-only unless a
-release explicitly needs rendered outputs.
+The seven pages in `docs/*.md` are MyST-NB notebooks. The build executes every
+cell, so each example and figure is checked, and a failing cell fails the build.
+Hidden `remove-cell` cells assert that outputs match. Shared setup is in
+`docs/_setup.py`. The build downloads PBMC3k into `data/` on first use.
 
 On pushes to `main`, the `Docs` workflow uploads `docs/_build/html` and deploys
 the Sphinx site to GitHub Pages.

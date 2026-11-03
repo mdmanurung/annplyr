@@ -29,18 +29,18 @@ def _reduction_fixture(matrix: object) -> AnnData:
 def _assignments() -> dict[str, object]:
     return {
         "rows": ap.n(),
-        "g2_sum": ap.sum("g2"),
-        "g0_mean": ap.mean("g0"),
-        "g0_sd": ap.sd("g0"),
-        "g0_min": ap.min("g0"),
-        "g0_max": ap.max("g0"),
-        "g0_first": ap.first("g0"),
-        "g0_last": ap.last("g0"),
-        "g0_median": ap.median("g0"),
-        "g0_unique": ap.n_distinct("g0"),
-        "derived_mean": ap.mean(ap.col("g0") + ap.col("g1")),
-        "all_nonnegative": (ap.col("g2") >= 0).all(),
-        "any_positive": (ap.col("g2") > 0).any(),
+        "g2_sum": ap.sum("x:g2"),
+        "g0_mean": ap.mean("x:g0"),
+        "g0_sd": ap.sd("x:g0"),
+        "g0_min": ap.min("x:g0"),
+        "g0_max": ap.max("x:g0"),
+        "g0_first": ap.first("x:g0"),
+        "g0_last": ap.last("x:g0"),
+        "g0_median": ap.median("x:g0"),
+        "g0_unique": ap.n_distinct("x:g0"),
+        "derived_mean": ap.mean(ap.col("x:g0") + ap.col("x:g1")),
+        "all_nonnegative": (ap.col("x:g2") >= 0).all(),
+        "any_positive": (ap.col("x:g2") > 0).any(),
     }
 
 
@@ -76,7 +76,7 @@ def test_chunked_reductions_exactly_match_one_chunk_for_every_storage(
     import annplyr._verbs as verbs
 
     monkeypatch.setattr(verbs, "DEFAULT_REDUCTION_CHUNK_VALUES", reduction_values.size + 1)
-    expected = _reduction_fixture(reduction_values).ap.summarize(x=_assignments(), by=by)
+    expected = _reduction_fixture(reduction_values).ap.summarize(_assignments(), by=by)
 
     memory_storage = storage.removeprefix("backed_")
     matrix = (
@@ -92,7 +92,7 @@ def test_chunked_reductions_exactly_match_one_chunk_for_every_storage(
 
     try:
         monkeypatch.setattr(verbs, "DEFAULT_REDUCTION_CHUNK_VALUES", 4)
-        actual = candidate.ap.summarize(x=_assignments(), by=by)
+        actual = candidate.ap.summarize(_assignments(), by=by)
         pd.testing.assert_frame_equal(actual, expected, check_exact=True)
     finally:
         if backed is not None:
@@ -120,14 +120,14 @@ def test_var_axis_chunking_preserves_nullable_groups_and_assignment_order(
     adata.varm["loadings"] = loadings
     monkeypatch.setattr(verbs, "DEFAULT_REDUCTION_CHUNK_VALUES", 2)
     result = adata.ap.summarize(
-        varm={"loadings": {"second": ap.mean("1"), "first": ap.sum("0")}},
-        by="kind",
+        {"second": ap.mean("loadings:1"), "first": ap.sum("loadings:0")},
+        by="var:kind",
     )
     expected = pd.DataFrame(
         {
-            "kind": pd.Categorical(["rna", "protein", None], categories=["protein", "rna"]),
-            "second": np.array([5.5, 8.5, 11.5], dtype=np.float32),
-            "first": np.array([9.0, 15.0, 21.0], dtype=np.float32),
+            "kind": pd.Categorical(["protein", "rna", None], categories=["protein", "rna"]),
+            "second": np.array([8.5, 5.5, 11.5], dtype=np.float32),
+            "first": np.array([15.0, 9.0, 21.0], dtype=np.float32),
         }
     )
     pd.testing.assert_frame_equal(result, expected, check_exact=True)
@@ -189,25 +189,28 @@ class _CountingAdapter:
 
 
 def test_shared_reductions_read_each_chunk_once_and_budget_before_first_read(monkeypatch) -> None:
+    import annplyr._sources as sources
     import annplyr._verbs as verbs
 
     adapter = _CountingAdapter(np.arange(14, dtype=np.float32).reshape(7, 2))
-    monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: adapter)
+    # the flat verbs resolve adapters through annplyr._sources
+    monkeypatch.setattr(sources, "source_adapter", lambda *args, **kwargs: adapter)
+    monkeypatch.setattr(sources, "DEFAULT_REDUCTION_CHUNK_VALUES", 4)
     monkeypatch.setattr(verbs, "DEFAULT_REDUCTION_CHUNK_VALUES", 4)
     adata = AnnData(
         X=np.zeros((7, 2), dtype=np.float32),
         obs=pd.DataFrame({"group": pd.Categorical(["a", "a", "b", "b", "a", "b", "a"])}),
         var=pd.DataFrame(index=["g0", "g1"]),
     )
-    result = adata.ap.group_by(obs="group").summarize(
-        x={"sum": ap.sum("g0"), "mean": ap.mean("g0"), "other": ap.max("g1")}
+    result = adata.ap.group_by("group").summarize(
+        {"sum": ap.sum("x:g0"), "mean": ap.mean("x:g0"), "other": ap.max("x:g1")}
     )
     assert result.columns.tolist() == ["group", "sum", "mean", "other"]
     assert adapter.reads == 4
 
     adapter.reads = 0
     with pytest.raises(AnnplyrError, match="exceeds max_matrix_values=13"):
-        adata.ap.summarize(x={"sum": ap.sum("g0"), "other": ap.sum("g1")}, max_matrix_values=13)
+        adata.ap.summarize({"sum": ap.sum("x:g0"), "other": ap.sum("x:g1")}, max_matrix_values=13)
     assert adapter.reads == 0
 
 
@@ -223,8 +226,8 @@ def test_grouped_summary_reuses_the_callers_positional_plan(monkeypatch, reducti
     monkeypatch.setattr(GroupPlan, "build", classmethod(counted))
     result = (
         _reduction_fixture(reduction_values)
-        .ap.group_by(obs="group")
-        .summarize(x={"mean": ap.mean("g0"), "sum": ap.sum("g1")})
+        .ap.group_by("group")
+        .summarize({"mean": ap.mean("x:g0"), "sum": ap.sum("x:g1")})
     )
     assert result.shape == (3, 3)
     assert calls == 1
@@ -237,11 +240,11 @@ def test_empty_chunked_reductions_have_stable_values_and_dtypes(dtype: object) -
         obs=pd.DataFrame({"group": pd.Categorical([])}),
         var=pd.DataFrame(index=["g0", "g1"]),
     )
-    result = adata.ap.summarize(x={"n": ap.n(), "sum": ap.sum("g0"), "mean": ap.mean("g0")})
+    result = adata.ap.summarize({"n": ap.n(), "sum": ap.sum("x:g0"), "mean": ap.mean("x:g0")})
     assert result.loc[0, "n"] == 0
     assert result.loc[0, "sum"] == 0
     assert pd.isna(result.loc[0, "mean"])
     assert str(result["n"].dtype) == "int64"
-    grouped = adata.ap.summarize(x={"n": ap.n(), "sum": ap.sum("g0")}, by="group")
+    grouped = adata.ap.summarize({"n": ap.n(), "sum": ap.sum("x:g0")}, by="group")
     assert grouped.empty
     assert str(grouped["group"].dtype) == "category"

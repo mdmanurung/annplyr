@@ -7,6 +7,7 @@ import pandas as pd
 from anndata import AnnData
 
 import annplyr as ap
+from annplyr.data import X, obs
 
 from .common import SEED, dense_adata, feature_names, sparse_adata, unwrap_grouped
 
@@ -22,33 +23,33 @@ class Smoke:
         self.dense = dense_adata(1_000, 200)
         self.sparse = sparse_adata(5_000, 1_000, matrix_format="csr")
         rng = np.random.default_rng(SEED)
-        obs = pd.DataFrame(
+        frame = pd.DataFrame(
             {
                 "group": pd.Categorical(np.arange(5_000) % 20),
                 "score": rng.standard_normal(5_000, dtype=np.float32),
             },
             index=pd.Index([f"o{i}" for i in range(5_000)]),
         )
-        grouped_adata = AnnData(X=np.zeros((5_000, 1), dtype=np.float32), obs=obs, var=pd.DataFrame(index=["g0"]))
-        self.grouped = grouped_adata.ap.group_by(obs="group")
-        self.features = feature_names(10)
+        grouped_adata = AnnData(X=np.zeros((5_000, 1), dtype=np.float32), obs=frame, var=pd.DataFrame(index=["g0"]))
+        self.grouped = grouped_adata.ap.group_by(obs.group)
+        self.names = [X[name] for name in feature_names(10)]
 
     def time_dense_projection(self) -> None:
-        out = self.dense.ap.to_df(x=self.features)
+        out = self.dense.ap.to_wide(*self.names)
         assert out.shape == (1_000, 10)
 
     def time_sparse_projection(self) -> None:
-        out = self.sparse.ap.to_df(x=self.features)
+        out = self.sparse.ap.to_wide(*self.names)
         assert out.shape == (5_000, 10)
 
     def time_grouped_filter(self) -> None:
-        out = self.grouped.filter(obs=ap.col("score") > ap.mean("score"), copy=True)
+        out = self.grouped.filter(obs.score > ap.mean(obs.score))
         assert 0 < unwrap_grouped(out).n_obs < 5_000
 
     def time_grouped_mutate(self) -> None:
-        out = self.grouped.mutate(obs={"centered": ap.col("score") - ap.mean("score")})
+        out = self.grouped.mutate(centered=obs.score - ap.mean(obs.score))
         assert "centered" in unwrap_grouped(out).obs
 
     def time_grouped_summarize(self) -> None:
-        out = self.grouped.summarize(obs={"mean_score": ap.mean("score")})
+        out = self.grouped.summarize(mean_score=ap.mean(obs.score))
         assert out.shape == (20, 2)

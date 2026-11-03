@@ -19,8 +19,8 @@ _AXIS_METHODS = {
     "slice_tail",
 }
 _JOIN_METHODS = {"anti_join", "full_join", "inner_join", "left_join", "right_join", "semi_join"}
-_INPLACE_METHODS = {"add_count", "add_tally", "mutate", "relocate", "rename", "rename_with"}
-_EXTRACTION_METHODS = {"as_frame", "nest_by", "pivot_longer", "pull", "to_df", "to_tidy"}
+_INPLACE_METHODS = {"add_count", "mutate", "relocate", "rename", "rename_with"}
+_EXTRACTION_METHODS = {"aggregate_cells", "join_features", "nest", "pivot_longer", "pull", "to_wide"}
 _TABLE_METHODS = {
     "count",
     "group_data",
@@ -28,7 +28,6 @@ _TABLE_METHODS = {
     "group_vars",
     "summarise",
     "summarize",
-    "tally",
 }
 
 
@@ -82,12 +81,15 @@ def _fill(
     returns: str,
     ownership: str,
     failures: tuple[str, ...],
+    extend: bool = False,
 ) -> None:
-    if inspect.getdoc(obj):
+    existing = inspect.getdoc(obj)
+    # a hand-written docstring keeps its text and gains the standard contract sections
+    if existing and not (extend and "Parameters\n----------" not in existing):
         return
     obj.__doc__ = _docstring(
         obj,
-        summary=summary,
+        summary=existing or summary,
         returns=returns,
         ownership=ownership,
         failures=failures,
@@ -99,7 +101,7 @@ def _method_policy(name: str, *, grouped: bool) -> tuple[str, str, tuple[str, ..
         result = "GroupedAnnData" if grouped else "AnnData"
         return (
             result,
-            "Returns an independent result by default; ``copy=False`` may be a view or materialized.",
+            "Returns an independent object; a backed input returns the view.",
             (
                 "SelectionError",
                 "UnknownColumnError",
@@ -112,21 +114,21 @@ def _method_policy(name: str, *, grouped: bool) -> tuple[str, str, tuple[str, ..
         result = "GroupedAnnData" if grouped else "AnnData"
         return (
             result,
-            "Returns an independent result by default; ``copy=False`` may be a view or materialized.",
+            "Returns an independent object; a backed input returns the view.",
             ("SelectionError", "UnknownColumnError", "UnknownSourceError", "IncompatibleAxisError", "AnnplyrError"),
         )
     if name in _INPLACE_METHODS:
         result = "GroupedAnnData" if grouped else "AnnData"
         return (
             result,
-            "Returns a new result unless ``inplace=True`` requests exact input identity.",
+            "Returns a new object that shares ``X``, layers and aligned matrices with the input.",
             ("SelectionError", "DuplicateNameError", "SizeMismatchError", "AnnplyrError"),
         )
     if name == "transmute":
         result = "GroupedAnnData" if grouped else "AnnData"
         return (
             result,
-            "Always returns an independent result and never mutates the input.",
+            "Returns a new object that shares ``X``, layers and aligned matrices with the input; a backed input is loaded.",
             ("SelectionError", "UnknownSourceError", "SizeMismatchError", "AnnplyrError"),
         )
     if name in _EXTRACTION_METHODS or name in _TABLE_METHODS:
@@ -149,7 +151,7 @@ def _method_policy(name: str, *, grouped: bool) -> tuple[str, str, tuple[str, ..
         )
     return (
         "The result described by the annotated signature.",
-        "Leaves the input unchanged unless the callable exposes and receives ``inplace=True``.",
+        "Leaves the input unchanged.",
         ("AnnplyrError",),
     )
 
@@ -166,6 +168,7 @@ def _install_methods(cls: type[Any], *, grouped: bool) -> None:
             returns=returns,
             ownership=ownership,
             failures=failures,
+            extend=True,
         )
 
 
@@ -183,7 +186,7 @@ def _export_policy(obj: Callable[..., Any]) -> tuple[str, str, str, tuple[str, .
         return (
             f"Apply the ``{name}`` single-cell metadata utility.",
             "The AnnData, table, mapping, or diagnostic described by the signature.",
-            "Readers leave input unchanged; writers are independent unless ``inplace=True``.",
+            "Readers leave input unchanged; writers return a new object that shares ``X``, layers and aligned matrices with the input.",
             ("SelectionError", "DuplicateNameError", "SizeMismatchError", "JoinRelationshipError", "AnnplyrError"),
         )
     return (

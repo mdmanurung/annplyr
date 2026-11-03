@@ -35,30 +35,6 @@ def test_sample_meta_extracts_sample_constant_metadata(dense_adata: AnnData) -> 
     pd.testing.assert_frame_equal(first, pd.DataFrame({"batch": ["A", "B"], "cell_type": ["T", "T"]}))
 
 
-def test_sample_summary_and_add_sample_meta_use_existing_tidy_verbs(dense_adata: AnnData) -> None:
-    summary = ap.sample_summary(
-        dense_adata,
-        "batch",
-        obs={"mean_score": ap.mean("score")},
-        x={"mean_g0": ap.mean("g0")},
-    )
-
-    pd.testing.assert_frame_equal(
-        summary.reset_index(drop=True),
-        pd.DataFrame({"batch": ["A", "B"], "mean_score": [11 / 6, 7 / 4], "mean_g0": [2.0, 2.5]}),
-    )
-
-    sample_table = pd.DataFrame({"sample_id": ["B", "A"], "treatment": ["drug", "vehicle"]})
-    joined = ap.add_sample_meta(dense_adata, sample_table, sample="batch", by="sample_id")
-
-    assert joined.obs_names.tolist() == dense_adata.obs_names.tolist()
-    assert joined.obs["treatment"].tolist() == ["vehicle", "vehicle", "drug", "drug", "vehicle"]
-    assert "treatment" not in dense_adata.obs
-
-    with pytest.raises(ap.AnnplyrError, match="sample metadata"):
-        ap.add_sample_meta(dense_adata, {"batch": "A", "treatment": "vehicle"}, sample="batch")
-
-
 def test_feature_present_reports_missing_and_wrong_case_features(dense_adata: AnnData) -> None:
     adata = dense_adata.copy()
     adata.var["symbol"] = ["CD3E", "MS4A1", "LYZ", "MALAT1"]

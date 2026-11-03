@@ -354,6 +354,7 @@ class PlannedRead:
     column_positions: np.ndarray
     context: str
     charge: bool = True
+    source: Any = None
 
     @property
     def projected_cells(self) -> int:
@@ -462,15 +463,28 @@ class RequestPlanner:
         row_positions: Any = None,
         context: str,
         charge: bool = True,
+        source: Any = None,
     ) -> int:
         rows = _positions(row_positions, adapter.shape[0], dimension="row")
         columns = resolve_columns(adapter, request, mode=mode)
-        self.requests.append(PlannedRead(adapter, rows, columns, context, charge))
+        self.requests.append(PlannedRead(adapter, rows, columns, context, charge, source))
         return len(self.requests) - 1
 
     @property
     def projected_cells(self) -> int:
         return sum(request.projected_cells for request in self.requests)
+
+    def token_for(self, source: Any) -> int:
+        """Return the token registered for a resolved source.
+
+        Resolved sources are hashable, so a caller that planned its own reads
+        can look one up by identity instead of tracking positional tokens.
+        """
+        for position, request in enumerate(self.requests):
+            if request.source is not None and request.source == source:
+                return position
+        msg = f"no planned read for source {getattr(source, 'context', source)!r}"
+        raise AnnplyrError(msg)
 
     def validate(self) -> None:
         if self.max_matrix_values is not None and self.max_matrix_values < 0:

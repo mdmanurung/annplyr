@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, cast
 
@@ -7,7 +9,7 @@ import narwhals as nw
 import numpy as np
 import pandas as pd
 from anndata import AnnData
-from narwhals.exceptions import ColumnNotFoundError
+from narwhals.exceptions import ColumnNotFoundError, DuplicateError
 from scipy import sparse
 
 from annplyr._errors import (
@@ -246,8 +248,11 @@ def evaluate_select(frame: pd.DataFrame, selectors: Any) -> pd.DataFrame:
     try:
         selected = nw.from_native(work).select(*resolved_exprs).to_native()
     except ColumnNotFoundError as exc:
-        msg = f"Unknown column in selector: {exc}"
+        msg = f"Unknown column in selector: {_missing_hint(exc, frame)}"
         raise UnknownColumnError(msg) from exc
+    except DuplicateError as exc:
+        msg = f"Selection failed: {exc}"
+        raise DuplicateNameError(msg) from exc
     except Exception as exc:
         msg = f"Selection failed: {exc}"
         raise SelectionError(msg) from exc
@@ -263,9 +268,10 @@ def evaluate_filter(frame: pd.DataFrame, predicates: Any) -> pd.Index:
         return frame.index
     work = with_row_number(prepare_sparse_for_arithmetic(frame))
     try:
-        filtered = nw.from_native(work).filter(*exprs).to_native()
+        # The row expression broadcasts scalar predicates, as tidy filtering requires.
+        filtered = nw.from_native(work).filter(*[(nw.col(ROW_NUMBER) > 0) & expr for expr in exprs]).to_native()
     except ColumnNotFoundError as exc:
-        msg = f"Unknown column in filter predicate: {exc}"
+        msg = f"Unknown column in filter predicate: {_missing_hint(exc, frame)}"
         raise UnknownColumnError(msg) from exc
     except Exception as exc:
         msg = f"Filter failed: {exc}"
@@ -301,6 +307,23 @@ def _add_expanded_assignment(expanded: dict[str, Any], name: str, expr: Any) -> 
     expanded[name] = expr
 
 
+def _assigned_expr(value: Any) -> Any:
+    """A bare number, bool or None assigns a constant, as in dplyr's ``mutate(flag = 1)``."""
+    if value is None or isinstance(value, (bool, int, float, np.number)):
+        return nw.lit(value.item() if isinstance(value, np.number) else value)
+    return expr_for(value)
+
+
+def _missing_hint(exc: BaseException, frame: pd.DataFrame) -> str:
+    """Rewrite a Narwhals missing-column message with up to 3 public close matches."""
+    text = str(exc)
+    missing = re.findall(r"'([^']+)'", text.split("Hint:")[0])
+    public = [str(c) for c in frame.columns if not str(c).startswith("__annplyr_")]
+    close = sorted({m for name in missing for m in difflib.get_close_matches(name.split(":")[-1], public, n=3)})
+    found = ", ".join(repr(name) for name in missing) or text
+    return f"{found} not found" + (f"; did you mean {', '.join(close)}?" if close else "")
+
+
 def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | Any | None) -> pd.DataFrame:
     assignments = expand_assignments(frame, assignments)
     if not assignments:
@@ -309,10 +332,10 @@ def evaluate_assignments(frame: pd.DataFrame, assignments: Mapping[str, Any] | A
     assigned = pd.DataFrame(index=frame.index)
     for batch in _assignment_batches(assignments):
         try:
-            expressions = [expr_for(expr).alias(name) for name, expr in batch]
+            expressions = [_assigned_expr(expr).alias(name) for name, expr in batch]
             result = nw.from_native(work).select(*expressions).to_native()
         except ColumnNotFoundError as exc:
-            msg = f"Unknown column in assignment: {exc}"
+            msg = f"Unknown column in assignment: {_missing_hint(exc, frame)}"
             raise UnknownColumnError(msg) from exc
         except Exception as exc:
             msg = f"Assignment failed: {exc}"

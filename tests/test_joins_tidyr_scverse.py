@@ -122,7 +122,7 @@ def test_multikey_filtering_joins_canonicalize_mixed_object_null_sentinels() -> 
 
 
 def test_pivot_longer_and_pivot_wider_round_trip_selected_values(dense_adata: AnnData) -> None:
-    long = dense_adata.ap.pivot_longer(obs=["batch"], x=["g0", "g3"])
+    long = dense_adata.ap.pivot_longer("batch", "x:g0", "x:g3")
 
     assert long.columns.tolist() == ["obs_name", "batch", "name", "value"]
     assert len(long) == dense_adata.n_obs * 2
@@ -131,7 +131,7 @@ def test_pivot_longer_and_pivot_wider_round_trip_selected_values(dense_adata: An
     ]
     assert long.loc[(long["obs_name"] == "c3") & (long["name"] == "g3"), "value"].item() == 8.0
 
-    wide = ap.pivot_wider(long, id_cols=["obs_name", "batch"], names_from="name", values_from="value")
+    wide = ap.tidyr.pivot_wider(long, id_cols=["obs_name", "batch"], names_from="name", values_from="value")
     assert wide.columns.tolist() == ["obs_name", "batch", "g0", "g3"]
     assert wide.loc[wide["obs_name"] == "c4", "g3"].item() == 4.0
 
@@ -141,52 +141,24 @@ def test_pivot_longer_rejects_cross_source_duplicate_names(dense_adata: AnnData)
     adata.obs["g0"] = ["meta"] * adata.n_obs
 
     with pytest.raises(ap.NameRepairError, match="Duplicate"):
-        adata.ap.pivot_longer(obs=["g0"], x=["g0"])
+        adata.ap.pivot_longer("g0", "x:g0")
 
 
-def test_to_tidy_requires_explicit_features_by_default(dense_adata: AnnData) -> None:
-    with pytest.raises(ap.SelectionError, match="explicit x"):
-        dense_adata.ap.to_tidy(obs=["batch"])
+def test_join_features_requires_explicit_features(dense_adata: AnnData) -> None:
+    with pytest.raises(ap.SelectionError, match="at least one feature"):
+        dense_adata.ap.join_features()
 
 
-def test_to_tidy_is_obs_major_and_rejects_cross_source_duplicate_names(dense_adata: AnnData) -> None:
-    tidy = dense_adata.ap.to_tidy(obs=["batch"], x=["g0", "g3"])
-    assert list(tidy[["obs_name", "feature"]].itertuples(index=False, name=None)) == [
+def test_join_features_long_is_obs_major_and_rejects_reserved_names(dense_adata: AnnData) -> None:
+    tidy = dense_adata.ap.join_features("x:g0", "x:g3", shape="long")
+    assert list(tidy[[".cell", ".feature"]].itertuples(index=False, name=None)) == [
         (obs_name, feature) for obs_name in dense_adata.obs_names for feature in ["g0", "g3"]
     ]
 
     adata = dense_adata.copy()
-    adata.obs["g0"] = ["meta"] * adata.n_obs
-    with pytest.raises(ap.NameRepairError, match="Duplicate"):
-        adata.ap.to_tidy(obs=["g0"], x=["g0"])
-
-
-def test_to_tidy_rejects_reserved_name_collisions(dense_adata: AnnData) -> None:
-    adata = dense_adata.copy()
-    adata.var_names = ["obs_name", "feature", "value", "g3"]
-
+    adata.obs[".feature"] = ["real"] * adata.n_obs
     with pytest.raises(ap.NameRepairError, match="reserved"):
-        adata.ap.to_tidy(obs=["batch"], x=["obs_name"])
-
-    adata = dense_adata.copy()
-    adata.obs["feature"] = ["real"] * adata.n_obs
-    with pytest.raises(ap.NameRepairError, match="reserved"):
-        adata.ap.to_tidy(obs=["feature"], x=["g0"])
-
-
-def test_nest_by_and_unnest_return_pandas_tables(dense_adata: AnnData) -> None:
-    nested = dense_adata.ap.nest_by(by="batch", obs=["cell_type", "score"])
-
-    assert nested.columns.tolist() == ["batch", "data"]
-    assert nested["batch"].tolist() == ["A", "B"]
-    assert nested.loc[0, "data"].columns.tolist() == ["cell_type", "score"]
-    original_score = dense_adata.obs.loc["c0", "score"]
-    nested.loc[0, "data"].loc[0, "score"] = -999
-    assert dense_adata.obs.loc["c0", "score"] == original_score
-
-    unnested = ap.unnest(nested, "data")
-    assert unnested.columns.tolist() == ["batch", "cell_type", "score"]
-    assert unnested["batch"].tolist() == ["A", "A", "A", "B", "B"]
+        adata.ap.join_features("x:g0", shape="long")
 
 
 def test_source_registry_supports_pairwise_and_controlled_uns_sources(dense_adata: AnnData) -> None:
@@ -213,23 +185,28 @@ def test_sparse_frames_preserve_sparse_dtypes_for_matrix_sources(sparse_adata: A
     frame = source_frame(sparse_adata, "x")
 
     assert all(isinstance(dtype, pd.SparseDtype) for dtype in frame.dtypes)
-    filtered = sparse_adata.ap.filter(x=ap.col("g3") >= 40, layer="counts")
+    filtered = sparse_adata.ap.filter(ap.col("counts:g3") >= 40)
     assert filtered.obs_names.tolist() == ["c3", "c4"]
 
 
-@pytest.mark.parametrize("method,feature_column", [("to_tidy", "feature"), ("pivot_longer", "name")])
+@pytest.mark.parametrize("method,feature_column", [("join_features", ".feature"), ("pivot_longer", "name")])
 def test_sparse_long_exports_preserve_value_dtype_and_obs_major_order(
     sparse_adata: AnnData,
     method: str,
     feature_column: str,
 ) -> None:
-    result = getattr(sparse_adata.ap, method)(x=["g0", "g3"])
+    result = (
+        sparse_adata.ap.join_features("x:g0", "x:g3")
+        if method == "join_features"
+        else sparse_adata.ap.pivot_longer("x:g0", "x:g3")
+    )
 
-    assert isinstance(result["value"].dtype, pd.SparseDtype)
-    assert list(result[["obs_name", feature_column]].itertuples(index=False, name=None)) == [
+    value, cell = (".abundance_X", ".cell") if method == "join_features" else ("value", "obs_name")
+    assert result[value].dtype == sparse_adata.X.dtype  # dense for plotting, source dtype kept
+    assert list(result[[cell, feature_column]].itertuples(index=False, name=None)) == [
         (obs_name, feature) for obs_name in sparse_adata.obs_names for feature in ["g0", "g3"]
     ]
-    assert result["value"].sparse.to_dense().tolist() == sparse_adata.X[:, [0, 3]].toarray().reshape(-1).tolist()
+    assert result[value].tolist() == sparse_adata.X[:, [0, 3]].toarray().reshape(-1).tolist()
 
 
 def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData) -> None:
@@ -238,14 +215,14 @@ def test_backed_mutating_verbs_raise_typed_error(tmp_path, dense_adata: AnnData)
     backed = read_h5ad(path, backed="r")
 
     try:
-        counted = backed.ap.count(by="batch")
+        counted = backed.ap.count("batch")
         pd.testing.assert_frame_equal(
             counted.reset_index(drop=True),
-            pd.DataFrame({"batch": ["A", "B"], "n": [3, 2]}),
+            pd.DataFrame({"batch": pd.Categorical(["A", "B"]), "n": [3, 2]}),  # h5ad stores batch as categorical
         )
 
         with pytest.raises(ap.AnnplyrError, match="backed"):
-            backed.ap.mutate(obs={"double_score": ap.col("score") * 2})
+            backed.ap.mutate({"double_score": ap.col("score") * 2})
     finally:
         backed.file.close()
 
@@ -255,7 +232,7 @@ def test_pairwise_containers_remain_aligned_after_axis_reordering(dense_adata: A
     adata.obsp["connectivities"] = np.arange(adata.n_obs * adata.n_obs).reshape(adata.n_obs, adata.n_obs)
     adata.varp["correlations"] = np.arange(adata.n_vars * adata.n_vars).reshape(adata.n_vars, adata.n_vars)
 
-    arranged = adata.ap.arrange(obs=ap.desc("score"), var="length")
+    arranged = adata.ap.arrange(ap.desc("score"), ap.col("var:length"))
 
     obs_order = [adata.obs_names.get_loc(name) for name in arranged.obs_names]
     var_order = [adata.var_names.get_loc(name) for name in arranged.var_names]
@@ -273,9 +250,9 @@ def test_expression_verbs_do_not_call_anndata_to_df(monkeypatch, dense_adata: An
 
     monkeypatch.setattr(dense_adata, "to_df", fail_to_df)
 
-    filtered = dense_adata.ap.filter(x=ap.col("g0") > 1)
+    filtered = dense_adata.ap.filter(ap.col("x:g0") > 1)
     assert filtered.obs_names.tolist() == ["c1", "c3", "c4"]
-    mutated = dense_adata.ap.mutate(x={"g3_counts": ap.col("g3")})
+    mutated = dense_adata.ap.mutate({"g3_counts": ap.col("x:g3")})
     assert mutated.obs["g3_counts"].tolist() == [2.0, 1.0, 0.0, 8.0, 4.0]
 
 
@@ -287,7 +264,7 @@ def test_metadata_assignment_preserves_common_extension_dtypes(dense_adata: AnnD
     adata.obs["label"] = pd.Series(["x", "y", None, "z", "x"], index=adata.obs_names, dtype="string")
 
     mutated = adata.ap.mutate(
-        obs={
+        {
             "cluster_copy": ap.col("cluster"),
             "nullable_copy": ap.col("nullable_n"),
             "flag_copy": ap.col("flag"),
@@ -299,3 +276,18 @@ def test_metadata_assignment_preserves_common_extension_dtypes(dense_adata: AnnD
     assert str(mutated.obs["nullable_copy"].dtype) == "Int64"
     assert str(mutated.obs["flag_copy"].dtype) == "boolean"
     assert str(mutated.obs["label_copy"].dtype) == "string"
+
+
+def test_join_and_count_keep_categorical_key_dtype_and_order(dense_adata: AnnData) -> None:
+    # A plain right-hand key used to demote the categorical key to str and re-sort its
+    # categories, so uns["<key>_colors"] no longer matched the categories.
+    adata = dense_adata.copy()
+    adata.obs["batch"] = pd.Categorical(adata.obs["batch"], categories=["B", "A"])
+
+    joined = adata.ap.left_join(pd.DataFrame({"batch": ["A"], "tag": ["x"]}), by="batch")
+    assert joined.obs["batch"].dtype == adata.obs["batch"].dtype
+
+    counted = adata.ap.count("batch")
+    assert counted["batch"].dtype == adata.obs["batch"].dtype
+    assert counted["batch"].tolist() == ["B", "A"]  # category order, not first-seen order
+    assert counted["n"].tolist() == [2, 3]

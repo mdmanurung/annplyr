@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from datetime import datetime
@@ -15,20 +16,19 @@ sys.path.insert(0, str(HERE))
 try:
     info = metadata("annplyr")
     project = info["Name"]
-    author = info["Author"]
+    author = info["Author"] or info["Author-email"].split(" <")[0]
     version = info["Version"]
     urls = dict(project_url.split(", ") for project_url in info.get_all("Project-URL"))
     repository_url = urls["Source"]
 except PackageNotFoundError:
     project = "annplyr"
-    author = "annplyr developers"
-    version = "0.4.0"
+    author = "Mikhael Manurung"
+    version = "0.5.0"
     repository_url = "https://github.com/mdmanurung/annplyr"
 
 copyright = f"{datetime.now():%Y}, {author}."
 release = version
 
-bibtex_bibfiles = ["references.bib"]
 templates_path = ["_templates"]
 nitpicky = True
 needs_sphinx = "4.0"
@@ -47,9 +47,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
-    "sphinx.ext.doctest",
     "sphinx.ext.napoleon",
-    "sphinxcontrib.bibtex",
     "sphinxcontrib.katex",
     "sphinx_autodoc_typehints",
     "sphinx_design",
@@ -77,28 +75,20 @@ myst_enable_extensions = [
 ]
 myst_url_schemes = ("http", "https", "mailto")
 nb_output_stderr = "remove"
-nb_execution_mode = "off"
+nb_execution_mode = "cache"
+nb_execution_raise_on_error = True
+nb_execution_timeout = 900
 nb_merge_streams = True
+# DOCS_ONLY=tutorial,api executes just those pages; the rest render without outputs.
+if os.environ.get("DOCS_ONLY"):
+    _run = {f"{name.strip()}.md" for name in os.environ["DOCS_ONLY"].split(",")}
+    nb_execution_excludepatterns = [p.name for p in HERE.glob("*.md") if p.name not in _run]
 typehints_defaults = "braces"
 always_use_bars_union = True
 
-doctest_global_setup = """
-import numpy as np
-import pandas as pd
-import scanpy as sc
-from anndata import AnnData
-import annplyr as ap
-
-from _pbmc import pbmc3k
-
-pd.set_option("display.width", 88)
-pd.set_option("display.max_columns", 12)
-
-adata = pbmc3k()
-"""
-
 source_suffix = {
     ".rst": "restructuredtext",
+    ".md": "myst-nb",
     ".ipynb": "myst-nb",
     ".myst": "myst-nb",
 }
@@ -117,9 +107,8 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     "**.ipynb_checkpoints",
-    "development/v0.3-executor-handoff.md",
-    "development/v0.3-revised-plan.md",
-    "development/v0.3-task-list.md",
+    # Maintainer notes stay in the repo; scripts and tests read some of them.
+    "development/**",
 ]
 
 html_theme = "sphinx_book_theme"
@@ -131,6 +120,14 @@ html_theme_options = {
     "use_repository_button": True,
     "path_to_docs": "docs/",
     "navigation_with_keys": False,
+    "icon_links": [
+        {
+            "name": "Changelog",
+            "url": f"{repository_url}/blob/main/CHANGELOG.md",
+            "icon": "fa-solid fa-clock-rotate-left",
+            "type": "fontawesome",
+        },
+    ],
 }
 
 pygments_style = "default"

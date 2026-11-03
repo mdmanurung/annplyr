@@ -9,6 +9,7 @@ from anndata import read_h5ad
 from scipy import sparse
 
 import annplyr as ap
+from annplyr.data import X
 
 from .common import assert_columns, dense_adata, feature_names, realize_frame, sparse_adata
 
@@ -24,30 +25,31 @@ class DenseProjection:
     def setup(self) -> None:
         self.adata = dense_adata(20_000, 2_000)
         self.features = feature_names(10)
+        self.names = [X[name] for name in self.features]
         values = np.asarray(self.adata.X)[:, :3]
         self.expected_filtered = int(np.any(values > 0, axis=1).sum())
 
     def time_filter_three_features(self) -> None:
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = self.adata.ap.filter(x=predicate, copy=True)
+        predicate = (X.g0 > 0) | (X.g1 > 0) | (X.g2 > 0)
+        out = self.adata.ap.filter(predicate)
         assert out.n_obs == self.expected_filtered
         assert out.n_vars == self.adata.n_vars
 
     def time_export_ten_features(self) -> None:
-        out = self.adata.ap.to_df(x=self.features)
+        out = self.adata.ap.to_wide(*self.names)
         assert out.shape == (20_000, 10)
         assert_columns(out.columns, self.features)
         realize_frame(out)
 
-    def time_copy_false_call_ten_features(self) -> None:
-        out = self.adata.ap.select(x=self.features, copy=False)
+    def time_select_ten_features(self) -> None:
+        out = self.adata.ap.select(*self.names)
         assert out.shape == (20_000, 10)
         assert out.n_vars == 10
         assert_columns(out.var_names, self.features)
         assert self.adata.shape == (20_000, 2_000)
 
-    def time_copy_false_realization_ten_features(self) -> None:
-        out = self.adata.ap.select(x=self.features, copy=False)
+    def time_select_realization_ten_features(self) -> None:
+        out = self.adata.ap.select(*self.names)
         values = np.asarray(out.X)
         assert values.shape == (20_000, 10)
         assert_columns(out.var_names, self.features)
@@ -68,35 +70,36 @@ class SparseProjection:
     def setup(self, matrix_format: str) -> None:
         self.adata = sparse_adata(100_000, 10_000, matrix_format=matrix_format)
         self.features = feature_names(10)
+        self.names = [X[name] for name in self.features]
         positive_counts = (self.adata.X[:, :3] > 0).getnnz(axis=1)
         self.expected_filtered = int((positive_counts > 0).sum())
 
     def time_filter_three_features(self, matrix_format: str) -> None:
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = self.adata.ap.filter(x=predicate, copy=True)
+        predicate = (X.g0 > 0) | (X.g1 > 0) | (X.g2 > 0)
+        out = self.adata.ap.filter(predicate)
         assert out.n_obs == self.expected_filtered
         assert out.X.format == matrix_format
 
     def time_pull_one_feature(self, matrix_format: str) -> None:
-        out = self.adata.ap.pull(x="g0")
+        out = self.adata.ap.pull(X.g0)
         assert len(out) == 100_000
         float(out.iloc[0])
 
     def time_to_df_ten_features(self, matrix_format: str) -> None:
-        out = self.adata.ap.to_df(x=self.features)
+        out = self.adata.ap.to_wide(*self.names)
         assert out.shape == (100_000, 10)
         assert_columns(out.columns, self.features)
         realize_frame(out)
 
-    def time_to_tidy_ten_features(self, matrix_format: str) -> None:
-        out = self.adata.ap.to_tidy(x=self.features)
+    def time_join_features_ten_features(self, matrix_format: str) -> None:
+        out = self.adata.ap.join_features(*self.names)
         assert out.shape[0] == 1_000_000
-        assert set(out["feature"].unique()) == set(self.features)
+        assert set(out[".feature"].unique()) == set(self.features)
         realize_frame(out)
 
     def time_budget_rejection(self, matrix_format: str) -> None:
         try:
-            self.adata.ap.to_df(x=self.features, max_matrix_values=1)
+            self.adata.ap.to_wide(*self.names, max_matrix_values=1)
         except ap.AnnplyrError:
             return
         raise AssertionError("projected matrix budget was not rejected")
@@ -129,6 +132,7 @@ class BackedProjection:
         source.write_h5ad(self.path)
         self.adata = read_h5ad(self.path, backed="r")
         self.features = feature_names(10)
+        self.names = [X[name] for name in self.features]
         self._legacy_sparse = ap.__version__.startswith("0.2.") and storage != "dense"
 
     def _target(self):
@@ -143,7 +147,7 @@ class BackedProjection:
 
     def time_selected_read(self, storage: str) -> None:
         target = self._target()
-        out = target.ap.to_df(x=self.features)
+        out = target.ap.to_wide(*self.names)
         expected_rows = 20_000 if storage == "dense" else 100_000
         assert out.shape == (expected_rows, 10)
         assert_columns(out.columns, self.features)
@@ -151,14 +155,14 @@ class BackedProjection:
 
     def time_filter_three_features(self, storage: str) -> None:
         target = self._target()
-        predicate = (ap.col("g0") > 0) | (ap.col("g1") > 0) | (ap.col("g2") > 0)
-        out = target.ap.filter(x=predicate, copy=False)
+        predicate = (X.g0 > 0) | (X.g1 > 0) | (X.g2 > 0)
+        out = target.ap.filter(predicate)
         assert out.n_obs == self.expected_filtered
         assert out.n_vars == target.n_vars
 
     def time_export_ten_features(self, storage: str) -> None:
         target = self._target()
-        out = target.ap.to_tidy(x=self.features)
+        out = target.ap.join_features(*self.names)
         expected_rows = (20_000 if storage == "dense" else 100_000) * 10
         assert out.shape[0] == expected_rows
         realize_frame(out)
@@ -166,7 +170,7 @@ class BackedProjection:
     def time_budget_rejection(self, storage: str) -> None:
         target = self._target()
         try:
-            target.ap.to_df(x=self.features, max_matrix_values=1)
+            target.ap.to_wide(*self.names, max_matrix_values=1)
         except ap.AnnplyrError:
             return
         raise AssertionError("projected matrix budget was not rejected")

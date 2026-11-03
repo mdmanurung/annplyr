@@ -24,7 +24,7 @@ def test_skill_trigger_description_covers_core_user_phrases() -> None:
     skill_text = (install.bundled_skill_dir() / "SKILL.md").read_text()
     description = next(line for line in skill_text.splitlines() if line.startswith("description: "))
 
-    for phrase in ["adata.ap", "to_df", "to_tidy", "plotnine", "single-cell"]:
+    for phrase in ["adata.ap", "to_wide", "join_features", "plotnine", "single-cell"]:
         assert phrase in description
 
 
@@ -37,8 +37,8 @@ def test_skill_examples_only_use_supported_annplyr_expression_methods() -> None:
 def test_skill_rename_patterns_match_public_api() -> None:
     api_patterns = (install.bundled_skill_dir() / "references" / "api-patterns.md").read_text()
 
-    assert "rename(obs={new_name: old_name}, var={...})" in api_patterns
-    assert "rename_with(str.lower, obs=...)" in api_patterns
+    assert "rename(new=old)" in api_patterns
+    assert "rename_with(str.lower, *names)" in api_patterns
 
 
 def test_skill_extraction_and_utility_patterns_match_v03_signatures() -> None:
@@ -48,8 +48,9 @@ def test_skill_extraction_and_utility_patterns_match_v03_signatures() -> None:
 
     assert "pull(col" not in api_patterns
     assert "pivot_longer(cols" not in api_patterns
-    assert "`pull(obs=...)` / `pull(var=...)` / `pull(x=...)`" in api_patterns
-    assert 'add_sample_meta(adata, meta, sample="sample_id"' in api_patterns
+    assert "`pull(name)`" in api_patterns
+    assert "join_features(*features" in api_patterns
+
     assert 'name_duplicates(adata, axis="obs")' in api_patterns
     assert "ranked.ungroup()" in quickstart
 
@@ -114,4 +115,4 @@ def test_release_metadata_matches_project_version() -> None:
 
     assert f'version: "{version}"' in Path("CITATION.cff").read_text()
     assert f'version = "{version}"' in Path("docs/conf.py").read_text()
-    assert 'date-released: "2026-08-10"' in Path("CITATION.cff").read_text()
+    assert 'date-released: "2026-09-27"' in Path("CITATION.cff").read_text()

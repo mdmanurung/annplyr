@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from annplyr import _accessor as _accessor
+from annplyr import data as data
+from annplyr import tidyr as tidyr
+from annplyr import verbs as verbs
 from annplyr._errors import (
     AnnplyrError,
     DuplicateNameError,
@@ -14,6 +17,7 @@ from annplyr._errors import (
 )
 from annplyr._expr import (
     AnnplyrExpr,
+    Source,
     across,
     all_of,
     any_of,
@@ -44,6 +48,7 @@ from annplyr._expr import (
     lag,
     last,
     last_col,
+    layer,
     lead,
     lit,
     matches,
@@ -73,11 +78,12 @@ from annplyr._expr import (
     where,
 )
 from annplyr._grouped import GroupedAnnData
+from annplyr._nest import unnest_adata as unnest
 from annplyr._public_docs import install_public_docstrings as _install_public_docstrings
+from annplyr._tidy import TidyAnnData
 from annplyr._utils import (
     FeaturePresence,
     add_name_prefix,
-    add_sample_meta,
     feature_present,
     get_palette,
     name_duplicates,
@@ -85,32 +91,17 @@ from annplyr._utils import (
     rename_var_names,
     replace_name_suffix,
     sample_meta,
-    sample_summary,
     store_palette,
 )
-from annplyr._verbs import (
-    chop,
-    drop_na,
-    extract,
-    fill,
-    hoist,
-    nest,
-    pack,
-    pivot_wider,
-    separate,
-    separate_rows,
-    unchop,
-    unite,
-    unnest,
-    unnest_longer,
-    unnest_wider,
-    unpack,
-)
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 AnnplyrAccessor = _accessor.AnnplyrAccessor
+tidy = TidyAnnData.wrap
 
 __all__ = [
+    "aggregate_cells",
+    "join_features",
+    "tidyr",
     "AnnplyrAccessor",
     "AnnplyrError",
     "AnnplyrExpr",
@@ -122,21 +113,25 @@ __all__ = [
     "NameRepairError",
     "SelectionError",
     "SizeMismatchError",
+    "Source",
+    "TidyAnnData",
     "UnknownColumnError",
     "UnknownSourceError",
     "across",
+    "add_count",
     "add_name_prefix",
-    "add_sample_meta",
     "all_of",
+    "anti_join",
     "any_of",
+    "arrange",
     "average_rank",
     "between",
     "case_match",
     "case_when",
-    "chop",
     "coalesce",
     "col",
     "contains",
+    "count",
     "cum_max",
     "cum_min",
     "cum_prod",
@@ -147,23 +142,27 @@ __all__ = [
     "cummean",
     "dense_rank",
     "desc",
-    "drop_na",
+    "distinct",
     "ends_with",
     "everything",
-    "extract",
     "feature_present",
-    "fill",
+    "filter",
     "first",
+    "full_join",
     "get_palette",
-    "hoist",
+    "glimpse",
+    "group_by",
     "if_all",
     "if_any",
     "if_else",
+    "inner_join",
     "is_na",
     "lag",
     "last",
     "last_col",
+    "layer",
     "lead",
+    "left_join",
     "lit",
     "matches",
     "max",
@@ -172,6 +171,7 @@ __all__ = [
     "median",
     "min",
     "min_rank",
+    "mutate",
     "n",
     "n_distinct",
     "na_if",
@@ -182,33 +182,45 @@ __all__ = [
     "ntile",
     "num_range",
     "obs_names",
-    "pack",
     "percent_rank",
     "pick",
-    "pivot_wider",
+    "pipe",
+    "pivot_longer",
+    "pull",
     "recode",
+    "relocate",
+    "rename",
     "rename_obs_names",
     "rename_var_names",
+    "rename_with",
     "replace_na",
     "replace_name_suffix",
+    "right_join",
     "row_number",
     "sample_meta",
-    "sample_summary",
     "sd",
-    "separate",
-    "separate_rows",
+    "select",
+    "semi_join",
+    "slice",
+    "slice_head",
+    "slice_max",
+    "slice_min",
+    "slice_sample",
+    "slice_tail",
     "starts_with",
     "store_palette",
     "sum",
-    "unchop",
-    "unite",
+    "summarise",
+    "summarize",
+    "tidy",
+    "to_wide",
+    "transmute",
     "unnest",
-    "unnest_longer",
-    "unnest_wider",
-    "unpack",
     "var_names",
     "where",
 ]
+
+globals().update(verbs.FUNCTIONS)
 
 _install_public_docstrings(AnnplyrAccessor, GroupedAnnData, globals(), __all__)
 del _install_public_docstrings

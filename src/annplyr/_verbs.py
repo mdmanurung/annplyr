@@ -8,7 +8,9 @@ import narwhals as nw
 import numpy as np
 import pandas as pd
 from anndata import AnnData
+from narwhals.exceptions import ColumnNotFoundError
 
+from annplyr import _resolve as resolve
 from annplyr._errors import (
     AnnplyrError,
     DuplicateNameError,
@@ -16,6 +18,7 @@ from annplyr._errors import (
     JoinRelationshipError,
     NameRepairError,
     SelectionError,
+    SizeMismatchError,
     UnknownColumnError,
     UnknownSourceError,
 )
@@ -39,14 +42,17 @@ from annplyr._frames import (
     with_row_number,
     x_frame,
 )
-from annplyr._groups import GroupPlan
+from annplyr._groups import GroupPlan, sort_by_keys
 from annplyr._reductions import ReductionPlan, SummaryGroupPlan, summarize_chunked
+from annplyr._resolve import ResolvedSource
 from annplyr._sources import (
     DEFAULT_REDUCTION_CHUNK_VALUES,
     RequestPlanner,
     request_dependencies,
     source_adapter,
 )
+from annplyr._tidy import _reclassify
+from annplyr._typing import Axis
 
 
 def _decorate_projected_frame(
@@ -103,6 +109,9 @@ def _add_matrix_request(
     row_positions: Any = None,
 ) -> tuple[int, str]:
     adapter = source_adapter(adata, source, key=key, layer=layer)
+    named = [request] if isinstance(request, str) else request
+    if isinstance(named, list) and all(isinstance(name, str) for name in named):
+        resolve.check_feature_names(adata, "layer" if layer else source, layer, named, adapter.names)
     token = planner.add(
         adapter,
         request=request,
@@ -144,41 +153,54 @@ def _axis_positions(indexer: Any, size: int, *, axis: str) -> np.ndarray:
     return values
 
 
-def _subset_positions(
-    adata: AnnData,
-    obs_positions: Any = None,
-    var_positions: Any = None,
-    *,
-    copy: bool = True,
-) -> AnnData:
+def _subset_positions(adata: AnnData, obs_positions: Any = None, var_positions: Any = None) -> AnnData:
     """Subset every aligned AnnData container using integer axis positions.
 
-    A copied subset of a backed object is explicitly materialized in memory.
-    ``copy=False`` is non-mutating and may return either an AnnData view or a
-    materialized object, as allowed by the v0.3 ownership contract.
+    The result is independent of the input. A backed input returns the view, so
+    a backed ``.h5ad`` can be subset without loading it.
     """
     obs_idx = _axis_positions(obs_positions, adata.n_obs, axis="obs")
     var_idx = _axis_positions(var_positions, adata.n_vars, axis="var")
     selected = adata[obs_idx, var_idx]
-    if not copy:
-        return selected
-    if adata.isbacked:
-        return selected.to_memory(copy=True)
-    return selected.copy()
+    return selected if adata.isbacked else selected.copy()
 
 
-def _subset(adata: AnnData, obs_idx: Any, var_idx: Any, *, copy: bool = True) -> AnnData:
+def _subset(adata: AnnData, obs_idx: Any, var_idx: Any) -> AnnData:
     """Compatibility alias for internal callers; indexers are positions only."""
-    return _subset_positions(adata, obs_idx, var_idx, copy=copy)
+    return _subset_positions(adata, obs_idx, var_idx)
 
 
-def _same_shape_target(adata: AnnData, *, inplace: bool, verb: str) -> AnnData:
+def _same_shape_target(adata: AnnData, *, verb: str) -> AnnData:
+    """Return a new AnnData that shares ``X``, layers and aligned matrices with ``adata``.
+
+    ``obs``, ``var`` and ``uns`` are copied, so a verb can edit them freely. A
+    view is materialized first, so the result never writes through to its parent.
+    """
     _ensure_not_backed(adata, verb)
-    return adata if inplace else adata.copy()
+    source = adata
+    if adata.is_view:
+        adata = adata.copy()
+    out = AnnData(
+        X=adata.X,
+        obs=_obs_table(adata).copy(),
+        var=_var_table(adata).copy(),
+        uns=dict(adata.uns),
+        obsm=cast(Any, dict(adata.obsm)),
+        varm=cast(Any, dict(adata.varm)),
+        layers=cast(Any, dict(adata.layers)),
+        obsp=cast(Any, dict(adata.obsp)),
+        varp=cast(Any, dict(adata.varp)),
+    )
+    raw = adata.raw
+    if raw is not None:
+        out.raw = AnnData(
+            X=raw.X, obs=_obs_table(out).iloc[:, :0], var=raw.var, varm=cast(Any, dict(cast(Any, raw).varm))
+        )
+    return _reclassify(source, out)
 
 
-def _inplace_reorder_axis(adata: AnnData, positions: np.ndarray, *, axis: str) -> None:
-    """Reorder one complete axis while preserving the AnnData object's identity."""
+def _reorder_axis(adata: AnnData, positions: np.ndarray, *, axis: str) -> None:
+    """Reorder one complete axis of a fresh object, which is safe because it shares nothing mutable."""
     expected = adata.n_obs if axis == "obs" else adata.n_vars
     if len(positions) != expected or not np.array_equal(np.sort(positions), np.arange(expected)):
         msg = f"in-place {axis} reorder requires a complete positional permutation"
@@ -205,7 +227,7 @@ def _var_table(adata: AnnData) -> pd.DataFrame:
     return cast(pd.DataFrame, adata.var)
 
 
-def _axis(axis: str | int) -> str:
+def _axis(axis: str | int) -> Axis:
     if axis in {"obs", "observation", "observations", "0", 0}:
         return "obs"
     if axis in {"var", "variable", "variables", "1", 1}:
@@ -216,97 +238,69 @@ def _axis(axis: str | int) -> str:
 
 def filter_adata(
     adata: AnnData,
-    obs: Any = None,
-    var: Any = None,
-    x: Any = None,
-    raw: Any = None,
-    obs_names: Any = None,
-    var_names: Any = None,
-    obsm: Mapping[str, Any] | None = None,
-    varm: Mapping[str, Any] | None = None,
-    layer: str | None = None,
-    copy: bool = True,
+    *predicates: Any,
+    source: str | None = None,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
 ) -> AnnData:
+    """Subset axes with one predicate per argument, combined with AND.
+
+    Each predicate names its own container, so one call can read ``obs``,
+    ``raw``, a layer, and an embedding together:
+
+        adata.ap.filter(
+            ap.col("n_genes") >= 500,
+            ap.col("raw:LYZ") < 1.0,
+            ap.col("counts:MS4A1") > 0,
+        )
+
+    A bare name is ``obs`` metadata. A matrix always needs a qualifier, since
+    there is no safe default container for it.
+    """
+    items = _as_predicate_list(predicates)
+    if not items:
+        return _subset_positions(adata)
+    default = resolve.resolve_container(adata, source) if source is not None else None
+    buckets = resolve.partition_payload(adata, items, verb="filter", default_source=default)
+    planner = RequestPlanner(max_matrix_values)
+    frames = resolve.prepare_frames(adata, buckets, planner)
+
     obs_indices: list[pd.Index] = []
     var_indices: list[pd.Index] = []
-    planner = RequestPlanner(max_matrix_values)
-    planned: list[tuple[int, str, Any]] = []
-
-    if x is not None:
-        token, axis = _add_matrix_request(planner, adata, "x", x, layer=layer, axis="obs", context="filter x")
-        planned.append((token, axis, x))
-    if raw is not None:
-        token, axis = _add_matrix_request(planner, adata, "raw", raw, axis="obs", context="filter raw")
-        planned.append((token, axis, raw))
-    for key, predicates in (obsm or {}).items():
-        token, axis = _add_matrix_request(
-            planner, adata, "obsm", predicates, key=key, axis="obs", context=f"filter obsm {key!r}"
-        )
-        planned.append((token, axis, predicates))
-    for key, predicates in (varm or {}).items():
-        token, axis = _add_matrix_request(
-            planner, adata, "varm", predicates, key=key, axis="var", context=f"filter varm {key!r}"
-        )
-        planned.append((token, axis, predicates))
-    projected = planner.execute()
-
-    if obs is not None:
-        obs_indices.append(
-            _evaluate_filter_positions(obs_frame(adata), obs, _group_positions if _group_axis == "obs" else None)
-        )
-    if obs_names is not None:
-        obs_indices.append(
-            _evaluate_filter_positions(
-                pd.DataFrame(
-                    {"obs_names": adata.obs_names, OBS_NAMES: adata.obs_names},
-                    index=pd.RangeIndex(adata.n_obs),
-                ),
-                obs_names,
-                _group_positions if _group_axis == "obs" else None,
-            )
-        )
-    for token, axis, predicates in planned:
-        frame = _decorate_projected_frame(projected[token], adata, axis=axis, request=predicates)
-        if axis == "obs":
-            obs_indices.append(
-                _evaluate_filter_positions(frame, predicates, _group_positions if _group_axis == "obs" else None)
-            )
+    for resolved_source, frame in frames.items():
+        group_positions = _group_positions if _group_axis == resolved_source.axis else None
+        selected = _evaluate_filter_positions(frame, buckets[resolved_source], group_positions)
+        if resolved_source.axis == "obs":
+            obs_indices.append(selected)
         else:
-            var_indices.append(
-                _evaluate_filter_positions(frame, predicates, _group_positions if _group_axis == "var" else None)
-            )
+            var_indices.append(selected)
 
-    if var is not None:
-        var_indices.append(
-            _evaluate_filter_positions(var_frame(adata), var, _group_positions if _group_axis == "var" else None)
-        )
-    if var_names is not None:
-        var_indices.append(
-            _evaluate_filter_positions(
-                pd.DataFrame(
-                    {"var_names": adata.var_names, VAR_NAMES: adata.var_names},
-                    index=pd.RangeIndex(adata.n_vars),
-                ),
-                var_names,
-                _group_positions if _group_axis == "var" else None,
-            )
-        )
-    obs_base = (
-        pd.Index(np.concatenate(_group_positions))
-        if _group_axis == "obs" and _group_positions
-        else pd.RangeIndex(adata.n_obs)
+    obs_base = _axis_base(adata.n_obs, _group_positions, _group_axis, "obs")
+    var_base = _axis_base(adata.n_vars, _group_positions, _group_axis, "var")
+    return _subset(
+        adata,
+        intersect_ordered(obs_base, *obs_indices),
+        intersect_ordered(var_base, *var_indices),
     )
-    var_base = (
-        pd.Index(np.concatenate(_group_positions))
-        if _group_axis == "var" and _group_positions
-        else pd.RangeIndex(adata.n_vars)
-    )
-    obs_idx = intersect_ordered(obs_base, *obs_indices)
-    var_idx = intersect_ordered(var_base, *var_indices)
-    return _subset(adata, obs_idx, var_idx, copy=copy)
+
+
+def _axis_base(size: int, groups: tuple[np.ndarray, ...] | None, group_axis: str | None, axis: str) -> pd.Index:
+    if group_axis == axis and groups:
+        return pd.Index(np.concatenate(groups))
+    return pd.RangeIndex(size)
+
+
+def _as_predicate_list(predicates: tuple[Any, ...]) -> list[Any]:
+    """Flatten a single tuple/list argument into its predicates.
+
+    A tuple was previously required because there was one keyword slot to fill;
+    with one argument per predicate it is only sugar, so ``(a, b)`` and
+    ``a, b`` mean the same thing.
+    """
+    if len(predicates) == 1 and isinstance(predicates[0], (list, tuple)):
+        return list(predicates[0])
+    return [item for item in predicates if item is not None]
 
 
 def _evaluate_filter_positions(
@@ -324,7 +318,15 @@ def _evaluate_filter_positions(
     return pd.Index(np.concatenate(pieces) if pieces else np.empty(0, dtype=np.intp))
 
 
-def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None, copy: bool = True) -> AnnData:
+def _checked_names(adata: AnnData, x: Any) -> Any:
+    """Name a missing gene's real container before the selector reports it bare."""
+    named = [x] if isinstance(x, str) else x
+    if isinstance(named, list) and all(isinstance(name, str) for name in named):
+        resolve.check_feature_names(adata, "x", None, named, adata.var_names)
+    return x
+
+
+def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None) -> AnnData:
     obs_columns = (
         _selected_real_columns(evaluate_select(obs_frame(adata), obs).columns, _obs_table(adata).columns, source="obs")
         if obs is not None
@@ -336,14 +338,19 @@ def select_adata(adata: AnnData, obs: Any = None, var: Any = None, x: Any = None
         else _var_table(adata).columns
     )
     selected_var_names = (
-        _selected_real_columns(evaluate_select(x_frame(adata), x).columns, adata.var_names, source="x")
+        _selected_real_columns(
+            evaluate_select(x_frame(adata), _checked_names(adata, x)).columns, adata.var_names, source="x"
+        )
         if x is not None
         else list(adata.var_names)
     )
     var_positions = _name_occurrence_positions(adata.var_names, selected_var_names, source="x")
-    out = _subset_positions(adata, None, var_positions, copy=copy)
-    out.obs = _obs_table(out).loc[:, list(obs_columns)].copy()
-    out.var = _var_table(out).loc[:, list(var_columns)].copy()
+    out = _subset_positions(adata, None, var_positions)
+    # assigning to a backed view fails, so only touch a table whose columns change
+    if list(obs_columns) != list(_obs_table(out).columns):
+        out.obs = _obs_table(out).loc[:, list(obs_columns)].copy()
+    if list(var_columns) != list(_var_table(out).columns):
+        out.var = _var_table(out).loc[:, list(var_columns)].copy()
     return out
 
 
@@ -389,13 +396,12 @@ def rename_adata(
     obs: Mapping[str, str] | None = None,
     var: Mapping[str, str] | None = None,
     x: Mapping[str, str] | None = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "rename")
     obs_mapping = _rename_mapping(_obs_table(adata).columns, obs, source="obs") if obs else None
     var_mapping = _rename_mapping(_var_table(adata).columns, var, source="var") if var else None
     x_names = _renamed_names(adata.var_names, x, source="x") if x else None
-    out = _same_shape_target(adata, inplace=inplace, verb="rename")
+    out = _same_shape_target(adata, verb="rename")
     if obs_mapping:
         out.obs = _obs_table(out).rename(columns=obs_mapping).copy()
     if var_mapping:
@@ -412,7 +418,6 @@ def rename_with_adata(
     obs: Any = None,
     var: Any = None,
     x: Any = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "rename_with")
     obs_mapping = (
@@ -426,7 +431,7 @@ def rename_with_adata(
         else None
     )
     x_mapping = _rename_with_mapping(x_frame(adata), x, func, adata.var_names, source="x") if x is not None else None
-    return rename_adata(adata, obs=obs_mapping, var=var_mapping, x=x_mapping, inplace=inplace)
+    return rename_adata(adata, obs=obs_mapping, var=var_mapping, x=x_mapping)
 
 
 def _rename_with_mapping(
@@ -485,7 +490,6 @@ def relocate_adata(
     x: Any = None,
     before: str | None = None,
     after: str | None = None,
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "relocate")
     obs_order = (
@@ -509,13 +513,13 @@ def relocate_adata(
         else None
     )
     x_positions = _relocated_feature_positions(adata, x, before=before, after=after) if x is not None else None
-    out = _same_shape_target(adata, inplace=inplace, verb="relocate")
+    out = _same_shape_target(adata, verb="relocate")
     if obs_order is not None:
         out.obs = _obs_table(out).loc[:, obs_order].copy()
     if var_order is not None:
         out.var = _var_table(out).loc[:, var_order].copy()
     if x_positions is not None:
-        _inplace_reorder_axis(out, x_positions, axis="var")
+        _reorder_axis(out, x_positions, axis="var")
     return out
 
 
@@ -604,7 +608,6 @@ def distinct_adata(
     x: Any = None,
     axis: str = "obs",
     keep_all: bool = False,
-    copy: bool = True,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
@@ -625,7 +628,7 @@ def distinct_adata(
             selected,
             _group_positions if _group_axis == "obs" else None,
         )
-        return _subset(adata, obs_idx, slice(None), copy=copy)
+        return _subset(adata, obs_idx, slice(None))
     RequestPlanner(max_matrix_values).validate()
     if axis == "obs":
         frame, selector, available = _distinct_source(adata, obs=obs, x=x, axis=axis)
@@ -634,7 +637,7 @@ def distinct_adata(
             selected,
             _group_positions if _group_axis == "obs" else None,
         )
-        out = _subset(adata, obs_idx, slice(None), copy=copy)
+        out = _subset(adata, obs_idx, slice(None))
         if not keep_all and obs is not None:
             out.obs = _obs_table(out).loc[:, _real_columns(selected.columns, available)].copy()
         return out
@@ -645,7 +648,7 @@ def distinct_adata(
         selected,
         _group_positions if _group_axis == "var" else None,
     )
-    out = _subset(adata, slice(None), var_idx, copy=copy)
+    out = _subset(adata, slice(None), var_idx)
     if not keep_all and var is not None:
         out.var = _var_table(out).loc[:, _real_columns(selected.columns, available)].copy()
     return out
@@ -692,13 +695,20 @@ def _sort_values_for_frame(frame: pd.DataFrame, by: Any) -> pd.Index:
     ascending: list[bool] = []
     for i, (expr, is_descending) in enumerate(keys):
         name = f"__annplyr_sort_{i}__"
-        selected = nw.from_native(work).select(_sort_expr(expr).alias(name)).to_native()
-        work[name] = selected[name].to_numpy()
+        selected = _select_sort_key(work, expr, name)
+        work[name] = selected[name].array  # a categorical sorts by category order, as in dplyr
         sort_columns.append(name)
         ascending.append(not is_descending)
 
     sorted_frame = work.sort_values(sort_columns, ascending=ascending, kind="mergesort")
     return sorted_frame.index
+
+
+def _select_sort_key(frame: pd.DataFrame, expr: Any, name: str) -> pd.DataFrame:
+    try:
+        return nw.from_native(frame).select(_sort_expr(expr).alias(name)).to_native()
+    except _MISSING_COLUMN_ERRORS as exc:
+        raise UnknownColumnError(_missing_column_message(exc, "sort key")) from exc
 
 
 def _sort_expr(expr: Any) -> Any:
@@ -727,64 +737,44 @@ def _sort_keys(by: Any) -> list[tuple[Any, bool]]:
 
 def arrange_adata(
     adata: AnnData,
-    obs: Any = None,
-    var: Any = None,
-    x: Any = None,
-    raw: Any = None,
-    obsm: Mapping[str, Any] | None = None,
-    varm: Mapping[str, Any] | None = None,
-    layer: str | None = None,
-    copy: bool = True,
+    *by: Any,
+    source: str | None = None,
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
 ) -> AnnData:
+    """Order axes by one sort key per argument, applied left to right.
+
+    Wrap a key in :func:`desc` for a descending order. Keys may name different
+    containers, for example ``ap.col("n_counts")`` then
+    ``ap.col("var:highly_variable")``.
+    """
+    items = _as_predicate_list(by)
+    if not items:
+        return _subset_positions(adata)
+    default = resolve.resolve_container(adata, source) if source is not None else None
+    buckets = resolve.partition_payload(adata, items, verb="arrange", default_source=default)
     planner = RequestPlanner(max_matrix_values)
-    obs_frames: list[tuple[pd.DataFrame | int, Any, str]] = []
-    var_frames: list[tuple[pd.DataFrame | int, Any, str]] = []
-    if obs is not None:
-        obs_frames.append((obs_frame(adata), obs, "obs"))
-    if x is not None:
-        token, _ = _add_matrix_request(planner, adata, "x", x, layer=layer, axis="obs", context="arrange x")
-        obs_frames.append((token, x, "obs"))
-    if raw is not None:
-        token, _ = _add_matrix_request(planner, adata, "raw", raw, axis="obs", context="arrange raw")
-        obs_frames.append((token, raw, "obs"))
-    for key, by in (obsm or {}).items():
-        token, _ = _add_matrix_request(planner, adata, "obsm", by, key=key, axis="obs", context=f"arrange obsm {key!r}")
-        obs_frames.append((token, by, "obs"))
-    if var is not None:
-        var_frames.append((var_frame(adata), var, "var"))
-    for key, by in (varm or {}).items():
-        token, _ = _add_matrix_request(planner, adata, "varm", by, key=key, axis="var", context=f"arrange varm {key!r}")
-        var_frames.append((token, by, "var"))
-    projected = planner.execute()
+    frames = resolve.prepare_frames(adata, buckets, planner)
 
-    def _resolved(items: list[tuple[pd.DataFrame | int, Any, str]]) -> list[tuple[pd.DataFrame, Any]]:
-        resolved: list[tuple[pd.DataFrame, Any]] = []
-        for frame_or_token, by, axis in items:
-            frame = (
-                _decorate_projected_frame(projected[frame_or_token], adata, axis=axis, request=by)
-                if isinstance(frame_or_token, int)
-                else frame_or_token
-            )
-            resolved.append((frame, by))
-        return resolved
+    # Keep the keys in the order written: bare names carry no reference, so bucketing
+    # alone used to put them after every expression key.
+    resolved: dict[str, list[tuple[pd.DataFrame, Any]]] = {"obs": [], "var": []}
+    for item in items:
+        (item_source,) = resolve.partition_payload(adata, [item], verb="arrange", default_source=default)
+        resolved[item_source.axis].append((frames[item_source], [item]))
 
-    resolved_obs = _resolved(obs_frames)
-    resolved_var = _resolved(var_frames)
     obs_idx = _sort_values_for_group_frames(
         adata.n_obs,
-        resolved_obs,
+        resolved["obs"],
         _group_positions if _group_axis == "obs" else None,
     )
     var_idx = _sort_values_for_group_frames(
         adata.n_vars,
-        resolved_var,
+        resolved["var"],
         _group_positions if _group_axis == "var" else None,
     )
-
-    return _subset(adata, obs_idx, var_idx, copy=copy)
+    return _subset(adata, obs_idx, var_idx)
 
 
 def _sort_values_for_group_frames(
@@ -807,8 +797,8 @@ def _sort_values_for_frames(base_index: pd.Index, frame_by_iter: Any) -> pd.Inde
         for expr, is_descending in _sort_keys(by):
             name = f"__annplyr_sort_{len(sort_columns)}__"
             work_frame = with_row_number(prepare_sparse_for_arithmetic(frame))
-            selected = nw.from_native(work_frame).select(_sort_expr(expr).alias(name)).to_native()
-            work[name] = selected[name].to_numpy()
+            selected = _select_sort_key(work_frame, expr, name)
+            work[name] = selected[name].array  # a categorical sorts by category order, as in dplyr
             sort_columns.append(name)
             ascending.append(not is_descending)
     if not sort_columns:
@@ -842,12 +832,12 @@ def _var_sort_frames(adata: AnnData, *, var: Any = None, varm: Mapping[str, Any]
         yield varm_frame(adata, key), by
 
 
-def slice_adata(adata: AnnData, *indices: Any, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_adata(adata: AnnData, *indices: Any, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     selector = _slice_selector(indices)
     if axis == "obs":
-        return _subset(adata, selector, slice(None), copy=copy)
-    return _subset(adata, slice(None), selector, copy=copy)
+        return _subset(adata, selector, slice(None))
+    return _subset(adata, slice(None), selector)
 
 
 def _slice_selector(indices: tuple[Any, ...]) -> Any:
@@ -862,16 +852,16 @@ def _slice_selector(indices: tuple[Any, ...]) -> Any:
     return list(indices)
 
 
-def slice_head_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_head_adata(adata: AnnData, n: int = 5, *, axis: str = "obs") -> AnnData:
     _validate_slice_n(n)
-    return slice_adata(adata, slice(0, n), axis=axis, copy=copy)
+    return slice_adata(adata, slice(0, n), axis=axis)
 
 
-def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_tail_adata(adata: AnnData, n: int = 5, *, axis: str = "obs") -> AnnData:
     _validate_slice_n(n)
     if n == 0:
-        return slice_adata(adata, slice(0, 0), axis=axis, copy=copy)
-    return slice_adata(adata, slice(-n, None), axis=axis, copy=copy)
+        return slice_adata(adata, slice(0, 0), axis=axis)
+    return slice_adata(adata, slice(-n, None), axis=axis)
 
 
 def _validate_slice_n(n: int) -> None:
@@ -880,29 +870,21 @@ def _validate_slice_n(n: int) -> None:
         raise SelectionError(msg)
 
 
-def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_min_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     _validate_slice_n(n)
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
-    positions = _sort_values_for_frame(frame, by).to_numpy(dtype=np.intp)[:n]
-    return (
-        _subset_positions(adata, positions, None, copy=copy)
-        if axis == "obs"
-        else _subset_positions(adata, None, positions, copy=copy)
-    )
+    positions = _sort_values_for_frame(frame, resolve.bare_key(by, axis=axis)).to_numpy(dtype=np.intp)[:n]
+    return _subset_positions(adata, positions, None) if axis == "obs" else _subset_positions(adata, None, positions)
 
 
-def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs", copy: bool = True) -> AnnData:
+def slice_max_adata(adata: AnnData, by: Any, n: int = 5, *, axis: str = "obs") -> AnnData:
     axis = _axis(axis)
     _validate_slice_n(n)
-    by_desc = _desc_order_by(by)
+    by_desc = _desc_order_by(resolve.bare_key(by, axis=axis))
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
     positions = _sort_values_for_frame(frame, by_desc).to_numpy(dtype=np.intp)[:n]
-    return (
-        _subset_positions(adata, positions, None, copy=copy)
-        if axis == "obs"
-        else _subset_positions(adata, None, positions, copy=copy)
-    )
+    return _subset_positions(adata, positions, None) if axis == "obs" else _subset_positions(adata, None, positions)
 
 
 def _desc_order_by(by: Any) -> Any:
@@ -919,7 +901,6 @@ def slice_sample_adata(
     replace: bool = False,
     random_state: int | None = None,
     axis: str = "obs",
-    copy: bool = True,
 ) -> AnnData:
     axis = _axis(axis)
     size = adata.n_obs if axis == "obs" else adata.n_vars
@@ -939,97 +920,287 @@ def slice_sample_adata(
         raise SelectionError(msg)
     rng = np.random.default_rng(random_state)
     selected = rng.choice(size, size=n, replace=replace)
-    return slice_adata(adata, selected.tolist(), axis=axis, copy=copy)
+    return slice_adata(adata, selected.tolist(), axis=axis)
+
+
+#: Assignments that name no container all evaluate against the obs frame, so
+#: they share one group key and one frame read rather than being split per
+#: reference. The empty reference set also marks "no overlay needed".
+_DEFAULT_ASSIGNMENT_SOURCE = ResolvedSource("obs", None, "obs", ())
+
+
+def _assignment_container(adata: AnnData, name: str, value: Any, verb: str) -> ResolvedSource:
+    """Resolve the single container one assignment's value reads from.
+
+    An ``across()`` expansion and an opaque Narwhals expression cannot name their
+    own container, so they resolve to the default obs frame, as does a literal.
+    """
+    if hasattr(value, "expand"):
+        return _DEFAULT_ASSIGNMENT_SOURCE
+    references = resolve.collect_references(value)
+    if not references:
+        return _DEFAULT_ASSIGNMENT_SOURCE
+    sources = resolve.group_by_source(adata, references)
+    if len(sources) > 1:
+        listed = ", ".join(sorted(source.context for source in sources))
+        msg = (
+            f"{verb}: assignment {name!r} cannot mix columns from {listed}. "
+            f"Split it into one assignment per container, or precompute the shared part first"
+        )
+        raise IncompatibleAxisError(msg)
+    return next(iter(sources))
+
+
+def _flat_assignment_groups(
+    adata: AnnData,
+    assignments: Mapping[str, Any],
+    *,
+    verb: str,
+) -> list[tuple[ResolvedSource, dict[str, Any]]]:
+    """Group assignments by the container each one reads, in first-seen order.
+
+    Keyed on the container's identity alone, so every assignment reading ``obs``
+    lands in one group no matter which columns it names, and the frame is read
+    once. The group order preserves sequential semantics: a later group may read
+    a column an earlier group produced, because each is evaluated against its own
+    frame with the accumulated columns overlaid.
+    """
+    groups: list[tuple[ResolvedSource, dict[str, Any]]] = []
+    index: dict[tuple[str, str | None], int] = {}
+    references: list[list[tuple[str, str]]] = []
+
+    for name, value in assignments.items():
+        resolved = _assignment_container(adata, name, value, verb)
+        key = (resolved.kind, resolved.key)
+        if key not in index:
+            index[key] = len(groups)
+            groups.append((resolved, {}))
+            references.append(list(resolved.references))
+        slot = index[key]
+        groups[slot][1][name] = value
+        if resolved.references:
+            references[slot].extend(resolved.references)
+
+    # carry the union of every reference in the group so one projection covers
+    # all of its assignments
+    return [
+        (ResolvedSource(source.kind, source.key, source.axis, tuple(refs)), payload)
+        for (source, payload), refs in zip(groups, references, strict=True)
+    ]
+
+
+def merge_named(assignments: Any, named: Mapping[str, Any], *, verb: str) -> Any:
+    """Merge keyword assignments into the positional dict, which keeps its order.
+
+    The dict stays for names that are not identifiers, such as ``"CD4+"``, so a
+    name given both ways is ambiguous and raises.
+    """
+    if not named:
+        return assignments
+    if assignments is not None and not isinstance(assignments, Mapping):
+        return assignments  # the evaluator raises the typed error
+    base = dict(assignments or {})
+    both = sorted(set(base) & set(named))
+    if both:
+        msg = f"{verb} got {both} both in the dict and as keywords; give each name once"
+        raise DuplicateNameError(msg)
+    return {**base, **named}
+
+
+def _evaluate_flat_assignments(
+    adata: AnnData,
+    assignments: Mapping[str, Any],
+    *,
+    verb: str,
+    source: str | None,
+    max_matrix_values: int | None,
+    group_positions: tuple[np.ndarray, ...] | None = None,
+    group_axis: str | None = None,
+) -> list[pd.DataFrame]:
+    """Evaluate assignments group by group, threading results forward.
+
+    Each group is evaluated against its own container's frame, so the plan is
+    registered for every read before the first adapter read. Later groups see the
+    columns earlier groups produced, which is what makes assignments sequential.
+    """
+    if not isinstance(assignments, Mapping):
+        msg = (
+            f"{verb} takes new columns as keywords, not a bare {type(assignments).__name__}; "
+            f"write {verb}(name=expression), or {verb}({{'name': expression}}) for a name "
+            f"that is not an identifier, for example {verb}(scaled=ap.across(...))"
+        )
+        raise SelectionError(msg)
+    groups = _flat_assignment_groups(adata, assignments, verb=verb)
+    if not groups:
+        return []
+    if source is not None:
+        default = resolve.resolve_container(adata, source)
+        groups = [
+            (default if group_source.kind == "obs" and not group_source.references else group_source, payload)
+            for group_source, payload in groups
+        ]
+    planner = RequestPlanner(max_matrix_values)
+    buckets = {resolved_source: [payload] for resolved_source, payload in groups}
+    frames = resolve.prepare_frames(adata, buckets, planner)
+
+    accumulated: dict[str, pd.Series] = {}
+    results: list[pd.DataFrame] = []
+    for resolved_source, payload in groups:
+        frame = frames[resolved_source]
+        # Split the payload into dependency waves, so assignments proven
+        # independent still share one frame evaluation, and a wave can see every
+        # earlier wave's columns, including a same-named one it overwrites.
+        waves = _assignment_waves(payload, accumulated)
+        for wave in waves:
+            if accumulated:
+                overlay = pd.DataFrame(accumulated)
+                frame = frame.copy(deep=False)
+                for column in overlay.columns:
+                    _assign_positional(frame, column, overlay[column])
+            if group_positions is not None and group_axis == resolved_source.axis:
+                pieces = [
+                    (positions, evaluate_assignments(frame.iloc[positions, :].reset_index(drop=True), wave))
+                    for positions in group_positions
+                ]
+                values = _scatter_group_assignments(pieces, len(frame))
+            else:
+                values = evaluate_assignments(frame, wave)
+            for column in values.columns:
+                accumulated[str(column)] = values[column]
+            results.append(values)
+    return results
+
+
+def _assignment_waves(payload: Mapping[str, Any], produced: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Split one container's assignments into waves that can share an evaluation.
+
+    An assignment joins the earliest wave that does not read a name any earlier
+    wave produces. That keeps mutually independent assignments together while
+    preserving sequential semantics for anything that reads an earlier result,
+    including a column a previous wave just wrote.
+    """
+    from annplyr._frames import _assignment_batches
+
+    batches = _assignment_batches(dict(payload))
+    if not batches:
+        return []
+    blocked: set[str] = {str(name) for name in produced}
+    waves: list[dict[str, Any]] = []
+    for batch in batches:
+        wave = dict(batch)
+        reads = {
+            str(dependency) for value in wave.values() for dependency in (getattr(value, "dependencies", None) or ())
+        }
+        if reads & blocked and waves:
+            # reads a name an earlier wave produces, so it has to wait
+            waves.append(wave)
+        elif reads & blocked:
+            waves.append(wave)
+        else:
+            # independent of everything so far: join the latest wave it fits
+            if waves and not (set(wave) & set().union(*(set(w) for w in waves))):
+                waves[-1].update(wave)
+            else:
+                waves.append(wave)
+        blocked |= set(wave)
+    return waves
 
 
 def mutate_adata(
     adata: AnnData,
+    assignments: Mapping[str, Any] | None = None,
     *,
-    obs: Mapping[str, Any] | None = None,
-    var: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    raw: Mapping[str, Any] | None = None,
-    obsm: Mapping[str, Mapping[str, Any]] | None = None,
-    varm: Mapping[str, Mapping[str, Any]] | None = None,
-    layer: str | None = None,
-    inplace: bool = False,
+    into: str = "obs",
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
 ) -> AnnData:
+    """Add or replace one metadata column per assignment, in order.
+
+    Assignments are strictly sequential, so a later one may read a column an
+    earlier one produced. Each value names the container it reads from, for
+    example ``ap.col("raw:LYZ")``, and all results are written to ``into``.
+    """
     _ensure_not_backed(adata, "mutate")
-    obs_values, var_values = _evaluate_mutation_sources(
+    destination = _axis(into)
+    if destination not in {"obs", "var"}:
+        msg = f"mutate into= must be 'obs' or 'var', not {into!r}"
+        raise IncompatibleAxisError(msg)
+    results = _evaluate_flat_assignments(
         adata,
-        obs=obs,
-        var=var,
-        x=x,
-        raw=raw,
-        obsm=obsm,
-        varm=varm,
-        layer=layer,
+        assignments or {},
+        verb="mutate",
+        source=None,
         max_matrix_values=max_matrix_values,
         group_positions=_group_positions,
         group_axis=_group_axis,
     )
-    out = _same_shape_target(adata, inplace=inplace, verb="mutate")
-    for values in obs_values:
+    out = _same_shape_target(adata, verb="mutate")
+    table = _obs_table(out) if destination == "obs" else _var_table(out)
+    for values in results:
         for column in values.columns:
-            _assign_positional(_obs_table(out), str(column), values[column])
-    for values in var_values:
-        for column in values.columns:
-            _assign_positional(_var_table(out), str(column), values[column])
+            _assign_positional(table, str(column), values[column])
     return out
-
-
-def _assign_positional(table: pd.DataFrame, name: str, values: pd.Series) -> None:
-    """Assign a Series by position while retaining its pandas extension dtype."""
-    series = values.reset_index(drop=True)
-    if name in table and table[name].reset_index(drop=True).equals(series):
-        return
-    table[name] = pd.Series(series.array, index=table.index, name=name)
 
 
 def transmute_adata(
     adata: AnnData,
+    assignments: Mapping[str, Any] | None = None,
     *,
-    obs: Mapping[str, Any] | None = None,
-    var: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    raw: Mapping[str, Any] | None = None,
-    obsm: Mapping[str, Mapping[str, Any]] | None = None,
-    varm: Mapping[str, Mapping[str, Any]] | None = None,
-    layer: str | None = None,
+    into: str = "obs",
     max_matrix_values: int | None = None,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
 ) -> AnnData:
-    obs_values, var_values = _evaluate_mutation_sources(
+    """Keep only the assigned columns of the destination metadata table.
+
+    Same container syntax and sequential semantics as :func:`mutate_adata`, but
+    every other column of the destination table is dropped. A backed input is
+    loaded into memory first.
+    """
+    destination = _axis(into)
+    if destination not in {"obs", "var"}:
+        msg = f"transmute into= must be 'obs' or 'var', not {into!r}"
+        raise IncompatibleAxisError(msg)
+    results = _evaluate_flat_assignments(
         adata,
-        obs=obs,
-        var=var,
-        x=x,
-        raw=raw,
-        obsm=obsm,
-        varm=varm,
-        layer=layer,
+        assignments or {},
+        verb="transmute",
+        source=None,
         max_matrix_values=max_matrix_values,
         group_positions=_group_positions,
         group_axis=_group_axis,
     )
-    obs_columns = [str(column) for values in obs_values for column in values.columns]
-    var_columns = [str(column) for values in var_values for column in values.columns]
-    out = adata.to_memory(copy=True) if adata.isbacked else adata.copy()
-    for values in obs_values:
+    columns = [str(column) for values in results for column in values.columns]
+    out = adata.to_memory(copy=True) if adata.isbacked else _same_shape_target(adata, verb="transmute")
+    table = _obs_table(out) if destination == "obs" else _var_table(out)
+    for values in results:
         for column in values.columns:
-            _assign_positional(_obs_table(out), str(column), values[column])
-    for values in var_values:
-        for column in values.columns:
-            _assign_positional(_var_table(out), str(column), values[column])
-    if obs_columns:
-        out.obs = _obs_table(out).loc[:, obs_columns].copy()
-    if var_columns:
-        out.var = _var_table(out).loc[:, var_columns].copy()
+            _assign_positional(table, str(column), values[column])
+    if columns:
+        if destination == "obs":
+            out.obs = table.loc[:, columns].copy()
+        else:
+            out.var = table.loc[:, columns].copy()
     return out
+
+
+def _assign_positional(table: pd.DataFrame, name: str, values: pd.Series) -> None:
+    """Assign a Series by position while retaining its pandas extension dtype.
+
+    ``Series.to_numpy()`` downcasts ``Int64``, ``boolean``, and ``string`` to
+    their numpy equivalents, so the extension array is reassembled instead. The
+    replacement Series is given the table's own index so pandas treats the
+    assignment as positional rather than aligning on labels, which would turn
+    every row into NA for a metadata table indexed by ``obs_names``.
+    """
+    if len(values) != len(table.index):
+        msg = f"Assignment {name!r} returned {len(values)} rows for a table of length {len(table.index)}"
+        raise SizeMismatchError(msg)
+    if isinstance(values.dtype, pd.api.extensions.ExtensionDtype):
+        table[name] = pd.Series(values.array, index=table.index, name=name)
+    else:
+        table[name] = values.to_numpy()
 
 
 def _evaluate_mutation_sources(
@@ -1111,109 +1282,109 @@ def _scatter_group_assignments(
 
 def summarize_adata(
     adata: AnnData,
+    stats: Mapping[str, Any] | None = None,
     *,
-    obs: Mapping[str, Any] | None = None,
-    var: Mapping[str, Any] | None = None,
-    x: Mapping[str, Any] | None = None,
-    raw: Mapping[str, Any] | None = None,
-    obsm: Mapping[str, Mapping[str, Any]] | None = None,
-    varm: Mapping[str, Mapping[str, Any]] | None = None,
     by: Any = None,
-    layer: str | None = None,
+    source: str | None = None,
     max_matrix_values: int | None = None,
     _group_plan: GroupPlan | None = None,
 ) -> pd.DataFrame:
-    obs_axis_requested = any(source is not None for source in (obs, x, raw, obsm))
-    var_axis_requested = any(source is not None for source in (var, varm))
-    if obs_axis_requested and var_axis_requested:
-        msg = "summarize accepts obs-axis or var-axis sources, not both at once"
-        raise IncompatibleAxisError(msg)
+    """Reduce to one row per group, one aggregate per entry.
 
+    Each aggregate names its own container, so metadata and matrix statistics
+    mix freely in a single call::
+
+        adata.ap.summarize(cells=ap.n(), mean_LYZ=ap.mean(raw.LYZ), by=obs.louvain)
+
+    A bare name is ``obs`` metadata; a matrix needs a qualifier, and ``var:`` or
+    ``varm:`` reduces over the feature axis. One aggregate cannot mix containers,
+    because each is evaluated against its own frame. ``source=`` names the
+    container for an expression that references no column, such as a raw
+    Narwhals expression, which is then charged for in full.
+    """
+    aggregates = dict(stats) if isinstance(stats, Mapping) else dict(_as_predicate_list(tuple(stats or ())))
+    axes = {_assignment_container(adata, str(name), value, "summarize").axis for name, value in aggregates.items()}
+    if len(axes) > 1:
+        raise IncompatibleAxisError("summarize accepts obs-axis or var-axis sources, not both at once")
+
+    buckets = _flat_assignment_groups(adata, aggregates, verb="summarize")
+    if source is not None:
+        default = resolve.resolve_container(adata, source)
+        buckets = [
+            (default if group_source.kind == "obs" and not group_source.references else group_source, payload)
+            for group_source, payload in buckets
+        ]
     planner = RequestPlanner(max_matrix_values)
-    descriptors: list[tuple[pd.DataFrame | int, Mapping[str, Any], str]] = []
-    if var_axis_requested:
-        if var:
-            descriptors.append((var_frame(adata), var, "var"))
-        for key, assignments in (varm or {}).items():
-            token, _ = _add_matrix_request(
-                planner,
-                adata,
-                "varm",
-                assignments,
-                key=key,
-                axis="var",
-                context=f"summarize varm {key!r}",
-            )
-            descriptors.append((token, assignments, "var"))
-        by_source = var_frame(adata)
-    else:
-        if obs:
-            descriptors.append((obs_frame(adata), obs, "obs"))
-        if x:
-            token, _ = _add_matrix_request(planner, adata, "x", x, layer=layer, axis="obs", context="summarize x")
-            descriptors.append((token, x, "obs"))
-        if raw:
-            token, _ = _add_matrix_request(planner, adata, "raw", raw, axis="obs", context="summarize raw")
-            descriptors.append((token, raw, "obs"))
-        for key, assignments in (obsm or {}).items():
-            token, _ = _add_matrix_request(
-                planner,
-                adata,
-                "obsm",
-                assignments,
-                key=key,
-                axis="obs",
-                context=f"summarize obsm {key!r}",
-            )
-            descriptors.append((token, assignments, "obs"))
-        by_source = obs_frame(adata)
-    planner.validate()
-    groups = SummaryGroupPlan.build(by_source, by, grouped=_group_plan)
-    pieces: list[pd.DataFrame] = []
-    for frame_or_token, assignments, axis in descriptors:
-        if not isinstance(frame_or_token, int):
-            positions = np.arange(len(frame_or_token), dtype=np.intp)
-            work = groups.add_to_frame(frame_or_token, positions)
-            pieces.append(summarize_frame(work, assignments=assignments, by=groups.internal_columns))
-            continue
+    # A matrix container may take the chunked reduction path, which reads the
+    # projection itself. Planning first and materializing lazily avoids reading
+    # the same columns twice.
+    resolve.prepare_frames(adata, {s: [p] for s, p in buckets}, planner, materialize=False)
 
-        request = planner.requests[frame_or_token]
-        schema = request.adapter.schema
-        virtual_name, virtual_values = _matrix_virtual_values(
-            adata,
-            axis=axis,
-            request=assignments,
-            schema=schema,
-        )
-        planning_schema = schema.copy()
-        if virtual_name is not None and virtual_values is not None:
-            planning_schema[virtual_name] = pd.Series([], dtype=virtual_values.dtype)
-        reductions = ReductionPlan.resolve(planning_schema, assignments)
-        if reductions is not None:
-            chunks = planner.chunk_plan(
-                frame_or_token,
-                target_values=DEFAULT_REDUCTION_CHUNK_VALUES,
-            )
+    by_axis = next(iter(axes), "obs")
+    by_source = obs_frame(adata) if by_axis == "obs" else var_frame(adata)
+    groups = SummaryGroupPlan.build(by_source, resolve.resolve_grouping_keys(by, axis=by_axis), grouped=_group_plan)
+    pieces: list[pd.DataFrame] = []
+    for resolved_source, assignments in buckets:
+        if resolved_source.is_matrix:
             pieces.append(
-                summarize_chunked(
-                    chunks,
-                    reductions,
+                _summarize_matrix_source(
+                    adata,
+                    planner,
+                    resolved_source,
+                    assignments,
                     groups,
-                    virtual_name=virtual_name,
-                    virtual_values=virtual_values,
                 )
             )
             continue
-
-        frame = _decorate_projected_frame(request.read(), adata, axis=axis, request=assignments)
-        positions = request.row_positions
-        work = groups.add_to_frame(frame, positions)
+        frame = resolve.metadata_frame(adata, resolved_source)
+        work = groups.add_to_frame(frame, np.arange(len(frame), dtype=np.intp))
         pieces.append(summarize_frame(work, assignments=assignments, by=groups.internal_columns))
 
     if not pieces:
-        return count_frame(by_source, by=by)
-    result = _merge_summary_pieces(pieces, list(groups.internal_columns))
-    return groups.restore_keys(result)
+        return count_frame(by_source, by=by, axis=by_axis)
+    result = groups.restore_keys(_merge_summary_pieces(pieces, list(groups.internal_columns)))
+    # a grouped call sorts after it restores its own keys, see GroupedAnnData.summarize
+    return result if _group_plan is not None else sort_by_keys(result, groups.columns)
+
+
+def _summarize_matrix_source(
+    adata: AnnData,
+    planner: RequestPlanner,
+    resolved_source: ResolvedSource,
+    assignments: Mapping[str, Any],
+    groups: SummaryGroupPlan,
+) -> pd.DataFrame:
+    """Summarize one projected matrix container, chunked when it is a reduction."""
+    token = planner.token_for(resolved_source)
+    request = planner.requests[token]
+    schema = request.adapter.schema
+    virtual_name, virtual_values = _matrix_virtual_values(
+        adata,
+        axis=resolved_source.axis,
+        request=assignments,
+        schema=schema,
+    )
+    planning_schema = schema.copy()
+    if virtual_name is not None and virtual_values is not None:
+        planning_schema[virtual_name] = pd.Series([], dtype=virtual_values.dtype)
+    reductions = ReductionPlan.resolve(planning_schema, assignments)
+    if reductions is not None:
+        chunks = planner.chunk_plan(
+            token,
+            target_values=DEFAULT_REDUCTION_CHUNK_VALUES,
+        )
+        return summarize_chunked(
+            chunks,
+            reductions,
+            groups,
+            virtual_name=virtual_name,
+            virtual_values=virtual_values,
+        )
+
+    request = planner.requests[token]
+    frame = resolve.label_frame(request.read(), resolved_source)
+    work = groups.add_to_frame(frame, request.row_positions)
+    return summarize_frame(work, assignments=assignments, by=groups.internal_columns)
 
 
 def _merge_summary_pieces(pieces: list[pd.DataFrame], by_columns: list[str]) -> pd.DataFrame:
@@ -1227,6 +1398,22 @@ def _merge_summary_pieces(pieces: list[pd.DataFrame], by_columns: list[str]) -> 
     return result
 
 
+_MISSING_COLUMN_ERRORS = (ColumnNotFoundError, KeyError)
+
+
+def _missing_column_message(exc: BaseException, context: str) -> str:
+    """Describe a foreign missing-column failure as an annplyr one.
+
+    Narwhals raises ``ColumnNotFoundError`` from ``select`` but a bare ``KeyError``
+    from ``group_by().agg()``, so both are mapped to the same annplyr error and the
+    caller never sees a third-party exception type.
+    """
+    detail = str(exc)
+    if isinstance(exc, KeyError) and detail.startswith("'") and detail.endswith("'"):
+        detail = detail[1:-1]
+    return f"Unknown column in {context}: {detail}"
+
+
 def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, by: Any = None) -> pd.DataFrame:
     work, by_columns = prepare_by_frame(frame, by)
     work = prepare_sparse_for_arithmetic(work)
@@ -1236,16 +1423,22 @@ def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, 
         for name, expr in assignments.items()
     ]
     if by_columns:
-        return nw.from_native(work).group_by(*by_columns).agg(*exprs).to_native()
+        try:
+            return nw.from_native(work).group_by(*by_columns).agg(*exprs).to_native()
+        except _MISSING_COLUMN_ERRORS as exc:
+            raise UnknownColumnError(_missing_column_message(exc, "summary")) from exc
     if exprs:
-        return nw.from_native(with_row_number(work)).select(*exprs).to_native()
+        try:
+            return nw.from_native(with_row_number(work)).select(*exprs).to_native()
+        except _MISSING_COLUMN_ERRORS as exc:
+            raise UnknownColumnError(_missing_column_message(exc, "summary")) from exc
     return pd.DataFrame(index=[0])
 
 
-def prepare_by_frame(frame: pd.DataFrame, by: Any) -> tuple[pd.DataFrame, list[str]]:
+def prepare_by_frame(frame: pd.DataFrame, by: Any, *, axis: str | None = None) -> tuple[pd.DataFrame, list[str]]:
     if by is None:
         return frame.copy(), []
-    by_frame = evaluate_select(frame, by)
+    by_frame = evaluate_select(frame, resolve.resolve_grouping_keys(by, axis=axis))
     by_columns = list(by_frame.columns)
     work = frame.copy()
     for column in by_columns:
@@ -1254,7 +1447,7 @@ def prepare_by_frame(frame: pd.DataFrame, by: Any) -> tuple[pd.DataFrame, list[s
         ):
             msg = f"Grouping column {column!r} would overwrite an existing source column"
             raise DuplicateNameError(msg)
-        work[column] = by_frame[column].to_numpy()
+        work[column] = by_frame[column].array  # .array keeps categorical and nullable dtypes
     return work, by_columns
 
 
@@ -1268,19 +1461,7 @@ def count_adata(
     name: str = "n",
 ) -> pd.DataFrame:
     frame = obs_frame(adata) if _axis(axis) == "obs" else var_frame(adata)
-    return count_frame(frame, by=by, wt=wt, sort=sort, name=name)
-
-
-def tally_adata(
-    adata: AnnData,
-    by: Any = None,
-    *,
-    wt: Any = None,
-    sort: bool = False,
-    axis: str = "obs",
-    name: str = "n",
-) -> pd.DataFrame:
-    return count_adata(adata, by=by, wt=wt, sort=sort, axis=axis, name=name)
+    return count_frame(frame, by=by, wt=wt, sort=sort, name=name, axis=axis)
 
 
 def add_count_adata(
@@ -1291,41 +1472,32 @@ def add_count_adata(
     sort: bool = False,
     axis: str = "obs",
     name: str = "n",
-    inplace: bool = False,
 ) -> AnnData:
     _ensure_not_backed(adata, "add_count")
     axis = _axis(axis)
     frame = obs_frame(adata) if axis == "obs" else var_frame(adata)
-    values = _count_values(frame, by=by, wt=wt)
+    values = _count_values(frame, by=by, wt=wt, axis=axis)
     positions = (
         values.sort_values(ascending=False, kind="mergesort").index.to_numpy(dtype=np.intp)
         if sort
         else np.arange(len(values), dtype=np.intp)
     )
-    out = _same_shape_target(adata, inplace=inplace, verb="add_count")
+    out = _same_shape_target(adata, verb="add_count")
     if axis == "obs":
         _assign_positional(_obs_table(out), name, values)
     else:
         _assign_positional(_var_table(out), name, values)
     if sort:
-        _inplace_reorder_axis(out, positions, axis=axis)
+        _reorder_axis(out, positions, axis=axis)
     return out
 
 
-def add_tally_adata(
-    adata: AnnData,
-    *,
-    wt: Any = None,
-    sort: bool = False,
-    axis: str = "obs",
-    name: str = "n",
-    inplace: bool = False,
-) -> AnnData:
-    return add_count_adata(adata, wt=wt, sort=sort, axis=axis, name=name, inplace=inplace)
-
-
-def _count_values(frame: pd.DataFrame, by: Any = None, wt: Any = None) -> pd.Series:
-    by_frame = evaluate_select(frame, by) if by is not None else pd.DataFrame(index=frame.index)
+def _count_values(frame: pd.DataFrame, by: Any = None, wt: Any = None, *, axis: str | None = None) -> pd.Series:
+    by_frame = (
+        evaluate_select(frame, resolve.resolve_grouping_keys(by, axis=axis))
+        if by is not None
+        else pd.DataFrame(index=frame.index)
+    )
     by_columns = list(by_frame.columns)
     if wt is not None:
         weights = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"]
@@ -1348,14 +1520,15 @@ def count_frame(
     wt: Any = None,
     sort: bool = False,
     name: str = "n",
+    axis: str | None = None,
 ) -> pd.DataFrame:
-    work, by_columns = prepare_by_frame(frame, by)
+    work, by_columns = prepare_by_frame(frame, by, axis=axis)
     if wt is not None:
         work["__annplyr_wt__"] = evaluate_assignments(frame, {"__annplyr_wt__": wt})["__annplyr_wt__"].to_numpy()
     if not by_columns:
         value = work["__annplyr_wt__"].sum() if wt is not None else len(frame)
         return pd.DataFrame({name: [value]})
-    grouped = work.groupby(by_columns, sort=False, observed=True, dropna=False)
+    grouped = work.groupby(by_columns, sort=True, observed=True, dropna=False)  # key order, as dplyr
     result = (
         grouped["__annplyr_wt__"].sum().reset_index(name=name)
         if wt is not None
@@ -1377,7 +1550,6 @@ def left_join_adata(
     unmatched: str = "drop",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1390,7 +1562,6 @@ def left_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1405,7 +1576,6 @@ def inner_join_adata(
     unmatched: str = "drop",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1418,7 +1588,6 @@ def inner_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1433,7 +1602,6 @@ def right_join_adata(
     unmatched: str = "error",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1446,7 +1614,6 @@ def right_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1461,7 +1628,6 @@ def full_join_adata(
     unmatched: str = "error",
     na_matches: str = "na",
     suffixes: tuple[str, str] = ("", "_right"),
-    copy: bool = True,
 ) -> AnnData:
     return _join_adata(
         adata,
@@ -1474,7 +1640,6 @@ def full_join_adata(
         unmatched=unmatched,
         na_matches=na_matches,
         suffixes=suffixes,
-        copy=copy,
     )
 
 
@@ -1485,13 +1650,12 @@ def semi_join_adata(
     by: str | Sequence[str] | None = None,
     axis: str = "obs",
     na_matches: str = "na",
-    copy: bool = True,
 ) -> AnnData:
     mask = _join_filter_mask(adata, other, by=by, axis=axis, keep_matches=True, na_matches=na_matches)
     return (
-        _subset(adata, mask.to_numpy(), slice(None), copy=copy)
+        _subset(adata, mask.to_numpy(), slice(None))
         if _axis(axis) == "obs"
-        else _subset(adata, slice(None), mask.to_numpy(), copy=copy)
+        else _subset(adata, slice(None), mask.to_numpy())
     )
 
 
@@ -1502,13 +1666,12 @@ def anti_join_adata(
     by: str | Sequence[str] | None = None,
     axis: str = "obs",
     na_matches: str = "na",
-    copy: bool = True,
 ) -> AnnData:
     mask = _join_filter_mask(adata, other, by=by, axis=axis, keep_matches=False, na_matches=na_matches)
     return (
-        _subset(adata, mask.to_numpy(), slice(None), copy=copy)
+        _subset(adata, mask.to_numpy(), slice(None))
         if _axis(axis) == "obs"
-        else _subset(adata, slice(None), mask.to_numpy(), copy=copy)
+        else _subset(adata, slice(None), mask.to_numpy())
     )
 
 
@@ -1524,7 +1687,6 @@ def _join_adata(
     unmatched: str,
     na_matches: str,
     suffixes: tuple[str, str],
-    copy: bool,
 ) -> AnnData:
     axis = _axis(axis)
     _validate_join_unmatched(unmatched)
@@ -1578,14 +1740,15 @@ def _join_adata(
         joined = joined.sort_values(left_key, kind="mergesort")
     positions = joined[left_key].astype(np.intp).to_numpy()
     table = joined.drop(columns=[left_key, right_order, "_merge"], errors="ignore")
+    for column in by_columns:
+        # merging a categorical key against a plain right key demotes it to str and drops the
+        # category order that uns["<key>_colors"] is indexed by; matched keys are left values.
+        if isinstance(left[column].dtype, pd.CategoricalDtype) and column in table.columns:
+            table[column] = table[column].astype(left[column].dtype)
     labels = adata.obs_names.take(positions) if axis == "obs" else adata.var_names.take(positions)
     table.index = labels
     _ensure_unique([str(column) for column in table.columns], source=f"{axis} join")
-    out = (
-        _subset(adata, positions, slice(None), copy=copy)
-        if axis == "obs"
-        else _subset(adata, slice(None), positions, copy=copy)
-    )
+    out = _subset(adata, positions, slice(None)) if axis == "obs" else _subset(adata, slice(None), positions)
     if axis == "obs":
         out.obs = table.copy()
     else:
@@ -1613,7 +1776,19 @@ def _coerce_join_frame(other: pd.DataFrame | Mapping[str, Any]) -> pd.DataFrame:
     return other.copy() if isinstance(other, pd.DataFrame) else pd.DataFrame(other)
 
 
-def _join_by_columns(left: pd.DataFrame, right: pd.DataFrame, by: str | Sequence[str] | None) -> list[str]:
+def _join_key_name(key: Any) -> Any:
+    """Read ``obs.sample`` as the key column ``sample``; strings pass through."""
+    name = getattr(key, "_source_column", None)
+    if name is None:
+        return key
+    return name.partition(":")[2] if name.partition(":")[0] in {"obs", "var"} else name
+
+
+def _join_by_columns(left: pd.DataFrame, right: pd.DataFrame, by: Any) -> list[str]:
+    if by is not None and not isinstance(by, str) and not isinstance(by, Sequence):
+        by = _join_key_name(by)
+    elif isinstance(by, Sequence) and not isinstance(by, str):
+        by = [_join_key_name(key) for key in by]
     if by is None:
         columns = [column for column in left.columns if column in right.columns]
     elif isinstance(by, str):
@@ -1814,7 +1989,7 @@ def _first_series(frame: pd.DataFrame) -> pd.Series:
     return frame.iloc[:, 0]
 
 
-def to_df_adata(
+def to_wide_adata(
     adata: AnnData,
     *,
     obs: Any = None,
@@ -1826,7 +2001,7 @@ def to_df_adata(
     max_matrix_values: int | None = None,
 ) -> pd.DataFrame:
     planner = RequestPlanner(max_matrix_values)
-    descriptors: list[tuple[int, Any, str, str]] = []
+    descriptors: list[tuple[int, Any, str | Callable[[Any], str], str]] = []  # prefix or renamer
     if obs is not None:
         obs_piece = evaluate_select(obs_frame(adata), obs).reset_index(drop=True)
     else:
@@ -1838,7 +2013,7 @@ def to_df_adata(
         descriptors.append((token, x, "", "obs"))
     if raw is not None:
         token, _ = _add_matrix_request(planner, adata, "raw", raw, mode="selection", axis="obs", context="to_df raw")
-        descriptors.append((token, raw, "raw_", "obs"))
+        descriptors.append((token, raw, "", "obs"))  # bare gene names, as tidySCE; clashes raise
     for key, selector in (obsm or {}).items():
         token, _ = _add_matrix_request(
             planner,
@@ -1850,7 +2025,7 @@ def to_df_adata(
             axis="obs",
             context=f"to_df obsm {key!r}",
         )
-        descriptors.append((token, selector, f"{key}_", "obs"))
+        descriptors.append((token, selector, _embedding_names(key), "obs"))
     for key, selector in (obsp or {}).items():
         token, _ = _add_matrix_request(
             planner,
@@ -1868,13 +2043,28 @@ def to_df_adata(
     for token, selector, prefix, axis in descriptors:
         frame = _decorate_projected_frame(projected[token], adata, axis=axis, request=selector)
         selected = evaluate_select(frame, selector).reset_index(drop=True)
-        pieces.append(selected.add_prefix(prefix) if prefix else selected)
+        if callable(prefix):
+            selected = selected.rename(columns=prefix)
+        elif prefix:
+            selected = selected.add_prefix(prefix)
+        pieces.append(selected)
     if not pieces:
         return pd.DataFrame(index=adata.obs_names)
     out = pd.concat(pieces, axis=1)
     _ensure_unique([str(column) for column in out.columns], source="to_df")
     out.index = adata.obs_names
     return out
+
+
+def _embedding_names(key: str) -> Callable[[Any], str]:
+    """Name embedding columns as Seurat, tidySCE and ggann do: ``X_umap`` gives ``UMAP_1``.
+
+    ``X_pca`` gives ``PC_1``; other keys drop ``X_`` and are upper-cased. Numbers
+    start at 1. A named column, from an obsm DataFrame, keeps its name.
+    """
+    base = (key[2:] if key.startswith("X_") else key).upper()
+    base = {"PCA": "PC"}.get(base, base)
+    return lambda column: f"{base}_{int(column) + 1}" if str(column).isdigit() else str(column)
 
 
 def to_tidy_adata(
@@ -1889,12 +2079,13 @@ def to_tidy_adata(
     value: str = "value",
     allow_all_features: bool = False,
     max_matrix_values: int | None = None,
+    context: str = "join_features",
 ) -> pd.DataFrame:
     if x is not None and raw is not None:
-        msg = "to_tidy accepts x or raw, not both"
+        msg = "join_features reads one matrix per call: x or raw, not both"
         raise IncompatibleAxisError(msg)
     if x is None and raw is None and not allow_all_features:
-        msg = "to_tidy requires explicit x feature selection; pass allow_all_features=True to export all features"
+        msg = "join_features needs named features; pass allow_all_features=True to export all of them"
         raise SelectionError(msg)
     source = "raw" if raw is not None else "x"
     selector = raw if raw is not None else x
@@ -1907,9 +2098,10 @@ def to_tidy_adata(
         mode="selection",
         layer=layer if source == "x" else None,
         axis="obs",
-        context="to_tidy",
+        context=context,
     )
     matrix = _decorate_projected_frame(planner.execute()[token], adata, axis="obs", request=selector)
+
     wide = evaluate_select(matrix, selector)
     meta = (
         evaluate_select(obs_frame(adata), obs).reset_index(drop=True)
@@ -1920,7 +2112,7 @@ def to_tidy_adata(
         meta,
         wide,
         reserved={obs_name, feature, value},
-        context="to_tidy",
+        context="join_features",
     )
     combined = pd.concat([meta.reset_index(drop=True), wide.reset_index(drop=True)], axis=1)
     combined.insert(0, obs_name, adata.obs_names.to_numpy())
@@ -1949,9 +2141,12 @@ def _pivot_obs_major(
     result = data.loc[:, list(id_vars)].iloc[positions].reset_index(drop=True)
     result[var_name] = np.tile(np.asarray(value_vars, dtype=object), row_count)
     values = data.loc[:, list(value_vars)]
+    # Long tables are for plotting, and plotnine cannot take pandas sparse columns,
+    # so values come back dense (tidySCE does the same). A dense value costs a few
+    # bytes next to the cell and feature labels each row already carries.
     if value_count and all(isinstance(dtype, pd.SparseDtype) for dtype in values.dtypes):
         flattened = cast(Any, values).sparse.to_coo().reshape((row_count * value_count, 1), order="C")
-        result[value_name] = cast(Any, pd.arrays.SparseArray).from_spmatrix(flattened)
+        result[value_name] = flattened.toarray().ravel()
     else:
         result[value_name] = values.to_numpy().reshape(-1)
     return result
@@ -2027,38 +2222,6 @@ def pivot_longer_adata(
     )
 
 
-def as_frame_adata(
-    adata: AnnData,
-    source: str,
-    *,
-    key: str | None = None,
-    select: Any = None,
-    layer: str | None = None,
-    max_matrix_values: int | None = None,
-) -> pd.DataFrame:
-    if source not in {"x", "raw", "obsm", "varm", "obsp", "varp"}:
-        RequestPlanner(max_matrix_values).validate()
-        return evaluate_select(source_frame(adata, source, key=key, layer=layer), select)
-    axis = "var" if source in {"varm", "varp"} else "obs"
-    context = f"as_frame {source}" if key is None else f"as_frame {source} {key!r}"
-    planner = RequestPlanner(max_matrix_values)
-    token, _ = _add_matrix_request(
-        planner,
-        adata,
-        source,
-        select,
-        mode="selection",
-        key=key,
-        layer=layer,
-        axis=axis,
-        context=context,
-    )
-    frame = _decorate_projected_frame(planner.execute()[token], adata, axis=axis, request=select)
-    selected = evaluate_select(frame, select)
-    selected.index = adata.obs_names if axis == "obs" else adata.var_names
-    return selected
-
-
 def _check_matrix_materialization(frame: pd.DataFrame, max_matrix_values: int | None, *, context: str) -> None:
     if max_matrix_values is None:
         return
@@ -2090,41 +2253,6 @@ def pivot_wider(
     wide = data.pivot(index=ids, columns=names_from, values=values_from).reset_index()
     wide.columns.name = None
     return wide
-
-
-def nest_by_adata(
-    adata: AnnData,
-    *,
-    by: Any,
-    obs: Any = None,
-    var: Any = None,
-    axis: str = "obs",
-    name: str = "data",
-) -> pd.DataFrame:
-    axis = _axis(axis)
-    if axis == "obs":
-        frame = obs_frame(adata)
-        data_selector = obs
-    else:
-        frame = var_frame(adata)
-        data_selector = var
-    keys = evaluate_select(frame, by)
-    values = evaluate_select(frame, data_selector) if data_selector is not None else drop_axis_virtuals(frame)
-    if name in keys.columns:
-        msg = f"nest_by output column {name!r} collides with a grouping column"
-        raise DuplicateNameError(msg)
-    work = pd.concat([keys, values], axis=1)
-    rows: list[dict[str, Any]] = []
-    key_columns = list(keys.columns)
-    value_columns = list(values.columns)
-    for _, key_row in keys.drop_duplicates().iterrows():
-        mask = pd.Series(True, index=keys.index)
-        for column, value in key_row.items():
-            mask &= keys[column].isna() if pd.isna(value) else keys[column].eq(value)
-        row = {str(column): key_row[column] for column in key_columns}
-        row[name] = work.loc[mask, value_columns].reset_index(drop=True)
-        rows.append(row)
-    return pd.DataFrame(rows, columns=[*key_columns, name])
 
 
 def drop_axis_virtuals(frame: pd.DataFrame) -> pd.DataFrame:

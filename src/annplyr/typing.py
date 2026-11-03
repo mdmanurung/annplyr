@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from annplyr._grouped import GroupedAnnData
+from annplyr._tidy import TidyAnnData
 from annplyr._typing import (
     AnnDataWithAnnplyr,
     Axis,
@@ -14,7 +15,7 @@ from annplyr._typing import (
     JoinUnmatched,
     NaMatches,
     Selector,
-    Source,
+    SourceName,
     SourceSelectors,
 )
 
@@ -32,6 +33,7 @@ __all__ = [
     "JoinUnmatched",
     "NaMatches",
     "Selector",
-    "Source",
+    "SourceName",
     "SourceSelectors",
+    "TidyAnnData",
 ]

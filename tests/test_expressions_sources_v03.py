@@ -68,10 +68,9 @@ def test_every_public_matrix_reading_accessor_exposes_the_cumulative_budget() ->
         "summarize",
         "summarise",
         "pull",
-        "to_df",
-        "to_tidy",
+        "to_wide",
+        "join_features",
         "pivot_longer",
-        "as_frame",
     ]
     accessor = type(AnnData(X=np.zeros((1, 1))).ap)
     for method in methods:
@@ -106,7 +105,7 @@ def test_mutate_remains_sequential_and_preserves_extension_and_scalar_dtypes() -
         ),
     )
     result = adata.ap.mutate(
-        obs={
+        {
             "value": ap.col("value").fill_null(0) + 1,
             "after_overwrite": ap.col("value") * 2,
             "scalar": ap.lit("x"),
@@ -134,19 +133,21 @@ def test_assignment_batching_combines_only_proven_independent_expressions(monkey
     monkeypatch.setattr(frames.nw, "from_native", counted)
     adata = AnnData(X=np.ones((3, 1)), obs=pd.DataFrame({"a": [1, 2, 3], "b": [3, 2, 1]}))
     result = adata.ap.mutate(
-        obs={
+        {
             "left": ap.col("a") + 1,
             "right": ap.col("b") + 1,
             "dependent": ap.col("left") * 2,
         }
     )
     assert result.obs["dependent"].tolist() == [4, 6, 8]
+    # "left" and "right" are proven independent and batch into one evaluation;
+    # "dependent" reads "left" so it needs a second
     assert calls == 2
 
 
 def test_noop_metadata_assignment_preserves_existing_series_object() -> None:
     adata = AnnData(X=np.ones((3, 1)), obs=pd.DataFrame({"value": pd.array([1, 2, pd.NA], dtype="Int64")}))
-    result = adata.ap.mutate(obs={"value": ap.col("value")})
+    result = adata.ap.mutate({"value": ap.col("value")})
     assert str(result.obs["value"].dtype) == "Int64"
     assert result.obs["value"].tolist() == [1, 2, pd.NA]
 
@@ -184,7 +185,7 @@ def test_anndata_view_adapters_and_shape_outputs_preserve_sparse_storage(storage
     planner.add(adapter, request=["b", "e"], mode="selection", context="view")
     assert planner.execute()[0].sparse.to_dense().values.tolist() == [[16, 19], [6, 9]]
 
-    result = adata.ap.filter(x=ap.col("a") >= 0)
+    result = adata.ap.filter(ap.col("x:a") >= 0)
     expected_type = sparse.csr_matrix if storage == "csr" else sparse.csc_matrix
     assert isinstance(result.X, expected_type)
 
@@ -251,7 +252,7 @@ def test_public_planner_rejects_later_cumulative_request_before_first_read(monke
     monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: next(sentinels))
     adata = AnnData(X=np.zeros((5, 4)))
     with pytest.raises(AnnplyrError, match="materialize 10 matrix values"):
-        adata.ap.to_df(x="a", raw="b", max_matrix_values=9)
+        adata.ap.to_wide("x:a", "raw:b", max_matrix_values=9)
     assert first.reads == 0
     assert later.reads == 0
 
@@ -262,30 +263,22 @@ def test_public_projection_reads_only_requested_columns_in_requested_order(monke
     sentinel = _ReadSentinel()
     monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: sentinel)
     adata = AnnData(X=np.zeros((5, 4)), obs=pd.DataFrame(index=[f"c{i}" for i in range(5)]))
-    result = adata.ap.to_tidy(x=["d", "b"], max_matrix_values=10)
+    result = adata.ap.join_features("x:d", "x:b", max_matrix_values=10)
     assert sentinel.reads == 1
     assert sentinel.last_rows == [0, 1, 2, 3, 4]
     assert sentinel.last_columns == [3, 1]
-    assert result["feature"].drop_duplicates().tolist() == ["d", "b"]
+    assert result[".feature"].drop_duplicates().tolist() == ["d", "b"]
 
 
-def test_public_opaque_expression_charges_full_source_and_where_reads_only_schema(monkeypatch) -> None:
-    import annplyr._verbs as verbs
+def test_public_opaque_expression_charges_full_source(monkeypatch) -> None:
+    import annplyr._sources as sources
 
     opaque = _ReadSentinel()
-    monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: opaque)
+    monkeypatch.setattr(sources, "source_adapter", lambda *args, **kwargs: opaque)
     adata = AnnData(X=np.zeros((5, 4)))
     with pytest.raises(AnnplyrError, match="materialize 20 matrix values"):
-        adata.ap.filter(x=nw.col("a") > 0, max_matrix_values=5)
+        adata.ap.filter(nw.col("a") > 0, source="x", max_matrix_values=5)
     assert opaque.reads == 0
-
-    schema_only = _ReadSentinel()
-    monkeypatch.setattr(verbs, "source_adapter", lambda *args, **kwargs: schema_only)
-    with pytest.raises(AnnplyrError, match="materialize 20 matrix values"):
-        adata.ap.as_frame(
-            "x", select=ap.where(lambda series: pd.api.types.is_numeric_dtype(series.dtype)), max_matrix_values=0
-        )
-    assert schema_only.reads == 0
 
 
 @pytest.mark.parametrize("storage", ["dense", "csr", "csc"])

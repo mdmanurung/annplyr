@@ -105,17 +105,24 @@ class ReductionPlan:
     """Canonical scalar assignments eligible for chunked execution."""
 
     assignments: tuple[tuple[str, _ReductionSpec], ...]
+    #: Every column reference in the plan, including the ones a derived input
+    #: expression names but its inner Narwhals expression does not expose.
+    references: frozenset[str] = frozenset()
 
     @classmethod
     def resolve(cls, schema: pd.DataFrame, assignments: Any) -> ReductionPlan | None:
         expanded = expand_assignments(schema, assignments)
         planned: list[tuple[str, _ReductionSpec]] = []
+        references: set[str] = set()
         for name, expression in expanded.items():
             spec = reduction_spec(expression)
             if spec is None:
                 return None
             planned.append((str(name), spec))
-        return cls(tuple(planned))
+            if spec.source_column is not None:
+                references.add(spec.source_column)
+            references.update(getattr(expression, "dependencies", None) or ())
+        return cls(tuple(planned), frozenset(references))
 
 
 class _PairwiseSumState:
@@ -337,7 +344,7 @@ def summarize_chunked(
     schema = chunks.request.adapter.schema.iloc[:0, :].copy()
     if virtual_name is not None and virtual_values is not None:
         schema[virtual_name] = pd.Series([], dtype=virtual_values.dtype)
-    schema_inputs = _evaluate_inputs(schema, reductions)
+    schema_inputs = _evaluate_inputs(_labeled_schema(schema, reductions), reductions)
     for accumulator, series in zip(accumulators, schema_inputs, strict=True):
         if series is not None:
             accumulator.observe_dtype(series)
@@ -346,7 +353,7 @@ def summarize_chunked(
         if virtual_name is not None and virtual_values is not None:
             frame = frame.copy(deep=False)
             frame[virtual_name] = virtual_values[row_positions]
-        inputs = _evaluate_inputs(frame, reductions)
+        inputs = _evaluate_inputs(_labeled_frame(frame, reductions), reductions)
         group_ids = groups.group_ids[row_positions]
         for accumulator, series in zip(accumulators, inputs, strict=True):
             accumulator.update(series, group_ids)
@@ -369,9 +376,12 @@ def _can_chunk_columns(
     for _, spec in reductions.assignments:
         if spec.input_expr is None:
             continue
-        if spec.source_column is None or spec.source_column == virtual_name:
+        # a reduction names its column as the caller wrote it, which may carry a
+        # container qualifier the adapter exposes without
+        column = _bare_column(spec.source_column)
+        if spec.source_column is None or column is None or column == virtual_name:
             return False
-        matches = available.count(spec.source_column)
+        matches = available.count(column)
         if matches > 1:
             raise DuplicateNameError(f"Reduction source column {spec.source_column!r} is duplicated")
         if matches == 0:
@@ -401,7 +411,8 @@ def _summarize_column_chunks(
         if spec.input_expr is None:
             length_positions.append(reduction_position)
         elif spec.source_column is not None:
-            reduction_positions.setdefault(source_positions[spec.source_column], []).append(reduction_position)
+            column = _bare_column(spec.source_column) or spec.source_column
+            reduction_positions.setdefault(source_positions[column], []).append(reduction_position)
 
     rows = chunks.request.row_positions
     group_ids = groups.group_ids[rows]
@@ -458,7 +469,8 @@ def _summarize_dense_column_chunks(
         if spec.input_expr is None:
             length_reductions.append((name, spec))
         elif spec.source_column is not None:
-            reductions_by_source.setdefault(source_positions[spec.source_column], []).append((name, spec))
+            column = _bare_column(spec.source_column) or spec.source_column
+            reductions_by_source.setdefault(source_positions[column], []).append((name, spec))
 
     pieces: list[pd.DataFrame] = []
     include_lengths = True
@@ -496,9 +508,87 @@ def _summarize_dense_column_chunks(
 def _reduction_expression(name: str, spec: _ReductionSpec) -> nw.Expr:
     if spec.input_expr is None:
         return nw.len().alias(name)
+    spec = _relabel_spec(spec)
     method = getattr(spec.input_expr, spec.operation)
     expression = method(ddof=spec.ddof) if spec.operation == "std" else method()
     return expression.alias(name)
+
+
+def _relabel_spec(spec: _ReductionSpec) -> _ReductionSpec:
+    """Rewrite a spec's input so it names the bare column its frame exposes.
+
+    A qualified reference such as ``raw:LYZ`` is carried through the planner
+    untouched, but the projected frame is keyed by the bare name, so the
+    expression is rebuilt against that.
+    """
+    column = _bare_column(spec.source_column)
+    if column is None or column == spec.source_column or spec.input_expr is None:
+        return spec
+    return _ReductionSpec(
+        operation=spec.operation,
+        input_expr=nw.col(column),
+        source_column=column,
+        ddof=spec.ddof,
+    )
+
+
+def _bare_column(name: str | None) -> str | None:
+    """Strip a ``source:`` qualifier from a column reference.
+
+    A reduction records its input column as the caller wrote it, which may be
+    qualified, while the adapter and its frames expose the bare name.
+    """
+    if name is None:
+        return None
+    head, separator, tail = name.partition(":")
+    return tail if separator and tail else name
+
+
+def _reduction_columns(reductions: ReductionPlan) -> dict[str, str]:
+    """Map each qualified reference to the bare column its reduction reads."""
+    return {
+        spec.source_column: _bare_column(spec.source_column) or spec.source_column
+        for _, spec in reductions.assignments
+        if spec.input_expr is not None and spec.source_column is not None
+    }
+
+
+def _labeled_frame(frame: pd.DataFrame, reductions: ReductionPlan) -> pd.DataFrame:
+    """Expose every referenced column under both its bare and qualified name.
+
+    A caller may write ``ap.mean("raw:LYZ")``, but the projected frame is keyed
+    by the bare ``LYZ``. Narwhals expressions cannot be rewritten, so the frame
+    gains an alias per qualified reference instead.
+    """
+    qualified = set(_reduction_columns(reductions)) | set(reductions.references)
+    extra = {
+        name: _bare_column(name)
+        for name in qualified
+        if name != _bare_column(name) and _bare_column(name) in frame.columns and name not in frame.columns
+    }
+    if not extra:
+        return frame
+    labeled = frame.copy(deep=False)
+    for name, bare in extra.items():
+        labeled[name] = labeled[bare]
+    return labeled
+
+
+def _labeled_schema(schema: pd.DataFrame, reductions: ReductionPlan) -> pd.DataFrame:
+    """Add zero-row columns for qualified reduction inputs, for dtype checks."""
+    qualified = set(_reduction_columns(reductions)) | set(reductions.references)
+    extra = {
+        name: _bare_column(name)
+        for name in qualified
+        if name != _bare_column(name) and _bare_column(name) in schema.columns and name not in schema.columns
+    }
+    if not extra:
+        return schema
+    labeled = schema.copy()
+    for name, bare in extra.items():
+        if bare in schema.columns:
+            labeled[name] = pd.Series([], dtype=schema[bare].dtype)
+    return labeled
 
 
 def _evaluate_inputs(

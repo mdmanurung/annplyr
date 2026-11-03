@@ -1,0 +1,28 @@
+{
+  "title": "annplyr: tidy AnnData wrangling in Python",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Manurung, Mikhael"
+    }
+  ],
+  "description": "annplyr brings dplyr-style verbs to AnnData. Users filter, select, mutate, join, group and summarize cells and features through the adata.ap accessor. Verbs that return AnnData keep obs aligned with X, layers, raw, embeddings and pairwise matrices. Verbs that return tables give pandas DataFrames.",
+  "license": "BSD-3-Clause",
+  "access_right": "open",
+  "keywords": [
+    "AnnData",
+    "scverse",
+    "single-cell",
+    "tidy data",
+    "dplyr",
+    "data wrangling",
+    "pandas"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/mdmanurung/annplyr",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

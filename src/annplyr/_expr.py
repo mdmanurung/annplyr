@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 import narwhals as nw
 import numpy as np
@@ -85,6 +85,8 @@ class AnnplyrExpr:
     cardinality: Cardinality = "unknown"
     _reduction: _ReductionSpec | None = field(default=None, repr=False, compare=False, kw_only=True)
     _source_column: str | None = field(default=None, repr=False, compare=False, kw_only=True)
+    # Set by ``-col`` on a bare column so select, relocate and distinct can read it as a drop.
+    _negated_column: str | None = field(default=None, repr=False, compare=False, kw_only=True)
     _chunk_safe: bool = field(default=True, repr=False, compare=False, kw_only=True)
 
     __array_priority__ = 1000
@@ -194,6 +196,7 @@ class AnnplyrExpr:
             self.dependencies,
             self.output_width,
             self.cardinality,
+            _negated_column=self._source_column,
             _chunk_safe=self._chunk_safe,
         )
 
@@ -322,6 +325,38 @@ def expression_dependencies(value: Any) -> frozenset[str] | None:
     if hasattr(value, "to_expr"):
         return None
     return frozenset()
+
+
+def collect_column_references(value: Any) -> set[str] | None:
+    """Return every column reference reachable from ``value``.
+
+    Recurses through mappings and sequences so a whole assignment dict or
+    predicate tuple can be inspected at once. Returns ``None`` when any part is
+    opaque, because an opaque expression's references are unknowable.
+    """
+    if isinstance(value, AnnplyrExpr):
+        return set(value.dependencies) if value.dependencies is not None else None
+    if isinstance(value, nw.Expr):
+        return None
+    if isinstance(value, Desc):
+        return collect_column_references(value.expr)
+    if isinstance(value, Mapping):
+        return _collect_from(list(value.values()))
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return _collect_from(list(value))
+    if hasattr(value, "to_expr"):
+        return None
+    return set()
+
+
+def _collect_from(values: Any) -> set[str] | None:
+    collected: set[str] = set()
+    for item in values:
+        nested = collect_column_references(item)
+        if nested is None:
+            return None
+        collected |= nested
+    return collected
 
 
 def reduction_spec(value: Any) -> _ReductionSpec | None:
@@ -628,6 +663,60 @@ def col(*names: str | Iterable[str]) -> AnnplyrExpr:
         "row",
         _source_column=source_column,
     )
+
+
+class Source:
+    """One container of an AnnData object: ``counts.MS4A1`` is ``col("counts:MS4A1")``.
+
+    Attribute and item access build a column expression, so ``raw["HLA-DRA"]``
+    and ``X_umap[0]`` cover names that are not identifiers. Passed whole to a
+    verb, a ``Source`` means every column of that container.
+    """
+
+    __slots__ = ("_prefix",)
+    _prefix: str
+    __iter__ = None  # __getitem__ would otherwise make it loop forever
+
+    def __init__(self, prefix: str):
+        object.__setattr__(self, "_prefix", prefix)
+
+    def __getitem__(self, name: str | int | AnnplyrSelector) -> Any:
+        if callable(getattr(name, "resolve", None)):
+            return ScopedSelector(self, cast(AnnplyrSelector, name))  # X[ap.starts_with("CD")]
+        return col(f"{self._prefix}:{name}")
+
+    def __getattr__(self, name: str) -> AnnplyrExpr:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self[name]
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        prefix = self._prefix
+        shown = "X" if prefix == "x" else f"ap.layer({prefix[7:]!r})" if prefix.startswith("layers:") else prefix
+        name = args[0] if args else "MS4A1"
+        msg = f"{shown} is a container, not a function: write {shown}.{name} or {shown}[{name!r}]"
+        raise TypeError(msg)
+
+    def __repr__(self) -> str:
+        return f"Source({self._prefix!r})"
+
+
+@dataclass(frozen=True)
+class ScopedSelector:
+    """A selector that picks names inside one container, such as ``X[ap.starts_with("CD")]``."""
+
+    source: Source
+    selector: AnnplyrSelector
+
+
+def layer(name: str) -> Source:
+    """Return the :class:`Source` for the layer ``name``, whatever it is called.
+
+    ``from annplyr.data import counts`` covers most layers. Use ``ap.layer`` when
+    the name is not importable or is reserved, such as a layer called ``obs`` or
+    ``raw``: ``ap.layer("obs").MS4A1`` reads the layer, never obs metadata.
+    """
+    return Source(f"layers:{name}")
 
 
 def lit(value: Any) -> AnnplyrExpr:

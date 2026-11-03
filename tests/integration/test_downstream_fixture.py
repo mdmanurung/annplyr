@@ -67,8 +67,8 @@ def assert_adata_equal(actual: AnnData, expected: AnnData) -> None:
 
 
 def _run_grouped_pipeline(source: AnnData) -> tuple[Any, AnnData]:
-    grouped = source.ap.group_by(obs="cell_type")
-    result = grouped.mutate(obs={"within_type": ap.row_number()}).arrange(obs=ap.desc("quality_score"))
+    grouped = source.ap.group_by("cell_type")
+    result = grouped.mutate({"within_type": ap.row_number()}).arrange(ap.desc("quality_score"))
     return result, result.ungroup()
 
 
@@ -142,7 +142,7 @@ def test_concatenation_reconstructs_every_aligned_container() -> None:
 def test_scanpy_preprocessing_accepts_annplyr_output() -> None:
     scanpy = pytest.importorskip("scanpy", reason="Scanpy is installed only in the integration environment")
     source = make_representative_adata()
-    result = source.ap.filter(obs=ap.col("qc_pass").fill_null(False)).ap.select(x=["GATA3", "MS4A1", "LYZ", "NKG7"])
+    result = source.ap.filter(ap.col("qc_pass").fill_null(False)).ap.select("x:GATA3", "x:MS4A1", "x:LYZ", "x:NKG7")
     source_snapshot = source.copy()
 
     scanpy.pp.normalize_total(result, target_sum=10_000)
@@ -155,3 +155,15 @@ def test_scanpy_preprocessing_accepts_annplyr_output() -> None:
     assert np.isfinite(result.X.data).all()
     assert np.isfinite(result.obsm["X_pca"]).all()
     assert_adata_equal(source, source_snapshot)
+
+
+def test_verb_results_can_be_written_to_zarr(tmp_path: Path) -> None:
+    # anndata's zarr writer dispatches on the exact class, which a TidyAnnData is not.
+    adata = make_representative_adata()
+    result = adata.ap.slice_head(n=3)
+    assert type(result).__name__ == "TidyAnnData"
+
+    result.write_zarr(tmp_path / "out.zarr")
+
+    assert type(result).__name__ == "TidyAnnData"  # the verbs stay on the object
+    assert ad.read_zarr(tmp_path / "out.zarr").obs_names.tolist() == result.obs_names.tolist()

@@ -4,7 +4,8 @@
 pieces. Those pieces are keyed by group identity rather than by key values, so
 a combining step that reorders rows cannot hand a group another group's
 aggregates. Every fixture here deliberately uses groups whose first-seen order
-differs from their sorted order, which is the case the bug needed.
+differs from their sorted order, which is the case the bug needed. Summaries
+are listed in key order, so the reference is sorted too.
 """
 
 from __future__ import annotations
@@ -52,13 +53,13 @@ def make_adata(matrix: Any = None) -> AnnData:
 
 def expected() -> pd.DataFrame:
     frame = pd.DataFrame({"label": LABELS, "score": np.arange(1.0, 7.0), "g1": VALUES[:, 0]})
-    grouped = frame.groupby("label", sort=False)
+    grouped = frame.groupby("label", sort=True)
     return pd.DataFrame(
         {
-            "label": list(dict.fromkeys(LABELS)),
-            "cells": grouped.size().reindex(dict.fromkeys(LABELS)).to_numpy(),
-            "mean_score": grouped["score"].mean().reindex(dict.fromkeys(LABELS)).to_numpy(),
-            "mean_g1": grouped["g1"].mean().reindex(dict.fromkeys(LABELS)).to_numpy(),
+            "label": sorted(set(LABELS)),
+            "cells": grouped.size().to_numpy(),
+            "mean_score": grouped["score"].mean().to_numpy(),
+            "mean_g1": grouped["g1"].mean().to_numpy(),
         }
     )
 
@@ -68,8 +69,7 @@ def test_metadata_and_matrix_aggregates_stay_on_their_own_group(source: str) -> 
     adata = make_adata()
 
     summary = adata.ap.summarize(
-        obs={"cells": ap.n(), "mean_score": ap.mean("score")},
-        **{source: {"mean_g1": ap.mean("g1")}},
+        {"cells": ap.n(), "mean_score": ap.mean("score"), "mean_g1": ap.mean(f"{source}:g1")},
         by="label",
     )
 
@@ -83,8 +83,8 @@ def test_metadata_and_matrix_aggregates_stay_on_their_own_group(source: str) -> 
 def test_persistent_grouping_agrees_with_one_off_by() -> None:
     adata = make_adata()
 
-    one_off = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
-    persistent = adata.ap.group_by(obs="label").summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")})
+    one_off = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
+    persistent = adata.ap.group_by("label").summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")})
 
     pd.testing.assert_frame_equal(one_off, persistent)
 
@@ -92,7 +92,7 @@ def test_persistent_grouping_agrees_with_one_off_by() -> None:
 def test_sparse_sources_keep_their_group_alignment() -> None:
     adata = make_adata(sparse.csr_matrix(VALUES))
 
-    summary = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
+    summary = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
 
     reference = expected()
     assert summary["label"].tolist() == reference["label"].tolist()
@@ -103,10 +103,10 @@ def test_missing_group_keys_keep_their_aggregates() -> None:
     adata = make_adata()
     adata.obs["label"] = pd.Series(["zeta", None, "mu", "zeta", None, "zeta"], index=adata.obs_names)
 
-    summary = adata.ap.summarize(obs={"cells": ap.n()}, x={"mean_g1": ap.mean("g1")}, by="label")
+    summary = adata.ap.summarize({"cells": ap.n(), "mean_g1": ap.mean("x:g1")}, by="label")
 
-    assert summary["label"].tolist()[0] == "zeta"
-    assert pd.isna(summary["label"].tolist()[1])
+    assert summary["label"].tolist()[:2] == ["mu", "zeta"]  # key order, missing last
+    assert pd.isna(summary["label"].tolist()[2])
     assert summary.loc[summary["label"] == "zeta", "cells"].tolist() == [3]
     assert summary.loc[summary["label"] == "zeta", "mean_g1"].tolist() == pytest.approx([(10 + 40 + 60) / 3])
     assert summary.loc[summary["label"].isna(), "mean_g1"].tolist() == pytest.approx([(20 + 50) / 2])
@@ -117,8 +117,7 @@ def test_multiple_group_keys_stay_aligned() -> None:
     adata.obs["batch"] = ["b2", "b1", "b2", "b2", "b1", "b1"]
 
     summary = adata.ap.summarize(
-        obs={"cells": ap.n()},
-        x={"mean_g1": ap.mean("g1")},
+        {"cells": ap.n(), "mean_g1": ap.mean("x:g1")},
         by=["label", "batch"],
     )
 

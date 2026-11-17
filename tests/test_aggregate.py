@@ -63,3 +63,16 @@ def test_aggregate_keeps_columns_constant_within_each_group(cells: AnnData) -> N
     assert isinstance(pb.obs["condition"].dtype, pd.CategoricalDtype)
     expected = np.where(pb.obs["donor"].astype(str) == "d1", "ctrl", "stim")
     assert pb.obs["condition"].astype(str).tolist() == expected.tolist()
+
+
+@pytest.mark.parametrize("dtype", [np.uint8, np.int16, np.int32, np.uint64])
+@pytest.mark.parametrize("sparse", [False, True])
+def test_an_integer_sum_does_not_wrap_around(dtype: type, sparse: bool) -> None:
+    top = min(np.iinfo(dtype).max, 2**31)
+    matrix = np.full((4, 2), top, dtype=dtype)
+    adata = AnnData(sp.csr_matrix(matrix) if sparse else matrix)
+    adata.obs["g"] = ["a"] * 4
+    values = ap.aggregate_cells(adata, "g", source="x").X
+    values = values.toarray() if sp.issparse(values) else values
+    assert np.issubdtype(values.dtype, np.integer)
+    assert values.tolist() == [[4 * int(top)] * 2]

@@ -52,6 +52,11 @@ def aggregate_cells_adata(
     log-normalized values, and a pseudobulk for differential expression must sum
     raw counts, for example ``source="counts"``. ``obs`` of the result holds the
     keys plus ``n_cells``; ``var`` is copied from the source matrix.
+
+    This is not a dplyr verb, and it does not take ``na_rm``. A NaN in the source makes
+    the sum or mean of its group and feature NaN, as ``sum(x)`` does in R, and no other
+    group changes. ``n_cells`` counts every cell, NaN or not, so a mean divides by it.
+    Drop or fill NaN before aggregating when that is not what you want.
     """
     if adata.isbacked:
         raise AnnplyrError("aggregate_cells cannot read a backed AnnData; call .to_memory() first")
@@ -63,13 +68,13 @@ def aggregate_cells_adata(
 
     n_groups = len(plan.keys)
     n_cells = np.bincount(plan.group_ids, minlength=n_groups)
-    # Integer counts stay integers; floats accumulate in float64, as R and pandas do,
+    # Integer counts stay integers, but accumulate in 64 bits: a uint8 or int32 sum over
+    # many cells wraps silently. Floats accumulate in float64, as R and pandas do,
     # because a float32 sum over thousands of cells drifts by about 1e-6.
     integer = np.issubdtype(matrix.dtype, np.integer)
+    wide = np.uint64 if matrix.dtype == np.uint64 else np.int64
     weights = (
-        np.ones(adata.n_obs, dtype=matrix.dtype if integer else np.float64)
-        if fun == "sum"
-        else 1.0 / n_cells[plan.group_ids]
+        np.ones(adata.n_obs, dtype=wide if integer else np.float64) if fun == "sum" else 1.0 / n_cells[plan.group_ids]
     )
     indicator = sp.csr_matrix((weights, (plan.group_ids, np.arange(adata.n_obs))), shape=(n_groups, adata.n_obs))
     values = indicator @ matrix  # sparse stays sparse, dense stays dense

@@ -1,6 +1,9 @@
 # annplyr v0.3 public API contract
 
-Status: frozen for v0.3.0 implementation on 2026-08-08.
+Status: frozen for v0.3.0 implementation on 2026-08-08. Since then, 0.4 and 0.5 changed
+the spelling of selectors (`obs.col`, not `"obs:col"`), the NA rules of reductions (`na_rm=False`)
+and `grouped.arrange` (groups are ignored unless `by_group=True`). The rows keep the v0.3 text
+except `grouped.arrange`; `public-typing-contract.md` is the current signature reference.
 
 This inventory is normative. The first column is a machine-readable identifier;
 `tests/test_api_contract_v03.py` requires one row for every accessor method,
@@ -154,7 +157,7 @@ within each group unless explicitly sorted. Joins execute exactly once globally.
 | `grouped.anti_join` | selected join axis | pandas DataFrame or mapping metadata | GroupedAnnData | retained | global surviving left order | grouped shape-copy | sparse preserved; backed input returns the view | no matrix reads | accessor join failures plus lost grouping key |
 | `grouped.mutate` | both, group-local on GroupSpec axis | one assignment dict; keys auto-retained | GroupedAnnData | call uses old plan; final key values regroup future calls | original axis order; sequential within group | grouped same-shape | backed write rejected; sparse preserved | projected budget | accessor mutate failures plus dtype reconstruction |
 | `grouped.add_count` | GroupSpec axis | optional metadata weight | GroupedAnnData | preserved and regrouped after call | stable unless sort reorders groups | grouped same-shape | backed write rejected; sparse preserved | no matrix reads | selection, size, backed write |
-| `grouped.arrange` | both, group-local on GroupSpec axis | one sort key per argument, each naming its own container | GroupedAnnData | preserved | group plan then stable local sort | grouped shape-copy | sparse preserved; backed input returns the view | projected budget | accessor arrange failures plus missing keys |
+| `grouped.arrange` | both, whole axis (`by_group=True`: within each group) | one sort key per argument, each naming its own container | GroupedAnnData | preserved | stable global sort; with `by_group=True`, group key order first | grouped shape-copy | sparse preserved; backed input returns the view | projected budget | accessor arrange failures plus missing keys |
 | `grouped.distinct` | GroupSpec axis | matching-axis metadata and X where compatible | GroupedAnnData | preserved | group plan then local first occurrence | grouped shape-copy | sparse preserved; backed input returns the view | projected budget | accessor distinct failures plus incompatible axis |
 | `grouped.slice` | GroupSpec axis | integer local positions and slices | GroupedAnnData | preserved | group plan then requested local positions | grouped shape-copy | sparse preserved; backed input returns the view | no matrix reads | selection |
 | `grouped.slice_head` | GroupSpec axis | nonnegative n | GroupedAnnData | preserved | group plan then first n local positions | grouped shape-copy | sparse preserved; backed input returns the view | no matrix reads | selection |

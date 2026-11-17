@@ -38,7 +38,9 @@ Six families cover the verbs. Each example runs on PBMC3k and draws what the ver
 
 ### Subset
 
-`filter`, `select`, `arrange`, `distinct` and the `slice*` verbs choose cells or features. The result is an AnnData with `X`, `raw` and the embeddings cut to match.
+`filter`, `select`, `arrange`, `distinct` and the `slice*` verbs choose cells or features. The result is an AnnData with `X`, `raw` and the embeddings cut to match. `arrange` ignores groups, as dplyr does. On a grouped AnnData, pass `by_group=True` to sort by the grouping columns first, then by the keys.
+
+**`slice` is 0-based.** `adata.slice(0)` keeps the first cell and `adata.slice(1)` the second, as `iloc` does. dplyr's `slice(1)` is the first row, so subtract one from each R index you port. The `slice_*` verbs take counts, not positions. `slice_head`, `slice_tail`, `slice_min`, `slice_max` and `slice_sample` raise `IncompatibleAxisError` when `by=` and `axis=` are both given, because the `by` keys already fix the axis.
 
 ```{code-cell} ipython3
 sub = adata.filter(obs.louvain.is_in(["B cells", "NK cells"]), obs.n_genes > 500)
@@ -160,6 +162,20 @@ ggplot(pb.obs, aes("louvain", "n_cells", fill="donor")) + geom_col(position="dod
 
 *Cells behind each pseudobulk sample. Megakaryocytes and dendritic cells have only a handful per donor, so those samples are noisy.*
 
+## Which spelling to use
+
+Every verb has four spellings that run the same code. Write `ap.tidy(adata).filter(...)`.
+
+| Spelling | Use it for |
+|---|---|
+| `ap.tidy(adata).verb(...)` | Scripts, notebooks and the examples in these docs. It chains, like a dplyr pipe. |
+| `adata.ap.verb(...)` | Typed code that holds a plain `AnnData`. Cast once at the boundary, see "Consumer typing". |
+| `ap.verb(adata, ...)` | A single call, or a function you pass around, such as `map(ap.filter, ...)`. |
+| `annplyr.verbs.verb` | Nothing new. It is the module that generates the flat functions in the row above. |
+
+All four return the same result, so a chain can start with any of them. An AnnData result
+is a `TidyAnnData`.
+
 ## Accessor
 
 The `adata.ap` accessor is registered when `annplyr` is imported, and
@@ -211,7 +227,7 @@ Strings such as `"raw:MS4A1"` and `ap.col` remain available for computed names.
 | single-cell utilities | Readers return tables/reports; writers return a new object | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
 
 All cumulative `max_matrix_values=` checks plan every source before the first
-adapter read. The mechanically checked callable-level contract is recorded in
+adapter read. The callable-level contract, frozen at v0.3 and checked by the test suite, is recorded in
 [`api-contract-v0.3.md`](https://github.com/mdmanurung/annplyr/blob/main/docs/development/api-contract-v0.3.md).
 
 The reduction chunk target is an internal implementation detail, currently
@@ -404,6 +420,16 @@ schema/dtype selector and must not inspect values.
    annplyr.sd
    annplyr.sum
 ```
+
+### Missing values
+
+These helpers follow dplyr and base R. `ap.sum`, `ap.mean`, `ap.median`, `ap.sd`, `ap.min` and `ap.max` return NA for any group whose input holds an NA, and take `na_rm=True` to skip it. `na_rm` is a keyword-only argument and defaults to `False`. `ap.n_distinct` counts NA as one value, and `na_rm=True` leaves it out. `ap.n()` counts every row. `ap.first`, `ap.last` and `ap.nth` return the element they name, even when it is NA. The same rules hold on `obs` and `var` columns and on `X`, `raw`, layers and `obsm` matrices, with or without `group_by`.
+
+`ap.cum_sum`, `ap.cum_prod`, `ap.cum_min`, `ap.cum_max` and `ap.cummean` return NA from the first NA onward, as dplyr does. They take no `na_rm`.
+
+A method called on an expression, such as `ap.col("x").sum()`, is the Narwhals method. It skips NA, so write `ap.sum("x", na_rm=True)` when you want that on purpose. `across(cols, ap.mean)` uses the dplyr default, and `across(cols, lambda c: ap.mean(c, na_rm=True))` skips NA.
+
+`aggregate_cells` is not a dplyr verb and has no `na_rm`. A NaN in the source makes the sum or mean of its group and feature NaN, and the other groups keep their values. `n_cells` counts every cell.
 
 ## DataFrame helpers in `annplyr.tidyr`
 

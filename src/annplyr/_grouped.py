@@ -315,15 +315,21 @@ class GroupedAnnData:
         *by: Expression | Sequence[Expression],
         source: str | None = None,
         max_matrix_values: int | None = None,
+        by_group: bool = False,
     ) -> GroupedAnnData:
         plan = self._plan()
+        # plan.positions follow first appearance; by_group sorts the groups by key
+        # (categorical level order, NA last), as dplyr does.
+        key_order = plan.keys.sort_values(list(self._spec.columns), kind="stable", na_position="last").index
+        sorted_positions = tuple(plan.positions[i] for i in key_order)
         return self._wrap(
             arrange_adata(
                 self._adata,
                 *by,
                 source=source,
                 max_matrix_values=max_matrix_values,
-                _group_positions=plan.positions,
+                by_group=by_group,
+                _group_positions=sorted_positions,
                 _group_axis=self._axis,
             )
         )
@@ -353,6 +359,11 @@ class GroupedAnnData:
         return self._wrap(result)
 
     def slice(self, *indices: Any) -> GroupedAnnData:
+        """Keep rows by 0-based position within each group, as ``iloc`` does. R's ``slice()`` is 1-based.
+
+        ``slice(0)`` keeps the first row of every group and ``slice(1)`` the second.
+        dplyr's ``slice(1)`` is the first row, so subtract one from every R index.
+        """
         plan = self._plan()
         selector = _slice_selector(indices)
         pieces: list[np.ndarray] = []

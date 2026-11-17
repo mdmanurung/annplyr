@@ -22,7 +22,7 @@ from annplyr._errors import (
     UnknownColumnError,
     UnknownSourceError,
 )
-from annplyr._expr import Desc, to_narwhals
+from annplyr._expr import Desc, needs_na_flag, reduction_spec, to_narwhals
 from annplyr._frames import (
     OBS_NAMES,
     VAR_NAMES,
@@ -43,7 +43,13 @@ from annplyr._frames import (
     x_frame,
 )
 from annplyr._groups import GroupPlan, sort_by_keys
-from annplyr._reductions import ReductionPlan, SummaryGroupPlan, summarize_chunked
+from annplyr._reductions import (
+    ReductionPlan,
+    SummaryGroupPlan,
+    finish_reductions,
+    reduction_expressions,
+    summarize_chunked,
+)
 from annplyr._resolve import ResolvedSource
 from annplyr._sources import (
     DEFAULT_REDUCTION_CHUNK_VALUES,
@@ -740,6 +746,7 @@ def arrange_adata(
     *by: Any,
     source: str | None = None,
     max_matrix_values: int | None = None,
+    by_group: bool = False,
     _group_positions: tuple[np.ndarray, ...] | None = None,
     _group_axis: str | None = None,
 ) -> AnnData:
@@ -748,9 +755,20 @@ def arrange_adata(
     Wrap a key in :func:`desc` for a descending order. Keys may name different
     containers, for example ``ap.col("n_counts")`` then
     ``ap.col("var:highly_variable")``.
+
+    Groups are ignored, as in dplyr: on a grouped AnnData the keys sort the whole
+    axis. With ``by_group=True`` a grouped AnnData sorts by its grouping columns
+    first, then by the keys; on an ungrouped AnnData ``by_group`` changes nothing.
     """
+    if not by_group:
+        _group_positions = None
     items = _as_predicate_list(by)
     if not items:
+        if _group_positions is not None and _group_axis is not None and _group_positions:
+            order = np.concatenate(_group_positions)
+            return _subset_positions(
+                adata, order if _group_axis == "obs" else None, order if _group_axis == "var" else None
+            )
         return _subset_positions(adata)
     default = resolve.resolve_container(adata, source) if source is not None else None
     buckets = resolve.partition_payload(adata, items, verb="arrange", default_source=default)
@@ -1301,6 +1319,10 @@ def summarize_adata(
     because each is evaluated against its own frame. ``source=`` names the
     container for an expression that references no column, such as a raw
     Narwhals expression, which is then charged for in full.
+
+    ``ap.sum``, ``ap.mean``, ``ap.median``, ``ap.sd``, ``ap.min`` and ``ap.max``
+    return NA for a group that holds an NA, as dplyr does; pass ``na_rm=True`` to
+    skip it. ``ap.n_distinct`` counts NA as a value unless ``na_rm=True``.
     """
     aggregates = dict(stats) if isinstance(stats, Mapping) else dict(_as_predicate_list(tuple(stats or ())))
     axes = {_assignment_container(adata, str(name), value, "summarize").axis for name, value in aggregates.items()}
@@ -1418,20 +1440,28 @@ def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, 
     work, by_columns = prepare_by_frame(frame, by)
     work = prepare_sparse_for_arithmetic(work)
     assignments = expand_assignments(work, assignments)
-    exprs = [
-        to_narwhals(expr.alias(name)) if hasattr(expr, "alias") else nw.col(expr).alias(name)
-        for name, expr in assignments.items()
-    ]
+    exprs: list[nw.Expr] = []
+    na_aware: list[tuple[str, Any]] = []
+    for name, expr in assignments.items():
+        spec = reduction_spec(expr)
+        if spec is not None and needs_na_flag(spec):
+            # NA-reading reductions run as plain aggregates plus counts, see reduction_expressions
+            exprs.extend(reduction_expressions(name, spec, work.columns))
+            na_aware.append((name, spec))
+        else:
+            exprs.append(to_narwhals(expr.alias(name)) if hasattr(expr, "alias") else nw.col(expr).alias(name))
     if by_columns:
         try:
-            return nw.from_native(work).group_by(*by_columns).agg(*exprs).to_native()
+            result = nw.from_native(work).group_by(*by_columns).agg(*exprs).to_native()
         except _MISSING_COLUMN_ERRORS as exc:
             raise UnknownColumnError(_missing_column_message(exc, "summary")) from exc
+        return finish_reductions(result, na_aware)
     if exprs:
         try:
-            return nw.from_native(with_row_number(work)).select(*exprs).to_native()
+            result = nw.from_native(with_row_number(work)).select(*exprs).to_native()
         except _MISSING_COLUMN_ERRORS as exc:
             raise UnknownColumnError(_missing_column_message(exc, "summary")) from exc
+        return finish_reductions(result, na_aware)
     return pd.DataFrame(index=[0])
 
 

@@ -109,6 +109,10 @@ adata.left_join(sheet, by=obs.louvain, relationship="many-to-one")
 
 `relationship=` is checked before any cell is added. The full list of error classes is on the {doc}`api` page.
 
+## Missing values
+
+Summaries follow dplyr and base R. `ap.mean(obs.score)` returns NA for a group that holds one NA, and `ap.mean(obs.score, na_rm=True)` skips it. The same holds for `ap.sum`, `ap.median`, `ap.sd`, `ap.min` and `ap.max`, whether the values come from `obs`, `var`, `X`, `raw`, a layer or `obsm`. A running `ap.cum_sum` turns NA from the first NA onward. `ap.n_distinct` counts NA as a value unless you pass `na_rm=True`. This differs from earlier releases, which skipped NA silently. See {doc}`api` for the full list.
+
 ## Group order
 
 Tables from `summarize` and `count` list groups in key order, as dplyr does. A categorical key follows its level order, and missing keys come last. The order does not depend on which cell comes first in the object.

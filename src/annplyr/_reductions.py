@@ -8,7 +8,13 @@ import numpy as np
 import pandas as pd
 
 from annplyr._errors import DuplicateNameError, SelectionError
-from annplyr._expr import _ReductionSpec, reduction_spec
+from annplyr._expr import (
+    NA_PROPAGATING_REDUCTIONS,
+    _ReductionSpec,
+    needs_na_flag,
+    reduction_narwhals,
+    reduction_spec,
+)
 from annplyr._frames import evaluate_select, expand_assignments, prepare_sparse_for_arithmetic, with_row_number
 from annplyr._groups import GroupPlan
 from annplyr._sources import ChunkPlan
@@ -136,10 +142,13 @@ class _PairwiseSumState:
         self._parts: list[np.ndarray] = []
         self._filled = 0
         self._leaves: list[Any] = []
+        #: Set once a NaN has been zeroed out of the sum, so the caller can propagate it.
+        self.saw_nan = False
 
     def update(self, values: np.ndarray) -> None:
         array = np.asarray(values, dtype=self.dtype)
         if self.dtype.kind in "fc" and np.isnan(array).any():
+            self.saw_nan = True
             array = array.copy()
             array[np.isnan(array)] = 0
         offset = 0
@@ -186,6 +195,8 @@ class _Accumulator:
         self.totals: list[Any] = [None] * groups
         self.values: list[Any] = [None] * groups
         self.seen = np.zeros(groups, dtype=bool)
+        #: Per group: an NA reached a reduction that must return NA when ``na_rm`` is False.
+        self.has_na = np.zeros(groups, dtype=bool)
         self.means = np.zeros(groups, dtype=np.longdouble)
         self.m2 = np.zeros(groups, dtype=np.longdouble)
         self.collections: list[Any] = [None] * groups
@@ -222,9 +233,13 @@ class _Accumulator:
 
     def _update_group(self, group: int, local: pd.Series) -> None:
         operation = self.spec.operation
+        propagate = self.spec.na_rm is False and operation in NA_PROPAGATING_REDUCTIONS
+        if propagate and not (operation in {"sum", "mean"} and self.pairwise is not None) and _has_missing(local):
+            self.has_na[group] = True
         if operation == "sum":
             if self.pairwise is not None:
                 self.pairwise[group].update(local.to_numpy())
+                self.has_na[group] |= propagate and self.pairwise[group].saw_nan
             else:
                 value = _local_sum(local, preserve_eager=self.full_pass)
                 self.totals[group] = value if self.totals[group] is None else self.totals[group] + value
@@ -232,6 +247,7 @@ class _Accumulator:
             count = int(local.count())
             if self.pairwise is not None:
                 self.pairwise[group].update(local.to_numpy())
+                self.has_na[group] |= propagate and self.pairwise[group].saw_nan
                 self.counts[group] += count
             elif count:
                 value = _local_sum(local, preserve_eager=self.full_pass)
@@ -281,6 +297,8 @@ class _Accumulator:
                 self.collections[group] = set()
             unique = cast(set[Any], self.collections[group])
             for value in pd.unique(local):
+                if self.spec.na_rm and _is_missing(value):
+                    continue
                 unique.add(_unique_key(value))
         elif operation == "all":
             value = bool(local.all(skipna=True))
@@ -324,6 +342,8 @@ class _Accumulator:
                 value = self.values[group] if self.seen[group] else False
             else:  # pragma: no cover - guarded by expression metadata
                 raise RuntimeError(f"unknown chunked reduction: {operation!r}")
+            if self.has_na[group]:
+                value = np.nan
             values.append(value)
         return _typed_result(values, self.dtype, operation)
 
@@ -483,14 +503,14 @@ def _summarize_dense_column_chunks(
         if not batch:
             continue
         work = groups.add_to_frame(frame, rows)
-        expressions = [_reduction_expression(name, spec) for name, spec in batch]
+        expressions = [expression for name, spec in batch for expression in reduction_expressions(name, spec)]
         if groups.internal_columns:
             piece = nw.from_native(work).group_by(*groups.internal_columns).agg(*expressions).to_native()
         else:
             piece = (
                 nw.from_native(with_row_number(prepare_sparse_for_arithmetic(work))).select(*expressions).to_native()
             )
-        pieces.append(piece)
+        pieces.append(finish_reductions(piece.reset_index(drop=True), batch))
 
     if not pieces:
         raise RuntimeError("dense column reduction plan produced no batches")
@@ -505,16 +525,49 @@ def _summarize_dense_column_chunks(
     return result.loc[:, ordered]
 
 
-def _reduction_expression(name: str, spec: _ReductionSpec) -> nw.Expr:
+def reduction_expressions(name: str, spec: _ReductionSpec, columns: Any = None) -> list[nw.Expr]:
+    """Simple Narwhals aggregates for one reduction, safe inside ``group_by().agg()``.
+
+    A reduction that reads NA (``na_rm=False`` on a sum, ``na_rm=True`` on a
+    distinct count) is a compound expression, which Narwhals runs group by group
+    with a warning. Instead it returns the plain aggregate plus the non-missing
+    and total counts, and :func:`finish_reductions` applies the NA rule.
+    """
     if spec.input_expr is None:
-        return nw.len().alias(name)
-    spec = _relabel_spec(spec)
-    method = getattr(spec.input_expr, spec.operation)
-    expression = method(ddof=spec.ddof) if spec.operation == "std" else method()
-    return expression.alias(name)
+        return [nw.len().alias(name)]
+    spec = _relabel_spec(spec, columns)
+    input_expr = cast(nw.Expr, spec.input_expr)
+    if not needs_na_flag(spec):
+        return [reduction_narwhals(spec.operation, input_expr, spec.ddof, spec.na_rm).alias(name)]
+    plain = reduction_narwhals(spec.operation, input_expr, spec.ddof, None)
+    return [
+        plain.alias(name),
+        input_expr.count().alias(_helper_name(name, "present")),
+        nw.len().alias(_helper_name(name, "rows")),
+    ]
 
 
-def _relabel_spec(spec: _ReductionSpec) -> _ReductionSpec:
+def finish_reductions(frame: pd.DataFrame, assignments: Any) -> pd.DataFrame:
+    """Apply the NA rule to the helper counts :func:`reduction_expressions` added."""
+    frame = frame.copy(deep=False)
+    for name, spec in assignments:
+        if not needs_na_flag(spec):
+            continue
+        present, rows = _helper_name(name, "present"), _helper_name(name, "rows")
+        has_na = (frame[present] < frame[rows]).to_numpy()
+        if spec.operation == "n_unique":
+            frame[name] = frame[name] - has_na.astype(np.int64)  # n_unique counted the NA once
+        else:
+            frame[name] = frame[name].where(~has_na)
+        frame = frame.drop(columns=[present, rows])
+    return frame
+
+
+def _helper_name(name: str, part: str) -> str:
+    return f"__annplyr_{part}_{name}__"
+
+
+def _relabel_spec(spec: _ReductionSpec, columns: Any = None) -> _ReductionSpec:
     """Rewrite a spec's input so it names the bare column its frame exposes.
 
     A qualified reference such as ``raw:LYZ`` is carried through the planner
@@ -524,11 +577,14 @@ def _relabel_spec(spec: _ReductionSpec) -> _ReductionSpec:
     column = _bare_column(spec.source_column)
     if column is None or column == spec.source_column or spec.input_expr is None:
         return spec
+    if columns is not None and spec.source_column in columns:
+        return spec  # the frame keeps the qualified name
     return _ReductionSpec(
         operation=spec.operation,
         input_expr=nw.col(column),
         source_column=column,
         ddof=spec.ddof,
+        na_rm=spec.na_rm,
     )
 
 
@@ -680,6 +736,15 @@ def _combine_pairwise_leaves(size: int, leaves: Any, dtype: np.dtype[Any]) -> An
     left_value = _combine_pairwise_leaves(left, leaves, dtype)
     right_value = _combine_pairwise_leaves(size - left, leaves, dtype)
     return dtype.type(left_value + right_value)
+
+
+def _has_missing(series: pd.Series) -> bool:
+    """Whether the series holds an NA, without densifying a sparse one."""
+    if isinstance(series.dtype, pd.SparseDtype):
+        array = series.array
+        stored = array.sp_values
+        return (_is_missing(array.fill_value) and len(array) > len(stored)) or bool(pd.isna(stored).any())
+    return bool(series.isna().any())
 
 
 def _is_missing(value: Any) -> bool:

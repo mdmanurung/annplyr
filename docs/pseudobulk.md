@@ -84,6 +84,8 @@ dense = lambda m: m.toarray() if hasattr(m, "toarray") else np.asarray(m)
 np.testing.assert_allclose(dense(pb.X), dense(ref))
 ```
 
+`aggregate_cells` is not a dplyr verb and has no `na_rm`. A NaN in the source makes the pseudobulk of its group and gene NaN, and `n_cells` still counts that cell. Raw counts hold no NaN, so this only matters for a source you have filled with missing values.
+
 `aggregate_cells` keeps the obs columns that are constant within every group, so `condition` comes through with the donor. Small groups give noisy pseudobulks, so keep the ones built from at least 10 cells.
 
 ```{code-cell} ipython3

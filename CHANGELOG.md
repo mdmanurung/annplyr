@@ -7,6 +7,27 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `tests/test_plot_contract.py`: `to_wide`, `join_features`, `summarize` and
+  `count` on sparse `X` must give frames plotnine can draw. It skips without
+  plotnine.
+
+### Changed
+
+- The docs build group now requires `plotnine>=0.16.0a15,<0.17` and installs
+  ggann and plotnine-extra from pinned commits (2026-11-17).
+
+### Known issues
+
+- `to_wide` returns pandas Sparse columns for sparse `X`, and plotnine cannot
+  draw them. This is a strict xfail in the plot contract test and an open design
+  decision. See the 0.5.0 note on sparse `to_wide` exports.
+
+### Documentation
+
+- Install from GitHub: annplyr is not on PyPI yet. The PyPI badge is removed.
+
 ## [0.5.0] - 2026-09-27
 
 annplyr 0.5.0 reads like tidyseurat and tidySingleCellExperiment. Every column

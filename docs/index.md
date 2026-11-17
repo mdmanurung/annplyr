@@ -20,7 +20,7 @@ from _setup import *
 ```
 
 ```bash
-pip install annplyr
+pip install "annplyr @ git+https://github.com/mdmanurung/annplyr"
 ```
 
 ```{code-cell} ipython3

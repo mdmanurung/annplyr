@@ -3,10 +3,13 @@
 annplyr has no runtime plotnine dependency, but its docs and ggann draw its
 tables with plotnine. plotnine cannot take pandas sparse columns, so every verb
 that the docs call "plot-ready" has to return dense columns, even when ``X`` is
-sparse. This file is the data contract between annplyr and the plot packages.
+sparse. ``to_wide`` is the known exception: it is a strict xfail for sparse
+``X`` until the open design decision is made. This file is the data contract between annplyr
+and the plot packages.
 
-It skips when plotnine is absent. The downstream job in plotnine-extra's CI
-installs plotnine, so it runs there.
+It skips when plotnine is absent. annplyr's own test environment does not
+install plotnine, so it runs only in the downstream job of plotnine-extra's CI,
+or after installing the ``doc`` group.
 """
 
 from __future__ import annotations

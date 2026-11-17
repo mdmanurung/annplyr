@@ -52,7 +52,7 @@ The main verbs are listed below. Each is available as a method on a tidied objec
 - `left_join`, `inner_join`, `semi_join` and `anti_join` for sample sheets and feature annotations. A `relationship` argument states the expected key cardinality. The default is many-to-one, so a duplicated key raises `JoinRelationshipError` instead of duplicating cells.
 - `group_by` returns a persistent grouped object for ranking, filtering, mutation and summaries within groups.
 - `summarize` and `count` return DataFrames.
-- `to_wide`, `join_features`, `pivot_longer` and `pull` extract plot-ready tables.
+- `to_wide`, `join_features`, `pivot_longer` and `pull` extract tables for plotting. `to_wide` keeps pandas sparse columns when `X` is sparse, so those need densifying before plotnine can draw them.
 - `aggregate_cells` returns a pseudobulk AnnData, and `nest` returns one object per group.
 
 Every name carries its container, as in tidyseurat and tidySingleCellExperiment, whose verbs these follow. `from annplyr.data import obs, var, X, raw` gives the fixed containers. Any other name is a layer or an `obsm` key, so `obs.percent_mito`, `raw.MS4A1`, `counts.MS4A1` and `X_umap[0]` each read one column. Verbs take names positionally, and new columns are keywords, as in `mutate(b_score=(raw.MS4A1 + raw.CD79A) / 2)`. One expression cannot mix containers. It fails with `IncompatibleAxisError` and names both.

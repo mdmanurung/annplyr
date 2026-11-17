@@ -13,11 +13,6 @@ and this project follows [Semantic Versioning](https://semver.org/).
   `count` on sparse `X` must give frames plotnine can draw. It skips without
   plotnine.
 
-### Changed
-
-- The docs build group now requires `plotnine>=0.16.0a15,<0.17` and installs
-  ggann and plotnine-extra from pinned commits (2026-11-17).
-
 ### Known issues
 
 - `to_wide` returns pandas Sparse columns for sparse `X`, and plotnine cannot
@@ -30,6 +25,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- The docs build group now requires `plotnine>=0.16.0a15,<0.17` and installs
+  ggann and plotnine-extra from pinned commits (2026-11-17).
 - **Breaking:** `arrange` on a `GroupedAnnData` now ignores groups, as dplyr does. It used to sort by
   group first. `arrange` takes a keyword-only `by_group=False` on the flat function, `.ap`,
   `TidyAnnData` and `GroupedAnnData`. `by_group=True` sorts by the grouping columns first

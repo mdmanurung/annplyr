@@ -28,6 +28,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - Install from GitHub: annplyr is not on PyPI yet. The PyPI badge is removed.
 
+### Changed
+
+- **Breaking:** `arrange` on a `GroupedAnnData` now ignores groups, as dplyr does. It used to sort by
+  group first. `arrange` takes a keyword-only `by_group=False` on the flat function, `.ap`,
+  `TidyAnnData` and `GroupedAnnData`. `by_group=True` sorts by the grouping columns first
+  (categorical level order, missing last), then by the keys; on ungrouped data it changes nothing.
+  The `slice*` verbs are unchanged and still run per group.
+- **Breaking:** `slice_head`, `slice_tail`, `slice_min`, `slice_max` and `slice_sample` now raise
+  `IncompatibleAxisError` when `by=` and `axis=` are both given. They used to ignore `axis=` and group
+  by the `by` keys. Drop `axis=`. For `slice_head`, `slice_tail` and `slice_sample`, `axis` now defaults
+  to `None` (read as `"obs"`) so an explicit value can be told from the default.
+- `slice` stays 0-based, unlike dplyr's 1-based `slice`. Its docstring, `docs/api.md` and
+  `docs/from_r.md` now say so, and a test pins `slice(0)` as the first row and `slice(1)` as the second.
+- **Breaking:** `ap.sum`, `ap.mean`, `ap.median`, `ap.sd`, `ap.min` and `ap.max` now return NA when
+  the input holds an NA, as dplyr and base R do. They take a keyword-only `na_rm=False`; pass
+  `na_rm=True` to skip NA, the old behavior. This holds for `obs`, `var`, `X`, `raw`, layers and
+  `obsm`, on every chunked, sparse and float32 path, grouped or not.
+- `ap.n_distinct` takes `na_rm=False`. It still counts NA as one value, as dplyr does, and the new
+  `na_rm=True` leaves it out.
+- **Breaking:** `ap.cum_sum`, `ap.cum_prod`, `ap.cum_min`, `ap.cum_max` and `ap.cummean` return NA
+  from the first NA onward, as dplyr does. They used to skip NA and keep accumulating.
+- `ap.first`, `ap.last`, `ap.nth` and `ap.n` are unchanged. Methods called on an expression, such
+  as `ap.col("x").sum()`, are still the Narwhals methods and skip NA.
+- `aggregate_cells` is not a dplyr verb; its NaN behavior is now documented. A NaN in the source makes
+  its group and feature NaN, and `n_cells` counts the cell.
+
 ### Fixed
 
 - `aggregate_cells(fun="sum")` no longer wraps around on narrow integer counts. A uint8, int16 or

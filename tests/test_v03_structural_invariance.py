@@ -32,7 +32,7 @@ def test_chained_grouped_fixture_preserves_structure_ownership_and_positional_or
     source.obsp["connectivity"] = sparse.csr_matrix(np.arange(16).reshape(4, 4))
     source.varp["similarity"] = sparse.csr_matrix(np.arange(9).reshape(3, 3))
 
-    expected_positions = np.array([2, 0, 1, 3])
+    expected_positions = np.array([1, 2, 3, 0])  # value descending over the whole axis; groups are ignored
     expected_x = source.X[expected_positions, :].toarray()
     expected_layer = source.layers["counts"][expected_positions, :].toarray()
     expected_raw = source.raw.X[expected_positions, :].toarray()
@@ -45,14 +45,14 @@ def test_chained_grouped_fixture_preserves_structure_ownership_and_positional_or
     assert isinstance(result, GroupedAnnData)
     assert result is not grouped
     assert result.group_vars() == ["group"]
-    assert result.group_keys()["group"].tolist() == ["b", "a"]
+    assert result.group_keys()["group"].tolist() == ["a", "b"]
     output = result.ungroup()
     assert output is not source
     assert output.obs_names.tolist() == ["dup"] * 4
     assert output.var_names.tolist() == ["gene"] * 3
-    assert output.obs["value"].tolist() == [3, 1, 4, 2]
-    assert output.obs["within_group"].tolist() == [2, 1, 1, 2]
-    assert output.obs["double"].tolist() == [6, 2, 8, 4]
+    assert output.obs["value"].tolist() == [4, 3, 2, 1]
+    assert output.obs["within_group"].tolist() == [1, 2, 2, 1]
+    assert output.obs["double"].tolist() == [8, 6, 4, 2]
     assert isinstance(output.obs["group"].dtype, pd.CategoricalDtype)
     assert str(output.obs["value"].dtype) == "Int64"
     assert str(output.obs["flag"].dtype) == "boolean"

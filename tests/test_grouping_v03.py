@@ -99,7 +99,7 @@ def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names
     grouped = _grouped_fixture(duplicate_names=True).ap.group_by("group")
     operations = {
         "filter": grouped.filter(ap.row_number() == 1),
-        "arrange": grouped.arrange(ap.col("value")),
+        "arrange": grouped.arrange(ap.col("value"), by_group=True),
         "distinct": grouped.distinct("value"),
         "slice": grouped.slice(1),
         "head": grouped.slice_head(1),
@@ -110,7 +110,7 @@ def test_grouped_shape_verbs_use_positions_and_persist_with_duplicate_axis_names
     }
     assert all(isinstance(result, GroupedAnnData) for result in operations.values())
     assert operations["filter"].ungroup().X[:, 0].tolist() == [0, 3, 9]
-    assert operations["arrange"].ungroup().X[:, 0].tolist() == [6, 0, 15, 3, 12, 9]
+    assert operations["arrange"].ungroup().X[:, 0].tolist() == [3, 12, 6, 0, 15, 9]
     assert operations["slice"].ungroup().X[:, 0].tolist() == [6, 12]
     assert operations["head"].ungroup().X[:, 0].tolist() == [0, 3, 9]
     assert operations["tail"].ungroup().X[:, 0].tolist() == [15, 12, 9]
@@ -337,3 +337,42 @@ def test_summary_and_count_tables_list_groups_in_key_order_with_missing_last() -
     assert keys(adata.ap.count("plain"), "plain") == ["y", "z", "NA"]
     # count(sort=True) orders by n, ties keep key order
     assert keys(adata.ap.count("plain", sort=True), "plain") == ["z", "y", "NA"]
+
+
+def test_grouped_arrange_ignores_groups_unless_by_group() -> None:
+    adata = _grouped_fixture()  # group b,a,b,NA,a,b; value 3,2,1,5,4,3; X[:, 0] is 3 * row
+    grouped = adata.ap.group_by("group")
+    whole = [6, 3, 0, 15, 12, 9]  # value 1, 2, 3, 3, 4, 5 over the whole axis, ties by position
+    by_group = [3, 12, 6, 0, 15, 9]  # a (level order), b, then NA last; keys sort inside each
+    assert grouped.arrange("value").ungroup().X[:, 0].tolist() == whole
+    assert grouped.arrange("value", by_group=False).ungroup().X[:, 0].tolist() == whole
+    assert grouped.arrange("value", by_group=True).ungroup().X[:, 0].tolist() == by_group
+    assert grouped.arrange(ap.desc("value"), by_group=True).ungroup().X[:, 0].tolist() == [12, 3, 0, 15, 6, 9]
+    assert grouped.arrange(by_group=True).ungroup().X[:, 0].tolist() == [3, 12, 0, 6, 15, 9]
+    assert grouped.arrange("value").group_vars() == ["group"]
+    # Ungrouped surfaces take the keyword too; with no groups it changes nothing.
+    for flat in (
+        ap.arrange(adata, "value", by_group=True),
+        adata.ap.arrange("value", by_group=True),
+        ap.tidy(adata).arrange("value", by_group=True),
+    ):
+        assert flat.X[:, 0].tolist() == whole
+
+
+def test_grouped_arrange_by_group_sorts_variables_too() -> None:
+    adata = _grouped_fixture()
+    adata.var["rank"] = [2, 1, 0]
+    grouped = adata.ap.group_by("var:kind")
+    assert grouped.arrange(ap.col("var:rank")).ungroup().var_names.tolist() == ["g2", "g1", "g0"]
+    assert grouped.arrange(ap.col("var:rank"), by_group=True).ungroup().var_names.tolist() == [
+        "g1",
+        "g2",
+        "g0",
+    ]  # protein, then rna
+
+
+def test_grouped_slices_stay_per_group_after_arrange_change() -> None:
+    grouped = _grouped_fixture().ap.group_by("group")
+    assert grouped.slice_min("value", 1).ungroup().X[:, 0].tolist() == [6, 3, 9]
+    assert grouped.slice_max("value", 1).ungroup().X[:, 0].tolist() == [0, 12, 9]
+    assert grouped.slice_head(1).ungroup().X[:, 0].tolist() == [0, 3, 9]

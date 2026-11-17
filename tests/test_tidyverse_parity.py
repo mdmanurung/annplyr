@@ -119,7 +119,18 @@ def test_grouped_matrix_sources_arrange_distinct_and_slices_are_group_local(dens
     assert grouped.filter(ap.row_number() == 1).ungroup().obs_names.tolist() == ["c0", "c2"]
     group_rows = grouped.mutate({"group_row": ap.row_number()})
     assert group_rows.ungroup().obs["group_row"].tolist() == [1, 2, 1, 2, 3]
-    assert grouped.arrange(ap.desc("x:g0")).ungroup().obs_names.tolist() == ["c4", "c1", "c0", "c3", "c2"]
+    # dplyr ignores groups in arrange unless .by_group = TRUE.
+    assert (
+        grouped.arrange(ap.desc("x:g0")).ungroup().obs_names.tolist()
+        == dense_adata.ap.arrange(ap.desc("x:g0")).obs_names.tolist()
+    )
+    assert grouped.arrange(ap.desc("x:g0"), by_group=True).ungroup().obs_names.tolist() == [
+        "c4",
+        "c1",
+        "c0",
+        "c3",
+        "c2",
+    ]
     assert adata.ap.group_by("batch").distinct("label", keep_all=True).ungroup().obs_names.tolist() == [
         "c0",
         "c4",

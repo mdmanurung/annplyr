@@ -19,6 +19,10 @@ annplyr follows the verbs of tidySingleCellExperiment (tidySCE), tidyseurat and 
 from _setup import *
 ```
 
+```{warning}
+`slice()` counts from 0, as Python and `iloc` do. dplyr counts from 1. `adata.slice(0)` keeps the first cell, and `adata.slice(1)` keeps the second. When you port `slice(1:3)`, write `slice(slice(0, 3))` or `slice([0, 1, 2])`. Negative positions count from the end, as in Python. `slice_head`, `slice_tail`, `slice_min`, `slice_max` and `slice_sample` take counts, not positions, so they match R.
+```
+
 ## Syntax table
 
 `adata` is `ap.tidy(adata)`. Names such as `obs`, `raw` and `counts` come from `annplyr.data`.
@@ -37,10 +41,12 @@ from _setup import *
 | if_else | `if_else(louvain %in% m, "myeloid", "lymphoid")` | `ap.if_else(obs.louvain.is_in(m), "myeloid", "lymphoid")` |
 | Rename | `rename(cell_type = louvain)` | `.rename(cell_type=obs.louvain)` |
 | Arrange | `arrange(desc(n_genes))` | `.arrange(ap.desc(obs.n_genes))` |
+| Arrange by group | `group_by(louvain) \|> arrange(desc(n_genes), .by_group = TRUE)` | `.group_by(obs.louvain).arrange(ap.desc(obs.n_genes), by_group=True)` |
 | Count | `count(donor, louvain)` | `.count(obs.donor, obs.louvain)` |
 | Add count | `add_count(louvain)` | `.add_count(obs.louvain)` |
 | Grouped summary | `group_by(louvain) \|> summarise(n = n())` | `.group_by(obs.louvain).summarize(n=ap.n())` |
 | Summary with `.by` | `summarise(n = n(), .by = louvain)` | `.summarize(n=ap.n(), by=obs.louvain)` |
+| Slice by position (**0-based**) | `slice(1)` is the first row; `slice(1:3)` is rows 1 to 3 | `.slice(0)` is the first cell; `.slice([0, 1, 2])` is cells 0 to 2 |
 | Top n per group | `slice_max(n_genes, n = 10, by = louvain)` | `.slice_max(obs.n_genes, n=10, by=obs.louvain)` |
 | Join a sample sheet | `left_join(sheet, by = "donor")` | `.left_join(sheet, by=obs.donor)` |
 | Genes, long table | `join_features(c("MS4A1", "LYZ"), shape = "long")` | `.join_features(raw.MS4A1, raw.LYZ, shape="long")` |
@@ -48,8 +54,19 @@ from _setup import *
 | Embedding as columns | `as_tibble()` | `.to_wide(obs.louvain, X_umap)` |
 | Long metadata | `pivot_longer(cols = c(louvain, leiden), ...)` | `.pivot_longer(obs.louvain, obs.leiden, names_to=..., values_to=...)` |
 | Nest per group | `nest(data = -cls)` | `.nest(obs.cls)`; `ap.unnest(table)` reverses it |
+| Mean | `summarise(m = mean(x))` | `.summarize(m=ap.mean(obs.x))`; NA in a group gives NA |
+| Mean, skip NA | `summarise(m = mean(x, na.rm = TRUE))` | `.summarize(m=ap.mean(obs.x, na_rm=True))` |
+| Sum, skip NA | `summarise(s = sum(x, na.rm = TRUE))` | `.summarize(s=ap.sum(obs.x, na_rm=True))` |
+| Distinct values | `n_distinct(x)`, `n_distinct(x, na.rm = TRUE)` | `ap.n_distinct(obs.x)`, `ap.n_distinct(obs.x, na_rm=True)` |
+| Running sum | `mutate(c = cumsum(x))` | `.mutate(c=ap.cum_sum(obs.x))`; NA from the first NA onward |
 | Pseudobulk | `aggregate_cells(.sample = c(donor, louvain), assays = "counts")` | `.aggregate_cells(obs.donor, obs.louvain, source=counts)` |
 | Downsample (tidytof) | `tof_downsample(group_cols = donor, num_cells = 100, method = "constant")` | `.group_by(obs.donor).slice_sample(n=100, random_state=0)` |
+
+`slice_head`, `slice_tail`, `slice_min`, `slice_max` and `slice_sample` take `by=` to work per group, as dplyr's `.by` does. The keys of `by=` fix the axis (obs keys group cells, var keys group features), so `by=` with `axis=` raises `IncompatibleAxisError`. Drop `axis=`.
+
+`arrange` ignores groups unless `by_group=True`, as in dplyr. On a grouped AnnData, `arrange(obs.n_genes)` sorts the whole axis and keeps the grouping. With `by_group=True` it sorts by the grouping columns first (categorical level order, missing last), then by the keys. On an ungrouped AnnData `by_group` changes nothing. `slice_min`, `slice_max`, `slice_head` and the other `slice*` verbs still run per group.
+
+`sum`, `mean`, `median`, `sd`, `min` and `max` default to `na_rm=False`, as in R, so one NA in a group gives NA. `cumsum`, `cumprod`, `cummin`, `cummax` and `cummean` turn NA from the first NA onward. `aggregate_cells` has no `na_rm`: a NaN in a count matrix makes the pseudobulk of its group NaN.
 
 Python cannot match R in four places:
 

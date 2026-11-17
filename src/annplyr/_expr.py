@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol, cast
 
 import narwhals as nw
@@ -30,6 +30,38 @@ class _ReductionSpec:
     input_expr: nw.Expr | None
     source_column: str | None = None
     ddof: int = 1
+    #: ``None`` is the Narwhals default of a raw method call (NA skipped, except that
+    #: ``n_unique`` counts it). ``True`` and ``False`` are the explicit dplyr ``na.rm``.
+    na_rm: bool | None = None
+
+
+#: Reductions that return NA when the input holds one and ``na_rm`` is ``False``.
+NA_PROPAGATING_REDUCTIONS = frozenset({"max", "mean", "median", "min", "std", "sum"})
+
+
+def reduction_narwhals(operation: str, input_expr: nw.Expr, ddof: int, na_rm: bool | None) -> nw.Expr:
+    """Return the Narwhals reduction for ``operation`` under the dplyr ``na_rm`` rule.
+
+    Narwhals skips NA (and counts it in ``n_unique``). ``na_rm=False`` makes the
+    result NaN when any input is NA, as base R and dplyr do. The NaN literal keeps
+    the value dtype where ``lit(None)`` would turn the column into ``object``.
+    """
+    method = getattr(input_expr, operation)
+    value = method(ddof=ddof) if operation == "std" else method()
+    if operation == "n_unique" and na_rm:
+        return value - input_expr.is_null().any().cast(nw.Int64)
+    if na_rm is False and operation in NA_PROPAGATING_REDUCTIONS:
+        return nw.when(~input_expr.is_null().any()).then(value).otherwise(nw.lit(float("nan")))
+    return value
+
+
+def needs_na_flag(spec: _ReductionSpec) -> bool:
+    """Whether a spec cannot run as one plain Narwhals aggregate, because it reads NA."""
+    if spec.input_expr is None:
+        return False
+    if spec.operation == "n_unique":
+        return bool(spec.na_rm)
+    return spec.na_rm is False and spec.operation in NA_PROPAGATING_REDUCTIONS
 
 
 def _merge_dependencies(*values: Any) -> frozenset[str] | None:
@@ -814,43 +846,166 @@ def n() -> AnnplyrExpr:
     )
 
 
-def n_distinct(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).n_unique()
+def _reduce(expr: str | AnnplyrExpr | nw.Expr, operation: str, na_rm: bool) -> AnnplyrExpr:
+    """Build a dplyr-style scalar reduction: NA propagates unless ``na_rm`` is ``True``."""
+    base = _expr(expr)
+    plain = getattr(base, operation)()
+    spec = None if plain._reduction is None else replace(plain._reduction, na_rm=bool(na_rm))
+    return AnnplyrExpr(
+        reduction_narwhals(operation, base.expr, 1, bool(na_rm)),
+        plain.dependencies,
+        1,
+        "scalar",
+        _reduction=spec,
+        _chunk_safe=False,
+    )
 
 
-def mean(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).mean()
+def n_distinct(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Count distinct values, as dplyr's ``n_distinct``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) counts NA as one value, as dplyr does. ``True`` leaves it out.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "n_unique", na_rm)
 
 
-def median(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).median()
+def mean(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Mean, as dplyr's ``mean``. NA gives NA unless ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "mean", na_rm)
 
 
-def sd(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).std()
+def median(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Median, as dplyr's ``median``. NA gives NA unless ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "median", na_rm)
 
 
-def sum(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).sum()
+def sd(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Standard deviation with ``ddof=1``, as dplyr's ``sd``. NA gives NA unless ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "std", na_rm)
 
 
-def min(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).min()
+def sum(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Sum, as dplyr's ``sum``. NA gives NA unless ``na_rm=True``; an empty or all-NA input sums to 0 with ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "sum", na_rm)
 
 
-def max(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).max()
+def min(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Minimum, as dplyr's ``min``. NA gives NA unless ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "min", na_rm)
+
+
+def max(expr: str | AnnplyrExpr | nw.Expr, *, na_rm: bool = False) -> AnnplyrExpr:
+    """Maximum, as dplyr's ``max``. NA gives NA unless ``na_rm=True``.
+
+    Parameters
+    ----------
+    expr
+        A column name, an annplyr expression or a Narwhals expression.
+    na_rm
+        ``False`` (the default) returns NA when any value is NA, as base R and dplyr
+        do. ``True`` drops NA first.
+
+    Returns
+    -------
+    AnnplyrExpr
+        A scalar expression for ``summarize``, or a per-group value in a grouped ``mutate``.
+    """
+    return _reduce(expr, "max", na_rm)
 
 
 def first(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
+    """First value, NA included, as dplyr's ``first``."""
     return _expr(expr).first()
 
 
 def last(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
+    """Last value, NA included, as dplyr's ``last``."""
     return _expr(expr).last()
 
 
 def nth(expr: str | AnnplyrExpr | nw.Expr, n: int, *, default: Any = None) -> AnnplyrExpr:
+    """The ``n``-th value (0-based, negative counts from the end), NA included, as dplyr's ``nth``."""
+
     def _take_nth(series: Any) -> Any:
         index = n if n >= 0 else series.len() + n
         if index < 0 or index >= series.len():
@@ -944,24 +1099,46 @@ def ntile(expr: str | AnnplyrExpr | nw.Expr, buckets: int) -> AnnplyrExpr:
     return (((_expr(expr).rank("ordinal") - 1) * buckets) / n()).floor() + 1
 
 
+def _cumulative_from_na(base: AnnplyrExpr, running: AnnplyrExpr) -> AnnplyrExpr:
+    """Make a running result NA from the first NA onward, as dplyr's ``cum*`` do."""
+    seen_na = base.expr.is_null().cast(nw.Int64).cum_sum() > 0
+    return AnnplyrExpr(
+        nw.when(~seen_na).then(running.expr).otherwise(nw.lit(float("nan"))),
+        running.dependencies,
+        running.output_width,
+        running.cardinality,
+        _chunk_safe=False,
+    )
+
+
 def cum_sum(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).cum_sum()
+    """The running sum. Once a value is NA, every later value is NA, as in dplyr's ``cum_sum``; there is no ``na_rm``."""
+    base = _expr(expr)
+    return _cumulative_from_na(base, base.cum_sum())
 
 
 def cum_min(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).cum_min()
+    """The running minimum. Once a value is NA, every later value is NA, as in dplyr's ``cum_min``; there is no ``na_rm``."""
+    base = _expr(expr)
+    return _cumulative_from_na(base, base.cum_min())
 
 
 def cum_max(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).cum_max()
+    """The running maximum. Once a value is NA, every later value is NA, as in dplyr's ``cum_max``; there is no ``na_rm``."""
+    base = _expr(expr)
+    return _cumulative_from_na(base, base.cum_max())
 
 
 def cum_prod(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).cum_prod()
+    """The running product. Once a value is NA, every later value is NA, as in dplyr's ``cum_prod``; there is no ``na_rm``."""
+    base = _expr(expr)
+    return _cumulative_from_na(base, base.cum_prod())
 
 
 def cummean(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:
-    return _expr(expr).cum_sum() / row_number()
+    """The running mean. Once a value is NA, every later value is NA, as in dplyr's ``cummean``; there is no ``na_rm``."""
+    base = _expr(expr)
+    return _cumulative_from_na(base, base.cum_sum()) / row_number()
 
 
 def cumany(expr: str | AnnplyrExpr | nw.Expr) -> AnnplyrExpr:

@@ -86,6 +86,17 @@ def _sort_axis(by: Any) -> Axis:
     return "var" if name.startswith("var:") else "obs"
 
 
+def _no_axis_with_by(verb: str, axis: Axis | None) -> None:
+    """``by=`` groups by its keys, which fix the axis, so an explicit ``axis=`` would be ignored."""
+    if axis is not None:
+        msg = (
+            f"{verb}(by=..., axis={axis!r}) is ambiguous: the axis comes from the by keys "
+            "(obs keys group cells, var keys group features). Drop axis=, "
+            f"or use group_by(...).{verb}(...) for per-group work"
+        )
+        raise IncompatibleAxisError(msg)
+
+
 def _keys(by: Any) -> tuple[Any, ...]:
     """``by=`` takes one key or a list of keys, as in ``summarize(by=...)``."""
     return tuple(by) if isinstance(by, (list, tuple)) else (by,)
@@ -369,6 +380,7 @@ class AnnplyrAccessor:
         *by: Expression | Sequence[Expression],
         source: str | None = None,
         max_matrix_values: int | None = None,
+        by_group: bool = False,
     ) -> AnnDataWithAnnplyr:
         return _with_annplyr_accessor(
             arrange_adata(
@@ -376,26 +388,36 @@ class AnnplyrAccessor:
                 *by,
                 source=source,
                 max_matrix_values=max_matrix_values,
+                by_group=by_group,
             )
         )
 
     def slice(self, *indices: Any, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+        """Keep rows by 0-based position, as ``iloc`` does. R's ``slice()`` is 1-based.
+
+        ``adata.ap.slice(0)`` keeps the first cell and ``adata.ap.slice(1)`` the
+        second. dplyr's ``slice(1)`` is the first row, so subtract one from every
+        R index you port. Negative positions count from the end, as in Python.
+        """
         return _with_annplyr_accessor(slice_adata(self._obj, *indices, axis=axis))
 
-    def slice_head(self, n: int = 5, *, by: Selector | None = None, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+    def slice_head(self, n: int = 5, *, by: Selector | None = None, axis: Axis | None = None) -> AnnDataWithAnnplyr:
         if by is not None:  # dplyr's slice_head(n, by = g): one call, no ungroup
+            _no_axis_with_by("slice_head", axis)
             return self.group_by(*_keys(by)).slice_head(n).ungroup()
-        return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis))
+        return _with_annplyr_accessor(slice_head_adata(self._obj, n=n, axis=axis or "obs"))
 
-    def slice_tail(self, n: int = 5, *, by: Selector | None = None, axis: Axis = "obs") -> AnnDataWithAnnplyr:
+    def slice_tail(self, n: int = 5, *, by: Selector | None = None, axis: Axis | None = None) -> AnnDataWithAnnplyr:
         if by is not None:
+            _no_axis_with_by("slice_tail", axis)
             return self.group_by(*_keys(by)).slice_tail(n).ungroup()
-        return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis))
+        return _with_annplyr_accessor(slice_tail_adata(self._obj, n=n, axis=axis or "obs"))
 
     def slice_min(
         self, order_by: Expression, n: int = 5, *, by: Selector | None = None, axis: Axis | None = None
     ) -> AnnDataWithAnnplyr:
         if by is not None:
+            _no_axis_with_by("slice_min", axis)
             return self.group_by(*_keys(by)).slice_min(order_by, n).ungroup()
         resolved = axis or _sort_axis(order_by)
         return _with_annplyr_accessor(slice_min_adata(self._obj, by=order_by, n=n, axis=resolved))
@@ -409,6 +431,7 @@ class AnnplyrAccessor:
         three cells of every cluster, as dplyr's ``slice_max(n_counts, n = 3, by = louvain)``.
         """
         if by is not None:
+            _no_axis_with_by("slice_max", axis)
             return self.group_by(*_keys(by)).slice_max(order_by, n).ungroup()
         resolved = axis or _sort_axis(order_by)
         return _with_annplyr_accessor(slice_max_adata(self._obj, by=order_by, n=n, axis=resolved))
@@ -421,9 +444,10 @@ class AnnplyrAccessor:
         replace: bool = False,
         random_state: int | None = None,
         by: Selector | None = None,
-        axis: Axis = "obs",
+        axis: Axis | None = None,
     ) -> AnnDataWithAnnplyr:
         if by is not None:
+            _no_axis_with_by("slice_sample", axis)
             grouped = self.group_by(*_keys(by))
             return grouped.slice_sample(n, prop=prop, replace=replace, random_state=random_state).ungroup()
         return _with_annplyr_accessor(
@@ -433,7 +457,7 @@ class AnnplyrAccessor:
                 prop=prop,
                 replace=replace,
                 random_state=random_state,
-                axis=axis,
+                axis=axis or "obs",
             )
         )
 
@@ -652,7 +676,9 @@ class AnnplyrAccessor:
         ``adata.ap.aggregate_cells(obs.donor, obs.cell_type, source=counts)``
         returns an AnnData with one row per donor and cell type, the keys plus
         ``n_cells`` in ``obs``. ``source`` has no default because ``X`` is often
-        scaled; sum raw counts for differential expression.
+        scaled; sum raw counts for differential expression. A NaN in ``source`` makes
+        its group and feature NaN in the result, and ``n_cells`` counts it as a cell;
+        there is no ``na_rm``.
         """
         return _with_annplyr_accessor(aggregate_cells_adata(self._obj, *by, source=source, fun=fun))
 

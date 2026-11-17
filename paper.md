@@ -36,13 +36,14 @@ The idea of tidy verbs on annotated matrices is not new. The R community has use
 
 R users already have this style of work. dplyr and the tidyverse [@wickham2019tidyverse] provide the grammar of verbs. `tidySingleCellExperiment` [@mangiola2025tidysce] and `tidyseurat` [@mangiola2021tidyseurat] let users apply those verbs to `SingleCellExperiment` and Seurat objects. The tidyomics project collects such packages [@hutchison2024tidyomics].
 
-Python has no equivalent for AnnData. The usual options are listed below.
+Python has one close neighbour for AnnData and a few partial options. They are listed below.
 
 - **Plain pandas or polars on `.obs`.** This works for metadata alone. It does not carry a filter over to `X`, layers or `obsm`, and it does not look inside matrices.
 - **Scanpy getters.** `sc.get.obs_df` and related functions extract tables from AnnData [@wolf2018scanpy]. They extract. They do not filter, group or join, and they do not return AnnData.
+- **`annsel`.** `annsel` [@annsel] brings dataframe-style `filter`, `select` and `group_by` to AnnData and is also built on Narwhals. Its documented API stops at those verbs plus `pipe`. `annplyr` adds `mutate`, `arrange`, joins, grouped `summarize` and pseudobulk aggregation, and it follows the dplyr names that `annsel` also draws on.
 - **dplyr-style libraries for dataframes.** `siuba` [@siuba] ports dplyr to pandas and SQL. Pyjanitor offers similar cleaning helpers. Both work on dataframes, so neither knows that `obs` must stay aligned with a matrix.
 
-`annplyr` fills this gap. It builds on Narwhals [@narwhals] to evaluate expressions against dataframe backends. It does not replace Scanpy or AnnData, and it is not a quality control or annotation workflow.
+`annplyr` covers the rest of that grammar. It builds on Narwhals [@narwhals] to evaluate expressions against dataframe backends. It does not replace Scanpy or AnnData, and it is not a quality control or annotation workflow.
 
 # Functionality
 

@@ -16,6 +16,7 @@ from anndata import AnnData
 from scipy import sparse
 
 import annplyr as ap
+from annplyr.data import obs
 
 REDUCTIONS = {
     "sum": ap.sum,
@@ -288,3 +289,14 @@ def test_obs_derived_input_and_the_flat_function_follow_na_rm() -> None:
     assert derived["m"].isna().tolist() == [True, False]
     assert ap.summarize(adata, {"m": ap.mean("u")})["m"].isna().tolist() == [True]
     assert ap.summarize(adata, {"m": ap.mean("u", na_rm=True)}).loc[0, "m"] == pytest.approx(8 / 3)
+
+
+@pytest.mark.parametrize("fun", [ap.sum, ap.mean, ap.median, ap.sd, ap.min, ap.max])
+def test_a_grouped_summary_of_an_obs_column_propagates_na(fun) -> None:
+    obs_table = pd.DataFrame({"g": ["a", "a", "a", "b", "b"], "x": [1.0, np.nan, 2.0, 3.0, 4.0]}, index=list("vwxyz"))
+    adata = ap.tidy(AnnData(np.ones((5, 2), dtype=np.float32), obs=obs_table))
+    result = adata.summarize(v=fun(obs.x), by=obs.g).set_index("g")["v"]
+    assert np.isnan(result["a"])
+    assert not np.isnan(result["b"])
+    skipped = adata.summarize(v=fun(obs.x, na_rm=True), by=obs.g).set_index("g")["v"]
+    assert not np.isnan(skipped["a"])

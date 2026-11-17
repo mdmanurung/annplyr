@@ -525,7 +525,7 @@ def _summarize_dense_column_chunks(
     return result.loc[:, ordered]
 
 
-def reduction_expressions(name: str, spec: _ReductionSpec) -> list[nw.Expr]:
+def reduction_expressions(name: str, spec: _ReductionSpec, columns: Any = None) -> list[nw.Expr]:
     """Simple Narwhals aggregates for one reduction, safe inside ``group_by().agg()``.
 
     A reduction that reads NA (``na_rm=False`` on a sum, ``na_rm=True`` on a
@@ -535,7 +535,7 @@ def reduction_expressions(name: str, spec: _ReductionSpec) -> list[nw.Expr]:
     """
     if spec.input_expr is None:
         return [nw.len().alias(name)]
-    spec = _relabel_spec(spec)
+    spec = _relabel_spec(spec, columns)
     input_expr = cast(nw.Expr, spec.input_expr)
     if not needs_na_flag(spec):
         return [reduction_narwhals(spec.operation, input_expr, spec.ddof, spec.na_rm).alias(name)]
@@ -567,7 +567,7 @@ def _helper_name(name: str, part: str) -> str:
     return f"__annplyr_{part}_{name}__"
 
 
-def _relabel_spec(spec: _ReductionSpec) -> _ReductionSpec:
+def _relabel_spec(spec: _ReductionSpec, columns: Any = None) -> _ReductionSpec:
     """Rewrite a spec's input so it names the bare column its frame exposes.
 
     A qualified reference such as ``raw:LYZ`` is carried through the planner
@@ -577,6 +577,8 @@ def _relabel_spec(spec: _ReductionSpec) -> _ReductionSpec:
     column = _bare_column(spec.source_column)
     if column is None or column == spec.source_column or spec.input_expr is None:
         return spec
+    if columns is not None and spec.source_column in columns:
+        return spec  # the frame keeps the qualified name
     return _ReductionSpec(
         operation=spec.operation,
         input_expr=nw.col(column),

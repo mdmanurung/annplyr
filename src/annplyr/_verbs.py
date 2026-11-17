@@ -1446,7 +1446,7 @@ def summarize_frame(frame: pd.DataFrame, assignments: Mapping[str, Any] | None, 
         spec = reduction_spec(expr)
         if spec is not None and needs_na_flag(spec):
             # NA-reading reductions run as plain aggregates plus counts, see reduction_expressions
-            exprs.extend(reduction_expressions(name, spec))
+            exprs.extend(reduction_expressions(name, spec, work.columns))
             na_aware.append((name, spec))
         else:
             exprs.append(to_narwhals(expr.alias(name)) if hasattr(expr, "alias") else nw.col(expr).alias(name))

@@ -21,6 +21,7 @@ from _setup import *
 
 ```bash
 pip install "annplyr @ git+https://github.com/mdmanurung/annplyr"
+pip install scanpy  # only to load the PBMC3K example data
 ```
 
 ```{code-cell} ipython3

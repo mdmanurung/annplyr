@@ -20,7 +20,8 @@ pip install "annplyr @ git+https://github.com/mdmanurung/annplyr"
 
 `ap.tidy(adata)` wraps an AnnData object so the verbs are methods. Each
 container has a name in `annplyr.data`: `obs`, `var`, `X`, `raw`, and any layer
-or `obsm` key. This runs as written on Scanpy's PBMC3K:
+or `obsm` key. annplyr does not depend on Scanpy, so install it to load the
+dataset (`pip install scanpy`). This then runs as written on Scanpy's PBMC3K:
 
 ```python
 import scanpy as sc

@@ -162,6 +162,20 @@ ggplot(pb.obs, aes("louvain", "n_cells", fill="donor")) + geom_col(position="dod
 
 *Cells behind each pseudobulk sample. Megakaryocytes and dendritic cells have only a handful per donor, so those samples are noisy.*
 
+## Which spelling to use
+
+Every verb has four spellings that run the same code. Write `ap.tidy(adata).filter(...)`.
+
+| Spelling | Use it for |
+|---|---|
+| `ap.tidy(adata).verb(...)` | Scripts, notebooks and the examples in these docs. It chains, like a dplyr pipe. |
+| `adata.ap.verb(...)` | Typed code that holds a plain `AnnData`. Cast once at the boundary, see "Consumer typing". |
+| `ap.verb(adata, ...)` | A single call, or a function you pass around, such as `map(ap.filter, ...)`. |
+| `annplyr.verbs.verb` | Nothing new. It is the module that generates the flat functions in the row above. |
+
+All four return the same result, so a chain can start with any of them. An AnnData result
+is a `TidyAnnData`.
+
 ## Accessor
 
 The `adata.ap` accessor is registered when `annplyr` is imported, and

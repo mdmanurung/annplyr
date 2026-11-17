@@ -28,6 +28,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 - Install from GitHub: annplyr is not on PyPI yet. The PyPI badge is removed.
 
+### Fixed
+
+- `aggregate_cells(fun="sum")` no longer wraps around on narrow integer counts. A uint8, int16 or
+  int32 matrix is now summed in 64 bits, so the result is int64 (uint64 stays uint64).
+
 ## [0.5.0] - 2026-09-27
 
 annplyr 0.5.0 reads like tidyseurat and tidySingleCellExperiment. Every column

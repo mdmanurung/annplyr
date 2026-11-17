@@ -41,7 +41,7 @@ Names are positional and carry their container (`obs.x`, `var.x`, `X.x`, `raw.x`
 
 **Extraction and pipeline:**
 - `pull(name)` — extract exactly one column from any container, such as `pull(obs.louvain)`, `pull(raw.MS4A1)` or `pull(PCs[0])`.
-- `to_wide(*names, allow_all_features=False, max_matrix_values=...)` — wide DataFrame, one row per observation: `to_wide(obs.louvain, raw.MS4A1, X_umap)`. A whole `obs` or `obsm` key is allowed; a whole `X`, `raw` or layer needs `allow_all_features=True`. Columns from a sparse `X` or layer stay pandas Sparse; plotnine cannot draw them. Renamed from `to_df`, which `AnnData` already defines differently.
+- `to_wide(*names, allow_all_features=False, max_matrix_values=...)` — wide DataFrame, one row per observation: `to_wide(obs.louvain, raw.MS4A1, X_umap)`. A whole `obs` or `obsm` key is allowed; a whole `X`, `raw` or layer needs `allow_all_features=True`. Columns from a sparse `X` or layer come back dense in the source dtype. Renamed from `to_df`, which `AnnData` already defines differently.
 - `join_features(*features, shape="long", max_matrix_values=...)` — `shape="long"` gives a DataFrame of every `obs` column plus `.cell`, `.feature` and one `.abundance_<container>` column per container; `shape="wide"` returns the object with each feature added to `obs`.
 - `pivot_longer(*names, names_to=..., values_to=..., allow_all_features=False, max_matrix_values=...)` — pivot selected metadata/matrix columns to long form.
 - `aggregate_cells(*by, source=..., fun="sum")` — pseudobulk AnnData with one row per observed key combination and `n_cells` in `obs`. `source` is required because `X` is often scaled.

@@ -2082,6 +2082,11 @@ def to_wide_adata(
         return pd.DataFrame(index=adata.obs_names)
     out = pd.concat(pieces, axis=1)
     _ensure_unique([str(column) for column in out.columns], source="to_df")
+    # Plot-ready output: densify sparse matrix columns in their source dtype, as
+    # join_features(shape="long") does. max_matrix_values= bounds the size.
+    for position, dtype in enumerate(out.dtypes):
+        if isinstance(dtype, pd.SparseDtype):
+            out.isetitem(position, cast(Any, out.iloc[:, position]).sparse.to_dense())
     out.index = adata.obs_names
     return out
 

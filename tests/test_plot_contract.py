@@ -3,9 +3,7 @@
 annplyr has no runtime plotnine dependency, but its docs and ggann draw its
 tables with plotnine. plotnine cannot take pandas sparse columns, so every verb
 that the docs call "plot-ready" has to return dense columns, even when ``X`` is
-sparse. ``to_wide`` is the known exception: it is a strict xfail for sparse
-``X`` until the open design decision is made. This file is the data contract between annplyr
-and the plot packages.
+sparse. This file is the data contract between annplyr and the plot packages.
 
 It skips when plotnine is absent. annplyr's own test environment does not
 install plotnine, so it runs only in the downstream job of plotnine-extra's CI,
@@ -48,14 +46,7 @@ CASES = {
     "count": _count,
 }
 
-# Open decision: ``to_wide`` keeps sparse columns when ``X`` is sparse, while
-# the long outputs are made dense. Strict, so the day it is fixed this fails
-# and the marker has to come off.
-SPARSE_TO_WIDE = pytest.mark.xfail(
-    strict=True,
-    reason="to_wide returns pandas sparse columns for sparse X; plotnine rejects them",
-)
-VERBS = [pytest.param(v, marks=SPARSE_TO_WIDE) if v == "to_wide" else v for v in CASES]
+VERBS = list(CASES)
 
 
 def _xy(frame: pd.DataFrame) -> tuple[str, str]:

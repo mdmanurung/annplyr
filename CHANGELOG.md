@@ -13,18 +13,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   `count` on sparse `X` must give frames plotnine can draw. It skips without
   plotnine.
 
-### Known issues
-
-- `to_wide` returns pandas Sparse columns for sparse `X`, and plotnine cannot
-  draw them. This is a strict xfail in the plot contract test and an open design
-  decision. See the 0.5.0 note on sparse `to_wide` exports.
-
 ### Documentation
 
 - Install from GitHub: annplyr is not on PyPI yet. The PyPI badge is removed.
 
 ### Changed
 
+- **Breaking:** `to_wide` returns dense columns in the source dtype when `X`, `raw`
+  or a layer is sparse, as `join_features(shape="long")` already did, so plotnine
+  draws its output directly. It used to return pandas Sparse columns. A wide
+  export of many genes now costs dense memory; bound it with `max_matrix_values=`.
 - The docs build group now requires `plotnine>=0.16.0a15,<0.17` and installs
   ggann and plotnine-extra from pinned commits (2026-11-17).
 - **Breaking:** `arrange` on a `GroupedAnnData` now ignores groups, as dplyr does. It used to sort by

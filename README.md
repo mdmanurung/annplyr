@@ -72,12 +72,6 @@ loadings, and pairwise matrices. Every verb returns a new object. The boundary
 to pandas is explicit: summary and extraction methods return DataFrames,
 everything else returns AnnData.
 
-**Known limitation.** `to_wide` keeps pandas sparse columns when the source
-matrix is sparse, and plotnine cannot draw them. Densify each column before
-plotting (for example `frame[col].sparse.to_dense()` for each sparse column) or use
-`join_features(shape="long")`. This is an open design decision, not a promised
-fix.
-
 
 ## What you get
 
@@ -91,9 +85,7 @@ fix.
   conversion, and `max_matrix_values=` places a cumulative bound on reads.
 - **Compose with Python.** AnnData results stay `TidyAnnData`, a subclass of
   `AnnData`, so Scanpy calls work on them; extracted
-  tables work directly with pandas and plotting libraries, except that `to_wide`
-  keeps pandas sparse columns for sparse `X`, which plotnine cannot draw (a
-  known limitation; see above).
+  tables work directly with pandas and plotting libraries.
 
 `annplyr` is a wrangling layer, not a replacement for Scanpy, AnnData, or a
 biological QC and annotation workflow.

@@ -227,7 +227,7 @@ Strings such as `"raw:MS4A1"` and `ap.col` remain available for computed names.
 | single-cell utilities | Readers return tables/reports; writers return a new object | Metadata/name/palette operations only | `SelectionError`, `DuplicateNameError`, `SizeMismatchError`, `JoinRelationshipError` |
 
 All cumulative `max_matrix_values=` checks plan every source before the first
-adapter read. The mechanically checked callable-level contract is recorded in
+adapter read. The callable-level contract, frozen at v0.3 and checked by the test suite, is recorded in
 [`api-contract-v0.3.md`](https://github.com/mdmanurung/annplyr/blob/main/docs/development/api-contract-v0.3.md).
 
 The reduction chunk target is an internal implementation detail, currently

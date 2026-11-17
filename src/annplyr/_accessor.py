@@ -606,7 +606,8 @@ class AnnplyrAccessor:
         """Return the named columns from any container as one DataFrame, one row per cell.
 
         A whole matrix (``X``, ``raw`` or a layer) needs ``allow_all_features=True``.
-        A whole ``obs`` or ``obsm`` key does not.
+        A whole ``obs`` or ``obsm`` key does not. Matrix columns come back dense in
+        the source dtype, even from a sparse matrix, so plotnine draws them directly.
         """
         kwargs = container_kwargs(self._obj, names, verb="to_wide", allowed=_TABLE, whole_matrix=allow_all_features)
         return to_wide_adata(self._obj, **kwargs, max_matrix_values=max_matrix_values)

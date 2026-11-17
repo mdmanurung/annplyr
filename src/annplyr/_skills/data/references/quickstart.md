@@ -103,7 +103,7 @@ Use feature joins and extraction when the next step is pandas, plotnine, seaborn
 ```python
 long = adata.join_features(raw.MS4A1, raw.CD79A, shape="long")  # .cell, .feature, .abundance_raw
 with_genes = adata.join_features(raw.MS4A1, shape="wide")  # an object with MS4A1 in obs
-wide = adata.to_wide(obs.cell_type, obs.sample, X.MS4A1, X.CD79A)  # sparse X gives pandas sparse columns; plotnine cannot draw them, densify first or use join_features(shape="long")
+wide = adata.to_wide(obs.cell_type, obs.sample, X.MS4A1, X.CD79A)  # dense columns, even for sparse X
 bounded = adata.to_wide(raw, allow_all_features=True, max_matrix_values=1_000_000)
 ```
 

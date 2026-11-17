@@ -61,9 +61,7 @@ Plot contract: `tests/test_plot_contract.py` skips without plotnine, which the
 uv run --group test --group doc pytest tests/test_plot_contract.py
 ```
 
-The `doc` group installs `plotnine>=0.16.0a15,<0.17`. `to_wide` on sparse `X` is
-a strict xfail (`xfail_strict = true`), an open design decision. If a change
-makes it pass, the test fails until the marker is removed.
+The `doc` group installs `plotnine>=0.16.0a15,<0.17`.
 
 Downstream checks: the blocking `downstream` job in plotnine-extra's CI runs
 annplyr `main`'s pytest together with ggann and plotnine-extra. A change to the

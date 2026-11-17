@@ -20,7 +20,8 @@ pytestmark = [
     pytest.mark.filterwarnings("ignore:Variable names are not unique"),
 ]
 
-EXPECTED_GROUPED_POSITIONS = np.array([0, 5, 2, 4, 1, 7, 6, 3])
+# arrange ignores groups (dplyr): one global sort by quality_score, descending.
+EXPECTED_GROUPED_POSITIONS = np.array([6, 4, 0, 5, 1, 2, 7, 3])
 
 
 @pytest.fixture(scope="module")
@@ -89,11 +90,11 @@ def test_generated_fixture_contract_and_grouped_positional_identity() -> None:
     grouped, result = _run_grouped_pipeline(source)
 
     assert grouped.group_vars() == ["cell_type"]
-    assert grouped.group_keys()["cell_type"].tolist() == ["T cell", "B cell", "Monocyte"]
+    assert grouped.group_keys()["cell_type"].tolist() == ["Monocyte", "B cell", "T cell"]
     assert result.obs["fixture_row_id"].to_numpy().tolist() == EXPECTED_GROUPED_POSITIONS.tolist()
-    assert result.obs["within_type"].tolist() == [1, 3, 2, 2, 1, 3, 2, 1]
+    assert result.obs["within_type"].tolist() == [2, 2, 1, 3, 1, 2, 3, 1]
     expected = source[EXPECTED_GROUPED_POSITIONS, :].copy()
-    expected.obs["within_type"] = [1, 3, 2, 2, 1, 3, 2, 1]
+    expected.obs["within_type"] = [2, 2, 1, 3, 1, 2, 3, 1]
     assert_adata_equal(result, expected)
     _assert_independent_ownership(result, source)
 

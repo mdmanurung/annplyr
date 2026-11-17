@@ -2,7 +2,7 @@
 
 `annplyr` ships a bundled Agent Skill for Claude Code and Codex. The skill
 teaches agents the `adata.ap` accessor, AnnData alignment rules, safe source
-usage, plot-ready extraction, and sparse/backed-data constraints.
+usage, plot-oriented extraction, and sparse/backed-data constraints.
 
 Install both Claude Code and Codex copies:
 

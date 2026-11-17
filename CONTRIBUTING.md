@@ -39,7 +39,8 @@ Every behavior change should include tests. For annplyr, this usually means:
 - metadata tests for `obs` and `var` behavior,
 - matrix tests for dense, sparse, and layer-backed sources,
 - alignment tests that verify AnnData containers keep their expected shapes,
-- error tests for invalid selectors, sources, axes, and ambiguous names.
+- error tests for invalid selectors, sources, axes, and ambiguous names,
+- plot contract tests: `to_wide`, `join_features`, `summarize` and `count` on sparse `X` must give frames plotnine can draw.
 
 Fast local gate:
 
@@ -52,6 +53,22 @@ Release-quality gate:
 ```bash
 uvx hatch test --all
 ```
+
+Plot contract: `tests/test_plot_contract.py` skips without plotnine, which the
+`hatch-test` environment does not install. Run it with:
+
+```bash
+uv run --group test --group doc pytest tests/test_plot_contract.py
+```
+
+The `doc` group installs `plotnine>=0.16.0a15,<0.17`. `to_wide` on sparse `X` is
+a strict xfail (`xfail_strict = true`), an open design decision. If a change
+makes it pass, the test fails until the marker is removed.
+
+Downstream checks: the blocking `downstream` job in plotnine-extra's CI runs
+annplyr `main`'s pytest together with ggann and plotnine-extra. A change to the
+output frames of `to_wide`, `join_features`, `summarize` or `count` can fail
+there.
 
 ## Documentation
 
@@ -66,10 +83,17 @@ cell, so each example and figure is checked, and a failing cell fails the build.
 Hidden `remove-cell` cells assert that outputs match. Shared setup is in
 `docs/_setup.py`. The build downloads PBMC3k into `data/` on first use.
 
+The `doc` group installs `plotnine>=0.16.0a15,<0.17` (no stable 0.16 exists) and
+ggann and plotnine-extra at pinned GitHub commits, because their current
+versions are not on PyPI. `uvx hatch run docs:build` resolves them.
+
 On pushes to `main`, the `Docs` workflow uploads `docs/_build/html` and deploys
 the Sphinx site to GitHub Pages.
 
 ## Releasing
+
+annplyr is not on PyPI yet, so users install from GitHub. This is the
+procedure for when it is published.
 
 Releases are published from GitHub releases through the `release.yaml` workflow
 and PyPI trusted publishing.

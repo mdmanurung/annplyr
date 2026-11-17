@@ -6,7 +6,7 @@ license: BSD-3-Clause
 
 # annplyr
 
-Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-style verbs for single-cell data, or plot-ready extraction from AnnData.
+Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-style verbs for single-cell data, or plot-oriented extraction from AnnData.
 
 ## First Moves
 
@@ -24,6 +24,7 @@ Use this skill when the task involves `annplyr`, AnnData wrangling, tidyverse-st
 - AnnData-returning verbs must preserve alignment across `obs`, `var`, `X`, layers, `obsm`, `varm`, `obsp`, and `varp`.
 - Every verb returns a new object, so assign the result. There is no `copy=` or `inplace=`. Same-shape verbs share the matrices with the input; a subsetting verb on a backed input returns the view. Grouped AnnData verbs preserve grouping until `ungroup()`.
 - Joins are metadata joins for `obs` or `var`; they should not silently create duplicated cells/features.
+- `to_wide` keeps pandas sparse columns for sparse `X`, and plotnine cannot draw them. Use `join_features(shape="long")` or densify first.
 - Whole-matrix exports are expensive. Name the features, pass `allow_all_features=True` only when the user clearly asks for all of them, and use cumulative `max_matrix_values=` budgets.
 - Load backed objects with `.to_memory()` before a metadata-changing verb.
 

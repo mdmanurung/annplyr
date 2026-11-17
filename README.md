@@ -3,17 +3,18 @@
 [![Test](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/test.yaml)
 [![Docs](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml/badge.svg)](https://github.com/mdmanurung/annplyr/actions/workflows/docs.yaml)
 [![codecov](https://codecov.io/gh/mdmanurung/annplyr/branch/main/graph/badge.svg)](https://codecov.io/gh/mdmanurung/annplyr)
-[![PyPI](https://img.shields.io/pypi/v/annplyr)](https://pypi.org/project/annplyr/)
 <!-- [gap: DOI badge] add after Zenodo mints a DOI: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
 `annplyr` brings tidy, dataframe-style verbs to AnnData. Filter cells, select
 genes, join sample metadata, derive annotations, summarize groups, and build
-plot-ready tables. `obs` stays attached to the matrices and aligned containers
+plot-oriented tables. `obs` stays attached to the matrices and aligned containers
 that give it meaning.
 
 ```bash
-pip install annplyr
+pip install "annplyr @ git+https://github.com/mdmanurung/annplyr"
 ```
+
+`annplyr` is not on PyPI yet, so install it from GitHub.
 
 ## Try it on real data
 
@@ -70,6 +71,12 @@ loadings, and pairwise matrices. Every verb returns a new object. The boundary
 to pandas is explicit: summary and extraction methods return DataFrames,
 everything else returns AnnData.
 
+**Known limitation.** `to_wide` keeps pandas sparse columns when the source
+matrix is sparse, and plotnine cannot draw them. Densify each column before
+plotting (for example `frame[col].sparse.to_dense()` for each sparse column) or use
+`join_features(shape="long")`. This is an open design decision, not a promised
+fix.
+
 
 ## What you get
 
@@ -83,7 +90,9 @@ everything else returns AnnData.
   conversion, and `max_matrix_values=` places a cumulative bound on reads.
 - **Compose with Python.** AnnData results stay `TidyAnnData`, a subclass of
   `AnnData`, so Scanpy calls work on them; extracted
-  tables work directly with pandas and plotting libraries.
+  tables work directly with pandas and plotting libraries, except that `to_wide`
+  keeps pandas sparse columns for sparse `X`, which plotnine cannot draw (a
+  known limitation; see above).
 
 `annplyr` is a wrangling layer, not a replacement for Scanpy, AnnData, or a
 biological QC and annotation workflow.
